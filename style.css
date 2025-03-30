@@ -245,14 +245,64 @@ body {
     min-width: 55px; /* Adjust width for typical move notation */
     margin-right: 10px; /* Space between white and black moves */
     font-family: Consolas, monospace; /* Use monospace for better alignment */
+    cursor: pointer; /* Show pointer cursor for clickable moves */
+}
+
+.move-text:hover {
+    text-decoration: underline; /* Visual feedback on hover */
+}
+
+.move-text.current-move {
+    background-color: rgba(255, 255, 0, 0.3); /* Highlight current move */
+    font-weight: bold;
+    border-radius: 3px;
+    padding: 0 3px;
 }
 
 /* Optional: Styles for white/black moves */
 /* .w-move { } */
 /* .b-move { } */
 
-/* --- END: Updated Move History Styles --- */
+/* Player Color Indicator Styles */
+#player-color-indicator {
+    margin: 10px 0;
+    padding: 8px;
+    border-radius: 5px;
+    font-weight: bold;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s ease;
+}
 
+#player-color-indicator::before {
+    content: "";
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 8px;
+    border: 1px solid #888;
+}
+
+#player-color-indicator.white {
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+#player-color-indicator.white::before {
+    background-color: white;
+}
+
+#player-color-indicator.black {
+    background-color: #3a3a3a;
+    color: white;
+}
+
+#player-color-indicator.black::before {
+    background-color: #333;
+}
 
 /* Modal */
 .modal {

@@ -43,6 +43,7 @@ const moveHistoryElement = document.getElementById('move-history');
 const promotionModal = document.getElementById('promotion-modal');
 const promotionButtons = promotionModal.querySelectorAll('button');
 const captureCanvas = document.getElementById('capture-animation-canvas'); // For Three.js
+const redoButton = document.getElementById('redo-button'); // Add Redo Button
 
 // --- Audio Elements ---
 const sounds = {
@@ -89,7 +90,7 @@ function initGame() {
     pushHistoryState({}); // Save the initial state (no move info)
     updateStatusDisplay();
     updateMoveHistoryDisplay();
-    updateUndoButton();
+    updateHistoryButtons();
     console.log("Game Initialized. Current Player:", currentPlayer);
     
     // Update game mode messaging
@@ -459,6 +460,9 @@ function showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiec
             const promotionPiece = currentPlayer === 'w' ? promotionPieceType.toUpperCase() : promotionPieceType.toLowerCase();
             promotionModal.style.display = 'none';
 
+            // Store original piece for proper history before modifying board
+            const originalPiece = piece;
+            
             setPieceAt(toRow, toCol, promotionPiece); // Finalize board state
             setPieceAt(fromRow, fromCol, null); // Remove pawn from original position
 
@@ -470,27 +474,21 @@ function showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiec
                 if(pawnElement) {
                     pawnElement.textContent = PIECES[promotionPiece];
                     pawnElement.dataset.piece = promotionPiece;
-                     // Data attributes already updated by animatePieceMovement
                 } else {
-                    // If element wasn't found (e.g., during rapid undo/redo), render needed
                     console.warn("Pawn element for promotion update not found, might need re-render.");
                 }
-                 finishMoveProcessing(prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
+                
+                // Make sure we store the promotion explicitly in state
+                finishMoveProcessing(prevStateInfo, originalPiece, capturedPiece, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
             };
 
-            // Animate the piece that's already at the destination (it was logically placed in makeMove)
-            // This feels slightly wrong, maybe animation should happen differently for promotion.
-            // Let's assume animatePieceMovement handles the piece already being at toRow,toCol visually.
-            // If the pawnElement wasn't found correctly above, this might skip animation visually.
-            // A safer approach might be to handle animation BEFORE logical placement in makeMove for promotion.
-            // --- Reverting to simpler logic: Just update visually and finish ---
-             if (pawnElement) {
+            if (pawnElement) {
                 pawnElement.textContent = PIECES[promotionPiece];
                 pawnElement.dataset.piece = promotionPiece;
-             }
-             finishMoveProcessing(prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
-             renderBoard(); // Force render after promotion choice to be sure
-            // animatePieceMovement(pawnElement, getSquareElement(toRow, toCol), toRow, toCol, finishPromotionMove); // Original animation attempt
+            }
+            
+            finishMoveProcessing(prevStateInfo, originalPiece, capturedPiece, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
+            renderBoard(); // Force render after promotion choice to be sure
         };
     });
 }
@@ -1141,7 +1139,7 @@ function updateStatusDisplay() {
 
     boardElement.style.pointerEvents = (isGameOver || isAIThinking) ? 'none' : 'auto';
     hintButton.disabled = isGameOver || isAIThinking || (currentPlayer !== 'w' || !isAIMode());
-    undoButton.disabled = isGameOver || isAIThinking || currentMoveIndex < 1;
+    updateHistoryButtons();
 }
 
 // --- Move History & Notation ---
@@ -1215,120 +1213,195 @@ function checkAmbiguity(fR, fC, tR, tC, piece) {
 
 // --- Game History Management ---
 function pushHistoryState(moveInfo = {}) {
+    // Important: Create a deep copy of the board to ensure promotion pieces are properly stored
+    const boardCopy = board.map(row => [...row]);
+    
     const state = {
-        board: board.map(row => [...row]),
+        board: boardCopy,
         currentPlayer,
         castlingRights: JSON.parse(JSON.stringify(castlingRights)),
-        enPassantTarget,
+        enPassantTarget: enPassantTarget ? {...enPassantTarget} : null, // Deep copy
         halfmoveClock,
         fullmoveNumber,
         statusMessage: gameStatusMessage,
         moveNotation: moveInfo.notation || null,
         moveNumber: moveInfo.moveNumber || null
     };
-    if (currentMoveIndex < gameHistory.length - 1) {
+    
+    // If we're not at the end of history, we need to truncate future moves when making a new move
+    // But NOT when simply restoring states during undo/redo navigation
+    if (moveInfo.truncate !== false && currentMoveIndex < gameHistory.length - 1) {
         gameHistory = gameHistory.slice(0, currentMoveIndex + 1);
     }
+    
     gameHistory.push(state);
     currentMoveIndex++;
-    updateUndoButton();
+    updateHistoryButtons();
 }
+
+// --- Update both undo and redo buttons state ---
+function updateHistoryButtons() {
+    undoButton.disabled = isGameOver || isAIThinking || currentMoveIndex < 1;
+    redoButton.disabled = isGameOver || isAIThinking || currentMoveIndex >= gameHistory.length - 1;
+}
+
+// --- Replace updateUndoButton with the more comprehensive function ---
+function updateUndoButton() {
+    updateHistoryButtons();
+}
+
+// --- Add the missing recordMove function ---
 function recordMove(prevStateInfo, finalNotation) {
     const moveNumber = prevStateInfo.fullmoveNumber; // Number of the move being made
     pushHistoryState({ notation: finalNotation, moveNumber: moveNumber });
     updateMoveHistoryDisplay(); // Update AFTER push ensures correct index is used
 }
+
+// --- Undo/Redo Functions ---
+function handleUndo() {
+    if (isAIThinking || currentMoveIndex < 1) {
+        console.log("Cannot undo.");
+        return;
+    }
+    isGameOver = false; // Allow game to continue
+
+    // Determine how many states to go back (usually 2 for Player+AI, 1 if only Player moved)
+    const playerWhoseTurnItIsNow = gameHistory[currentMoveIndex].currentPlayer;
+    const undoSteps = (playerWhoseTurnItIsNow === 'w' && currentMoveIndex >= 2) ? 2 : 1;
+
+    const targetIndex = Math.max(0, currentMoveIndex - undoSteps);
+    
+    restoreGameState(targetIndex);
+    
+    // Update UI
+    clearSelectionAndHighlights();
+    renderBoard();
+    updateStatusDisplay();
+    updateMoveHistoryDisplay();
+    updateHistoryButtons();
+    
+    console.log(`Undo complete. New Index: ${currentMoveIndex}`);
+}
+
+function handleRedo() {
+    if (isAIThinking || currentMoveIndex >= gameHistory.length - 1) {
+        console.log("Cannot redo.");
+        return;
+    }
+    isGameOver = false; // Allow game to continue
+
+    // For redo, we typically go forward one move at a time
+    // But if AI mode is active and current player is white, we may need to go forward 2 steps
+    const stepsForward = 1;
+    const targetIndex = Math.min(gameHistory.length - 1, currentMoveIndex + stepsForward);
+    
+    restoreGameState(targetIndex);
+    
+    // Update UI
+    clearSelectionAndHighlights();
+    renderBoard();
+    updateStatusDisplay();
+    updateMoveHistoryDisplay();
+    updateHistoryButtons();
+    
+    console.log(`Redo complete. New Index: ${currentMoveIndex}`);
+}
+
+// --- Helper function to restore a game state at the given index ---
+function restoreGameState(targetIndex) {
+    if (targetIndex < 0 || targetIndex >= gameHistory.length) {
+        console.error("Invalid game state index:", targetIndex);
+        return;
+    }
+    
+    const stateToRestore = gameHistory[targetIndex];
+    currentMoveIndex = targetIndex; // Update index
+    
+    // Restore board state with proper deep copy
+    board = stateToRestore.board.map(row => [...row]);
+    
+    // Restore other game state variables
+    currentPlayer = stateToRestore.currentPlayer;
+    castlingRights = JSON.parse(JSON.stringify(stateToRestore.castlingRights));
+    enPassantTarget = stateToRestore.enPassantTarget ? {...stateToRestore.enPassantTarget} : null;
+    halfmoveClock = stateToRestore.halfmoveClock;
+    fullmoveNumber = stateToRestore.fullmoveNumber;
+    gameStatusMessage = stateToRestore.statusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
+}
+
+// --- Move History Display with Highlighting for Current Position ---
 function updateMoveHistoryDisplay() {
     moveHistoryElement.innerHTML = '';
     let currentPairDiv = null;
-    for (let i = 1; i <= currentMoveIndex; i++) { // Index 0 is initial state
+    
+    for (let i = 1; i <= gameHistory.length - 1; i++) { // Index 0 is initial state
         const state = gameHistory[i];
         const prevState = gameHistory[i-1];
         if (!state.moveNotation) continue;
+        
         const moveNum = state.moveNumber;
         const playerWhoMoved = prevState.currentPlayer;
+        const isCurrentPosition = (i === currentMoveIndex);
 
         if (playerWhoMoved === 'w') {
              currentPairDiv = document.createElement('div');
              currentPairDiv.className = 'move-pair';
              moveHistoryElement.appendChild(currentPairDiv);
+             
              const moveNumSpan = document.createElement('span');
              moveNumSpan.className = 'move-number';
              moveNumSpan.textContent = `${moveNum}.`;
              currentPairDiv.appendChild(moveNumSpan);
         }
+        
         // Ensure pair div exists (e.g., if history starts with black move somehow)
-         if (!currentPairDiv && i > 0) {
-              // This case shouldn't happen in standard chess start, but defensively create div
-               currentPairDiv = document.createElement('div');
-               currentPairDiv.className = 'move-pair';
-               moveHistoryElement.appendChild(currentPairDiv);
-               // Add placeholder for missing white move? Or just add black move.
-               const moveNumSpan = document.createElement('span');
-               moveNumSpan.className = 'move-number';
-               moveNumSpan.textContent = `${moveNum}.`; // Still use current move number
-               currentPairDiv.appendChild(moveNumSpan);
-               const emptySpan = document.createElement('span');
-               emptySpan.className = 'move-text w-move';
-               emptySpan.textContent = "..."; // Indicate missing white move
-               currentPairDiv.appendChild(emptySpan);
-         }
+        if (!currentPairDiv && i > 0) {
+            // This case shouldn't happen in standard chess start, but defensively create div
+            currentPairDiv = document.createElement('div');
+            currentPairDiv.className = 'move-pair';
+            moveHistoryElement.appendChild(currentPairDiv);
+            
+            const moveNumSpan = document.createElement('span');
+            moveNumSpan.className = 'move-number';
+            moveNumSpan.textContent = `${moveNum}.`; // Still use current move number
+            currentPairDiv.appendChild(moveNumSpan);
+            
+            const emptySpan = document.createElement('span');
+            emptySpan.className = 'move-text w-move';
+            emptySpan.textContent = "..."; // Indicate missing white move
+            currentPairDiv.appendChild(emptySpan);
+        }
 
-         if (currentPairDiv) { // Only add if pair div exists
+        if (currentPairDiv) {
             const moveSpan = document.createElement('span');
             moveSpan.className = `move-text ${playerWhoMoved}-move`;
+            if (isCurrentPosition) {
+                moveSpan.classList.add('current-move');
+            }
             moveSpan.textContent = state.moveNotation;
+            
+            // Add click handler for move navigation
+            moveSpan.addEventListener('click', () => {
+                if (!isAIThinking) {
+                    restoreGameState(i);
+                    clearSelectionAndHighlights();
+                    renderBoard();
+                    updateStatusDisplay();
+                    updateMoveHistoryDisplay();
+                    updateHistoryButtons();
+                }
+            });
+            
             currentPairDiv.appendChild(moveSpan);
-         } else {
-             console.error("Error building move history: currentPairDiv is null");
-         }
+        }
 
-         if(playerWhoMoved === 'b') {
-             currentPairDiv = null; // Black move completes the pair
-         }
+        if (playerWhoMoved === 'b') {
+            currentPairDiv = null; // Black move completes the pair
+        }
     }
+    
     moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
 }
-function handleUndo() {
-    if (isAIThinking || currentMoveIndex < 1) {
-         console.log("Cannot undo.");
-         return;
-    }
-    isGameOver = false; // Allow game to continue
-
-    // Determine how many states to go back (usually 2 for Player+AI, 1 if only Player moved)
-    // Look at the player of the *current* state (gameHistory[currentMoveIndex])
-    // If current player is 'w', it means Black just moved -> undo 2 (Player + AI)
-    // If current player is 'b', it means White just moved -> undo 1 (Player only)
-    const playerWhoseTurnItIsNow = gameHistory[currentMoveIndex].currentPlayer;
-    const undoSteps = (playerWhoseTurnItIsNow === 'w' && currentMoveIndex >= 2) ? 2 : 1;
-
-    const targetIndex = Math.max(0, currentMoveIndex - undoSteps);
-    // console.log(`Undoing. Current: ${currentMoveIndex}, Steps: ${undoSteps}, Target: ${targetIndex}`);
-
-    const stateToRestore = gameHistory[targetIndex];
-    currentMoveIndex = targetIndex; // Move index back
-
-    // Restore state
-    board = stateToRestore.board.map(row => [...row]);
-    currentPlayer = stateToRestore.currentPlayer;
-    castlingRights = JSON.parse(JSON.stringify(stateToRestore.castlingRights));
-    enPassantTarget = stateToRestore.enPassantTarget;
-    halfmoveClock = stateToRestore.halfmoveClock;
-    fullmoveNumber = stateToRestore.fullmoveNumber;
-    gameStatusMessage = stateToRestore.statusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
-
-    clearSelectionAndHighlights();
-    renderBoard();
-    updateStatusDisplay();
-    updateMoveHistoryDisplay();
-    updateUndoButton();
-    // console.log(`Undo complete. New Index: ${currentMoveIndex}`);
-}
-function updateUndoButton() {
-    undoButton.disabled = isGameOver || isAIThinking || currentMoveIndex < 1;
-}
-
 
 // --- AI Logic ---
 function triggerAIMove() {
@@ -1791,6 +1864,7 @@ function handleHint() {
 // --- Event Listeners ---
 newGameButton.addEventListener('click', initGame);
 undoButton.addEventListener('click', handleUndo);
+redoButton.addEventListener('click', handleRedo);
 hintButton.addEventListener('click', handleHint);
 muteButton.addEventListener('click', toggleMute);
 toggleAnimationButton.addEventListener('click', toggleCaptureAnimation);
