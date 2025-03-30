@@ -265,24 +265,25 @@ body {
 
 /* Player Color Indicator Styles */
 #player-color-indicator {
-    margin: 10px 0;
-    padding: 8px;
-    border-radius: 5px;
-    font-weight: bold;
+    margin: 5px 0;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: normal;
     text-align: center;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
     transition: background-color 0.3s ease;
+    max-width: fit-content;
 }
 
 #player-color-indicator::before {
     content: "";
     display: inline-block;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    margin-right: 8px;
+    margin-right: 6px;
     border: 1px solid #888;
 }
 
