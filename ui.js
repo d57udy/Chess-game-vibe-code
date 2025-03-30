@@ -551,29 +551,69 @@ function makeMove(fromRow, fromCol, toRow, toCol, needsPromotion = false) {
 function showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation) {
     promotionModal.style.display = 'flex';
 
-    // Clear previous listeners and re-select buttons
+    // Store move details temporarily on the modal element itself
+    promotionModal.moveDetails = { fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation };
+
+    // Clear previous listeners by cloning and replacing buttons
     promotionButtons.forEach(button => {
         const newButton = button.cloneNode(true);
         button.parentNode.replaceChild(newButton, button);
     });
+    // Get the new buttons
     const currentPromotionButtons = promotionModal.querySelectorAll('button');
 
+    // Add listeners to the NEW buttons
     currentPromotionButtons.forEach(button => {
         button.onclick = () => { // Use onclick for simplicity after cloning
-            const chosenPiece = button.getAttribute('data-piece');
-             // We need to retrieve the move details stored when the modal was shown
-             const moveDetails = promotionModal.moveDetails; 
-             if (moveDetails && chosenPiece) {
-                 console.log(`Promotion choice: ${chosenPiece}`);
+            const chosenPieceType = button.getAttribute('data-piece');
+             // Retrieve stored move details
+             const moveDetails = promotionModal.moveDetails;
+             if (moveDetails && chosenPieceType) {
+                 console.log(`Promotion choice: ${chosenPieceType}`);
                  promotionModal.style.display = 'none';
-                 // Finish the move with the chosen promotion piece
-                 makeMove(moveDetails.fromRow, moveDetails.fromCol, moveDetails.toRow, moveDetails.toCol, chosenPiece);
+                 // Execute the promotion logic with the chosen piece
+                 executePromotion(
+                     moveDetails.fromRow, 
+                     moveDetails.fromCol, 
+                     moveDetails.toRow, 
+                     moveDetails.toCol, 
+                     chosenPieceType, 
+                     moveDetails.piece, // Original pawn
+                     moveDetails.capturedPiece, 
+                     moveDetails.isEnPassantCapture, 
+                     moveDetails.prevStateInfo, 
+                     moveDetails.baseMoveNotation
+                 );
              } else {
                  console.error("Error retrieving move details or chosen piece for promotion.");
                  promotionModal.style.display = 'none'; // Hide modal anyway
              }
-        });
-    });
+        }; // End of onclick handler
+    }); // End of currentPromotionButtons.forEach
+}
+
+// --- Helper function to execute promotion logic after choice --- 
+function executePromotion(fromRow, fromCol, toRow, toCol, chosenPieceType, originalPawn, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation) {
+    const promotionPiece = prevStateInfo.currentPlayer === 'w' ? chosenPieceType.toUpperCase() : chosenPieceType.toLowerCase();
+    const finalMoveNotation = baseMoveNotation + "=" + chosenPieceType.toUpperCase();
+
+    // --- Execute Promotion Logically --- 
+    let capturedPawnActual = null;
+    let capturedPawnRow = -1;
+    // 1. Handle potential en passant capture during promotion (rare but possible)
+    if (isEnPassantCapture) {
+        capturedPawnRow = prevStateInfo.currentPlayer === 'w' ? toRow + 1 : toRow - 1;
+        capturedPawnActual = getPieceAt(capturedPawnRow, toCol); 
+        setPieceAt(capturedPawnRow, toCol, null); 
+    }
+    // 2. Update board: Place promoted piece, remove original pawn
+    setPieceAt(toRow, toCol, promotionPiece);
+    setPieceAt(fromRow, fromCol, null);
+
+    // --- Finish Move Processing --- 
+    const logicalCapture = capturedPiece || (isEnPassantCapture ? capturedPawnActual : null);
+    // Pass 'promotion' as specialMoveType explicitly, and use originalPawn for history tracking
+    finishMoveProcessing(prevStateInfo, originalPawn, logicalCapture, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
 }
 
 // --- Post-Animation Move Processing (Handles Logic Updates, State Checks, UI Updates) ---
@@ -1195,24 +1235,6 @@ function setupEventListeners() {
     // ADD new listeners
     gameModeSelect.addEventListener('change', updateGameSettingsFromUI);
     aiEloSlider.addEventListener('input', updateGameSettingsFromUI); // 'input' for live update
-
-    // Promotion modal buttons
-    promotionButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const chosenPiece = button.getAttribute('data-piece');
-             // We need to retrieve the move details stored when the modal was shown
-             const moveDetails = promotionModal.moveDetails; 
-             if (moveDetails && chosenPiece) {
-                 console.log(`Promotion choice: ${chosenPiece}`);
-                 promotionModal.style.display = 'none';
-                 // Finish the move with the chosen promotion piece
-                 makeMove(moveDetails.fromRow, moveDetails.fromCol, moveDetails.toRow, moveDetails.toCol, chosenPiece);
-             } else {
-                 console.error("Error retrieving move details or chosen piece for promotion.");
-                 promotionModal.style.display = 'none'; // Hide modal anyway
-             }
-        });
-    });
 
     // Keyboard shortcuts (example)
     // document.addEventListener('keydown', (e) => {
