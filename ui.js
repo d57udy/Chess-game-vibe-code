@@ -122,16 +122,17 @@ function updateGameModeDisplay() {
     if (gameMode === 'ai-human') {
         modeText = "Mode: AI vs Human";
         aiSettingsDiv.style.display = 'block';
-        humanPlayerSettingsDiv.style.display = 'block';
+        humanPlayerSettingsDiv.style.display = 'block'; // Show for AI vs Human
         playerColorIndicator.style.display = 'block';
     } else if (gameMode === 'ai-ai') {
         modeText = `Mode: AI vs AI (ELO: ${aiElo})`;
         aiSettingsDiv.style.display = 'block';
-        humanPlayerSettingsDiv.style.display = 'none'; // Hide color switching
-        playerColorIndicator.style.display = 'none'; // Hide playing as
+        // *** MODIFIED: Keep container visible, button will be disabled by updateStatusDisplay ***
+        humanPlayerSettingsDiv.style.display = 'block'; 
+        playerColorIndicator.style.display = 'none'; // Still hide playing as
     } else { // human-human
         aiSettingsDiv.style.display = 'none';
-        humanPlayerSettingsDiv.style.display = 'block'; // Show color switching
+        humanPlayerSettingsDiv.style.display = 'block'; // Show for Human vs Human
         playerColorIndicator.style.display = 'block';
     }
     difficultyLabel.textContent = modeText;
@@ -144,28 +145,35 @@ function updateGameModeDisplay() {
 
 // --- Function to read settings from UI and update state ---
 function updateGameSettingsFromUI() {
-    const prevGameMode = gameMode; // Store previous mode
+    // *** ADDED: Cancel any pending AI move calculation (Keep as safety) ***
+    if (aiThinkingTimeoutId) {
+        clearTimeout(aiThinkingTimeoutId);
+        aiThinkingTimeoutId = null;
+        console.log("UI: Cleared pending AI move timeout due to settings change.");
+    }
+    // *** END ADDED ***
+
+    // *** isAIThinking flag is now reset directly in the event listener ***
+    // const prevGameMode = gameMode; // No longer needed here for resetting flag
     gameMode = gameModeSelect.value;
     aiElo = parseInt(aiEloSlider.value, 10);
 
     console.log(`UI Settings Updated: Mode=${gameMode}, ELO=${aiElo}`);
 
-    // If switching *away* from AI vs AI, ensure the thinking flag is reset
-    if (prevGameMode === 'ai-ai' && gameMode !== 'ai-ai' && isAIThinking) {
-        console.log("UI: Switched away from AI vs AI mode, resetting thinking flag.");
-        isAIThinking = false;
-        updateStatusDisplay(); // Update display to remove spinner
-    }
-    
+    // *** Removed redundant isAIThinking reset logic ***
+    // if (isAIThinking && (prevGameMode === 'ai-ai' || gameMode !== prevGameMode)) {
+    //    ...
+    // }
+
     updateGameModeDisplay(); // Update labels and visibility
 
-    // If switching mode, might need to trigger AI move (respecting the now potentially reset flag)
+    // Check if AI needs to move based on the *new* settings
+    // This should only happen if the flag was successfully reset by the event listener
     if (!isAIThinking) {
         checkAndTriggerAIMove();
-    } else {
-        // If still thinking, update status display to show spinner
-         updateStatusDisplay();
     }
+     // Update the status display fully at the end to reflect all changes
+     updateStatusDisplay();
 }
 
 function updatePlayerColorIndicator() {
@@ -801,26 +809,40 @@ function triggerAIMove() {
     } else if (gameMode === 'ai-human' && currentPlayer === playerColor) { // Abort in AI vs Human if it IS the human's turn
         abort = true;
          console.log("Aborting AI trigger: It's human's turn in ai-human mode.");
-    } else if (!isAIThinking) { 
+    // *** ADDED: Check if the thinking flag is still true. It might have been reset by user interaction. ***
+    } else if (!isAIThinking) {
          abort = true;
-         console.log("Aborting AI trigger: AI thinking flag is not set (unexpected).");
+         console.log("Aborting AI trigger: AI thinking flag is not set (likely interrupted).");
          boardElement.classList.remove('ai-thinking'); // Clean up UI just in case
-         return; 
+         return;
     }
+    // *** END ADDED ***
 
     if (abort) {
         console.log("Aborting AI move trigger: Conditions not met.");
-        isAIThinking = false; // Reset thinking flag if we abort for other reasons
-        updateStatusDisplay(); // Update status to remove spinner
+        // Ensure thinking flag is reset if we abort here, unless it was already false
+        if (isAIThinking) {
+            isAIThinking = false; 
+            updateStatusDisplay(); // Update status to remove spinner
+        }
         boardElement.classList.remove('ai-thinking');
         return;
     }
 
     // Clear the timeout ID as we are now executing
-    aiThinkingTimeoutId = null; 
-    
+    aiThinkingTimeoutId = null;
+
     console.log(`Requesting AI move calculation with ELO: ${aiElo}`);
-    const aiMove = calculateBestMove(aiElo); 
+    const aiMove = calculateBestMove(aiElo);
+
+    // *** ADDED: Check if still thinking after calculation, might have been interrupted ***
+    if (!isAIThinking) {
+        console.log("AI move calculation finished, but thinking was interrupted. Discarding move.");
+        boardElement.classList.remove('ai-thinking');
+        // No need to call updateStatusDisplay again unless state changed unexpectedly
+        return;
+    }
+    // *** END ADDED ***
 
     if (aiMove) {
         console.log("UI: AI chose move:", aiMove);
@@ -836,13 +858,15 @@ function triggerAIMove() {
                  // Let's assume the AI function adds a 'promotionPiece' property if needed.
                  let promotionPieceType = aiMove.promotionPiece || 'Q'; // Default to Queen
                  console.log(`AI promoting pawn to ${promotionPieceType}`);
+                 // *** Pass thinking flag reset responsibility to the called function ***
                  handleAIPromotion(aiMove.from.row, aiMove.from.col, aiMove.to.row, aiMove.to.col, promotionPieceType);
             } else {
                  // Simulate making the move through the UI function to trigger animations/updates
                  // Use the core makeMove logic, but skip the player turn check
                  console.log(`Executing AI move: ${JSON.stringify(aiMove.from)} -> ${JSON.stringify(aiMove.to)}`);
+                 // *** Pass thinking flag reset responsibility to the called function ***
                  makeMove(aiMove.from.row, aiMove.from.col, aiMove.to.row, aiMove.to.col, false);
-                 // makeMove already handles setting isAIThinking to false via finishMoveProcessing
+                 // makeMove already handles setting isAIThinking to false via finishMoveProcessing AFTER processing is complete
             }
         } else {
             console.error("AI move object is missing 'from' or 'to' properties:", aiMove);
@@ -994,39 +1018,39 @@ function updateStatusDisplay() {
         baseStatusText = gameStatusMessage;
     } else {
         baseStatusText = gameStatusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
-        if (isAIThinking && isAIMode()) { 
-             // Original: Set text directly without spinner
+        if (isAIThinking && isAIMode()) {
              baseStatusText = `AI (ELO: ${aiElo}) is thinking...`;
-             // statusMessageElement.innerHTML = `<span class="spinner-inline"></span>${thinkingText}`; // REMOVED
-        // } else {
-             // Just use textContent when not thinking - Handled below
-             // statusMessageElement.textContent = baseStatusText;
         }
     }
     // Always set text content at the end
     statusMessageElement.textContent = baseStatusText;
-    // if (!(isAIThinking && isAIMode())) { // REMOVED redundant check
-    //      statusMessageElement.textContent = baseStatusText;
-    // }
 
     turnIndicator.textContent = isGameOver ? "Game Over" : `Turn: ${currentPlayer === 'w' ? 'White' : 'Black'}`;
 
     // Enable/disable board interaction
-    const isHumanTurn = !isGameOver && !isAIThinking && 
+    const isHumanTurn = !isGameOver && !isAIThinking &&
                         (gameMode === 'human-human' || (gameMode === 'ai-human' && currentPlayer === playerColor));
     boardElement.style.pointerEvents = isHumanTurn ? 'auto' : 'none';
     boardElement.style.opacity = isHumanTurn ? '1' : '0.7'; // Dim board when not interactive
 
+    // Add/Remove thinking class for visual feedback (e.g., spinner)
+    if (isAIThinking && isAIMode()) {
+        boardElement.classList.add('ai-thinking');
+    } else {
+        boardElement.classList.remove('ai-thinking');
+    }
+
     // Update button states
     hintButton.disabled = isGameOver || isAIThinking || gameMode !== 'ai-human' || currentPlayer !== playerColor;
-    // Disable undo/redo in AI vs AI mode? Maybe allow for observation?
-    undoButton.disabled = isAIThinking || currentMoveIndex < 1 || gameMode === 'ai-ai'; 
+    undoButton.disabled = isAIThinking || currentMoveIndex < 1 || gameMode === 'ai-ai';
     redoButton.disabled = isAIThinking || currentMoveIndex >= gameHistory.length - 1 || gameMode === 'ai-ai';
-    switchColorsButton.disabled = isAIThinking || gameMode === 'ai-ai'; // Disable in AI vs AI
-    // difficultyLabel.disabled = isAIThinking; // This doesn't make sense to disable the label
-    gameModeSelect.disabled = isAIThinking;
-    aiEloSlider.disabled = isAIThinking;
-    newGameButton.disabled = isAIThinking;
+    switchColorsButton.disabled = isAIThinking || gameMode === 'ai-ai';
+
+    // *** REVERTED: Disable controls when AI is thinking or not human turn ***
+    gameModeSelect.disabled = !isHumanTurn && gameMode !== 'human-human'; // Disable if not human turn (except in HvsH)
+    aiEloSlider.disabled = !isHumanTurn || gameMode === 'human-human'; // Disable if not human turn or in HvsH
+    newGameButton.disabled = isAIThinking; // Disable New Game only when AI is actively thinking
+    // *** END REVERTED ***
 
     updateGameModeDisplay(); // Ensure mode display is current
 }
@@ -1282,38 +1306,62 @@ function setupEventListeners() {
     redoButton.addEventListener('click', handleRedo);
     hintButton.addEventListener('click', handleHint);
     switchColorsButton.addEventListener('click', () => {
+        // *** ADDED: Interrupt AI on color switch ***
+        if (aiThinkingTimeoutId) clearTimeout(aiThinkingTimeoutId);
+        isAIThinking = false;
+        boardElement.classList.remove('ai-thinking');
+        updateStatusDisplay(); // << Add immediate UI update
+        // *** END ADDED ***
         playerColor = (playerColor === 'w') ? 'b' : 'w';
-        // No need to restart, just update display and check if AI needs to move
         updatePlayerColorIndicator();
-        createBoardDOM(); // Recreate DOM to flip labels if needed
-        renderBoard();    // Re-render pieces with correct orientation
-        checkAndTriggerAIMove(); // If it's now AI's turn
+        createBoardDOM();
+        renderBoard();
+        checkAndTriggerAIMove();
     });
     muteButton.addEventListener('click', toggleMute);
 
-    // REMOVE old listener
-    // difficultySelect.addEventListener('change', (e) => {
-    //     aiDifficulty = parseInt(e.target.value, 10);
-    //     updateGameModeDisplay();
-    //     // If switching to AI mode and it's AI's turn, trigger move
-    //     if (isAIMode() && currentPlayer !== playerColor && !isAIThinking) {
-    //         checkAndTriggerAIMove();
-    //     }
-    // });
-
-    // ADD new listeners
-    gameModeSelect.addEventListener('change', updateGameSettingsFromUI);
-    aiEloSlider.addEventListener('input', updateGameSettingsFromUI); // 'input' for live update
-
-    // Keyboard shortcuts (example)
-    // document.addEventListener('keydown', (e) => {
-    //     if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { // Ctrl+Z or Cmd+Z
-    //         handleUndo();
-    //     }
-    //     if (e.key === 'y' && (e.ctrlKey || e.metaKey)) { // Ctrl+Y or Cmd+Y
-    //          handleRedo();
-    //     }
-    // });
+    // ADD new listeners with immediate interruption
+    gameModeSelect.addEventListener('change', () => {
+        console.log("Game mode changed via UI.");
+        // *** Interrupt AI Immediately ***
+        if (aiThinkingTimeoutId) {
+            clearTimeout(aiThinkingTimeoutId);
+            aiThinkingTimeoutId = null;
+            console.log("Cleared pending AI move timeout (Game Mode Change).");
+        }
+        if (isAIThinking) {
+            isAIThinking = false;
+            boardElement.classList.remove('ai-thinking');
+            console.log("Reset isAIThinking flag (Game Mode Change).");
+            updateStatusDisplay(); // << Add immediate UI update
+        }
+        // *** Now update settings ***
+        updateGameSettingsFromUI(); // This still handles subsequent logic
+    });
+    aiEloSlider.addEventListener('input', () => {
+         // Update display value live
+         aiEloValueSpan.textContent = aiEloSlider.value;
+         // We don't need to interrupt calculation on every *input* event,
+         // only when the value is *finalized* (on 'change').
+         // However, the current setup calls updateGameSettingsFromUI on input,
+         // let's modify to interrupt on input as well for consistency,
+         // though 'change' event might be better UX.
+        console.log("ELO slider input detected.");
+        // *** Interrupt AI Immediately ***
+        if (aiThinkingTimeoutId) {
+            clearTimeout(aiThinkingTimeoutId);
+            aiThinkingTimeoutId = null;
+             console.log("Cleared pending AI move timeout (ELO Slider Input).");
+        }
+        if (isAIThinking) {
+            isAIThinking = false;
+            boardElement.classList.remove('ai-thinking');
+            console.log("Reset isAIThinking flag (ELO Slider Input).");
+            updateStatusDisplay(); // << Add immediate UI update
+        }
+        // *** Now update settings ***
+        updateGameSettingsFromUI(); // This still handles subsequent logic
+    });
 
     // Ensure initial UI state is correct based on default HTML values
     updateGameSettingsFromUI();

@@ -205,10 +205,16 @@ body {
 .controls button:hover, .settings button:hover {
     background-color: #3a6648;
 }
-#undo-button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
+
+/* --- ADDED: General style for disabled buttons in controls/settings --- */
+.controls button:disabled,
+.settings button:disabled {
+    background-color: #cccccc; /* Gray background */
+    color: #888888;      /* Darker gray text */
+    cursor: not-allowed;   /* Indicate non-interactive */
+    opacity: 0.7;
 }
+/* --- END ADDED --- */
 
 /* --- START: Updated Move History Styles --- */
 #move-history {
