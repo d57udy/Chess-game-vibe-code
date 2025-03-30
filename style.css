@@ -49,37 +49,29 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    /* font-size removed here, applied to .piece */
-    position: relative; /* For coordinate labels */
+    position: relative; /* Keep for positioning label and highlights */
     user-select: none; /* Prevent text selection */
-    transition: background-color 0.2s ease; /* Smooth highlight */
+    transition: background-color 0.2s ease;
 }
 
 .square.light { background-color: #e9dcc4; }
 .square.dark  { background-color: #b58863; }
 
-/* Coordinate Labels */
-.square::before { /* Rank (number) */
-    content: attr(data-rank);
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    font-size: clamp(8px, 1.5vmin, 12px);
-    font-weight: bold;
-    color: rgba(0, 0, 0, 0.4);
-    z-index: 1; /* Below pieces */
-}
-.square::after { /* File (letter) */
-    content: attr(data-file);
+/* Coordinate Labels (New) */
+.coordinate-label {
     position: absolute;
     bottom: 2px;
-    right: 2px;
-    font-size: clamp(8px, 1.5vmin, 12px);
-    font-weight: bold;
-    color: rgba(0, 0, 0, 0.4);
+    right: 3px;
+    font-size: clamp(8px, 1.6vmin, 11px); /* Adjusted size */
+    font-weight: 500; /* Slightly bolder */
+    color: rgba(0, 0, 0, 0.5); /* Default color (for light squares) */
     z-index: 1; /* Below pieces */
+    pointer-events: none; /* Don't interfere with clicks */
 }
-.square.dark::before, .square.dark::after { color: rgba(255, 255, 255, 0.4); }
+
+.square.dark .coordinate-label {
+    color: rgba(255, 255, 255, 0.5); /* Lighter color for dark squares */
+}
 
 /* Pieces */
 .piece {
@@ -140,12 +132,17 @@ body {
     z-index: 5;
 }
 
-
 .square.in-check {
-    /* Use a less intrusive way than !important if possible */
-     /* Example: using box-shadow for highlight */
-     box-shadow: inset 0 0 0 4px rgba(255, 0, 0, 0.7);
-     /* background-color: #ffcccc; */ /* Alternative */
+    box-shadow: inset 0 0 0 4px rgba(255, 0, 0, 0.7);
+}
+
+/* Hint Highlighting */
+.square.hint-from {
+    background-color: rgba(74, 124, 89, 0.6); /* Slightly different green from selected */
+}
+
+.square.hint-to {
+    /* Styles for hint destination are handled by adding legal-move or capture-move */
 }
 
 /* Info Panels */

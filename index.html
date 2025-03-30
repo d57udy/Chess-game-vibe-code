@@ -17,26 +17,32 @@
             <div id="turn-indicator">Turn: White</div>
             <div id="status-message">Good luck!</div>
             <!-- Label updated by JS -->
-            <div id="difficulty-label">Mode: vs AI: Medium</div>
+            <div id="difficulty-label">Mode: Human vs Human</div>
             <!-- Optional Indicator for Player Color -->
             <div id="player-color-indicator">Playing as: White</div>
 
              <div class="settings">
                 <h3>Settings</h3>
-                <!-- Updated Label -->
-                <label for="difficulty-select">Game Mode / AI:</label>
-                <!-- Updated Dropdown Options -->
-                <select id="difficulty-select">
-                    <option value="-1">Human vs Human</option>
-                    <option value="0">vs AI: Very Easy</option>
-                    <option value="1">vs AI: Easy</option>
-                    <option value="2" selected>vs AI: Medium</option>
-                    <option value="3">vs AI: Hard</option>
+                 <!-- Updated Label for Game Mode -->
+                <label for="game-mode-select">Game Mode:</label>
+                <select id="game-mode-select">
+                    <option value="human">Human vs Human</option>
+                    <option value="ai" selected>vs AI</option> <!-- Default to AI -->
                 </select>
-                 <!-- New Button for Switching Colors -->
-                 <button id="switch-colors-button">Play as Black</button>
-                 <button id="mute-button">Mute Sounds</button>
-                 <button id="toggle-animation-button">Disable Capture Animations</button>
+
+                <!-- AI ELO Slider - visible only when 'vs AI' is selected -->
+                <div id="ai-settings" style="margin-top: 10px;"> <!-- Initially shown -->
+                     <label for="ai-elo-slider">AI Strength (ELO): </label>
+                     <input type="range" id="ai-elo-slider" name="ai-elo" min="300" max="2500" step="100" value="1200"> <!-- Default ELO 1200 -->
+                     <span id="ai-elo-value">1200</span>
+                </div>
+
+                 <!-- Other Buttons -->
+                 <div style="margin-top: 10px;">
+                     <button id="switch-colors-button">Play as Black</button>
+                     <button id="mute-button">Mute Sounds</button>
+                     <button id="toggle-animation-button">Disable Capture Animations</button>
+                 </div>
             </div>
             <div class="instructions">
                 <h3>How to Play</h3>
@@ -81,7 +87,9 @@
     </div>
 
     <!-- Make sure script.js is the updated version -->
-    <script src="script.js"></script> <!-- Assuming you named the updated JS file script_new.js -->
+    <script src="gameLogic.js"></script> 
+    <script src="aiPlayer.js"></script> 
+    <script src="ui.js"></script> 
     <!-- Or rename your updated JS file to script.js -->
     <!-- <script src="script.js"></script> -->
 </body>
