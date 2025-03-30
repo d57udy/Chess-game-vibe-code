@@ -1,0 +1,311 @@
+/* Basic Reset & Body Styling */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+/* Game Layout */
+.game-container {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    justify-content: center;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 20px;
+    max-width: 1200px;
+    width: 100%;
+}
+
+.board-container {
+    position: relative; /* Needed for positioning animation canvas */
+    width: clamp(320px, 90vmin, 640px); /* Responsive board size */
+    height: clamp(320px, 90vmin, 640px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+#chess-board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: 100%;
+    height: 100%;
+    border: 5px solid #3a3a3a;
+    position: relative; /* For piece positioning */
+}
+
+/* Board Squares */
+.square {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: clamp(24px, 7vmin, 50px); /* Responsive piece size */
+    position: relative; /* For coordinate labels */
+    user-select: none; /* Prevent text selection */
+    transition: background-color 0.2s ease; /* Smooth highlight */
+}
+
+.square.light { background-color: #e9dcc4; }
+.square.dark  { background-color: #b58863; }
+
+/* Coordinate Labels */
+.square::before { /* Rank (number) */
+    content: attr(data-rank);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: clamp(8px, 1.5vmin, 12px);
+    font-weight: bold;
+    color: rgba(0, 0, 0, 0.4);
+}
+.square::after { /* File (letter) */
+    content: attr(data-file);
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: clamp(8px, 1.5vmin, 12px);
+    font-weight: bold;
+    color: rgba(0, 0, 0, 0.4);
+}
+.square.dark::before, .square.dark::after { color: rgba(255, 255, 255, 0.4); }
+
+/* Pieces */
+.piece {
+    position: absolute; /* For GSAP animation */
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 10; /* Pieces above highlights */
+}
+
+/* --- Unicode Pieces --- */
+/* White */
+.piece[data-piece="P"] { color: #ffffff; text-shadow: 0 0 3px black; } /* Pawn */
+.piece[data-piece="N"] { color: #ffffff; text-shadow: 0 0 3px black; } /* Knight */
+.piece[data-piece="B"] { color: #ffffff; text-shadow: 0 0 3px black; } /* Bishop */
+.piece[data-piece="R"] { color: #ffffff; text-shadow: 0 0 3px black; } /* Rook */
+.piece[data-piece="Q"] { color: #ffffff; text-shadow: 0 0 3px black; } /* Queen */
+.piece[data-piece="K"] { color: #ffffff; text-shadow: 0 0 3px black; } /* King */
+/* Black */
+.piece[data-piece="p"] { color: #333333; }
+.piece[data-piece="n"] { color: #333333; }
+.piece[data-piece="b"] { color: #333333; }
+.piece[data-piece="r"] { color: #333333; }
+.piece[data-piece="q"] { color: #333333; }
+.piece[data-piece="k"] { color: #333333; }
+
+/* --- Alternative: Image Pieces (Example) ---
+.piece[data-piece="P"] { background-image: url('pieces/white_pawn.png'); background-size: contain; }
+.piece[data-piece="p"] { background-image: url('pieces/black_pawn.png'); background-size: contain; }
+... etc ...
+*/
+
+
+/* UI States */
+.square.selected {
+    background-color: #6a994e; /* Greenish highlight for selected piece */
+}
+
+.square.legal-move::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30%;
+    height: 30%;
+    background-color: rgba(46, 139, 87, 0.5); /* Semi-transparent green dot */
+    border-radius: 50%;
+    pointer-events: none; /* Allow clicking through the dot */
+    z-index: 5;
+}
+
+.square.capture-move::after {
+    content: '';
+    position: absolute;
+    top: 10%; bottom: 10%; left: 10%; right: 10%;
+    border: 4px solid rgba(200, 50, 50, 0.6); /* Reddish border for captures */
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+
+.square.in-check {
+    background-color: #ff7f7f !important; /* Highlight king in check */
+    /* Use !important carefully, or better structure needed */
+}
+
+/* Info Panels */
+.info-panel {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    flex: 1; /* Allow panels to grow */
+    min-width: 200px; /* Minimum width */
+    max-width: 300px; /* Maximum width */
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.info-panel h2, .info-panel h3 {
+    margin-bottom: 10px;
+    color: #3a3a3a;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+#turn-indicator { font-weight: bold; font-size: 1.1em; }
+#status-message { font-style: italic; color: #555; }
+#difficulty-label { margin-top: 10px; color: #777; font-size: 0.9em; }
+
+.settings { margin-top: auto; /* Push settings to bottom */ }
+.settings label { margin-right: 5px; }
+.settings select, .settings button {
+    padding: 5px 8px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.instructions p { font-size: 0.9em; color: #666; margin-bottom: 5px; }
+
+/* Controls */
+.controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.controls button, .settings button {
+    padding: 10px 15px;
+    background-color: #4a7c59;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.controls button:hover, .settings button:hover {
+    background-color: #3a6648;
+}
+#undo-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Move History */
+#move-history {
+    height: 200px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    padding: 10px;
+    background-color: #f9f9f9;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+#move-history div {
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px dotted #ddd;
+}
+#move-history span { display: inline-block; min-width: 60px; } /* Align moves */
+
+/* Modal */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+    justify-content: center;
+    align-items: center;
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: auto;
+    padding: 30px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 300px;
+    text-align: center;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+.modal-content h3 { margin-bottom: 15px; }
+.modal-content button {
+    padding: 12px 20px;
+    margin: 5px;
+    font-size: 1.2em;
+    cursor: pointer;
+    background-color: #4a7c59;
+    color: white;
+    border: none;
+    border-radius: 5px;
+}
+.modal-content button:hover { background-color: #3a6648; }
+
+/* 3D Canvas Placeholder */
+#capture-animation-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Allow clicks to go through to the board */
+    z-index: 50; /* Above board, below modals */
+    display: none; /* Initially hidden */
+    background-color: rgba(0,0,0,0.1); /* Optional: slight dimming during animation */
+}
+
+
+/* Responsive Adjustments */
+@media (max-width: 900px) {
+    .game-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    .info-panel {
+        max-width: 90%; /* Allow panels to take more width */
+        order: 1; /* Move panels below board */
+    }
+    .board-container {
+        order: 0; /* Board comes first */
+    }
+    .right-panel {
+        order: 2;
+    }
+}
+
+@media (max-width: 480px) {
+    .controls {
+        flex-direction: column;
+    }
+    .info-panel {
+        min-width: unset;
+        width: 90%;
+    }
+}
+
+/* Simple Capture Animation Fallback (Fade out/in) */
+.piece.captured-fade-out {
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
+}
