@@ -16,16 +16,25 @@
             <h2>Game Info</h2>
             <div id="turn-indicator">Turn: White</div>
             <div id="status-message">Good luck!</div>
-            <div id="difficulty-label">AI Difficulty: Medium</div>
+            <!-- Label updated by JS -->
+            <div id="difficulty-label">Mode: vs AI: Medium</div>
+            <!-- Optional Indicator for Player Color -->
+            <div id="player-color-indicator">Playing as: White</div>
+
              <div class="settings">
                 <h3>Settings</h3>
-                <label for="difficulty-select">AI Difficulty:</label>
+                <!-- Updated Label -->
+                <label for="difficulty-select">Game Mode / AI:</label>
+                <!-- Updated Dropdown Options -->
                 <select id="difficulty-select">
-                    <option value="0">Very Easy</option>
-                    <option value="1">Easy</option>
-                    <option value="2" selected>Medium</option>
-                    <option value="3">Hard</option>
+                    <option value="-1">Human vs Human</option>
+                    <option value="0">vs AI: Very Easy</option>
+                    <option value="1">vs AI: Easy</option>
+                    <option value="2" selected>vs AI: Medium</option>
+                    <option value="3">vs AI: Hard</option>
                 </select>
+                 <!-- New Button for Switching Colors -->
+                 <button id="switch-colors-button">Play as Black</button>
                  <button id="mute-button">Mute Sounds</button>
                  <button id="toggle-animation-button">Disable Capture Animations</button>
             </div>
@@ -70,6 +79,9 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Make sure script.js is the updated version -->
+    <script src="script.js"></script> <!-- Assuming you named the updated JS file script_new.js -->
+    <!-- Or rename your updated JS file to script.js -->
+    <!-- <script src="script.js"></script> -->
 </body>
 </html>

@@ -23,7 +23,7 @@ let castlingRights = { w: { K: true, Q: true }, b: { K: true, Q: true } }; // Ki
 let enPassantTarget = null; // Square behind a pawn that just moved two steps, e.g., { row: 2, col: 4 }
 let halfmoveClock = 0; // For 50-move rule
 let fullmoveNumber = 1; // Increments after black moves
-let aiDifficulty = 2; // 0: Very Easy, 1: Easy, 2: Medium, 3: Hard
+let aiDifficulty = 2; // -1: Human vs Human, 0: Very Easy, 1: Easy, 2: Medium, 3: Hard
 let soundEnabled = true;
 let captureAnimationEnabled = true;
 let isAIThinking = false;
@@ -91,6 +91,22 @@ function initGame() {
     updateMoveHistoryDisplay();
     updateUndoButton();
     console.log("Game Initialized. Current Player:", currentPlayer);
+    
+    // Update game mode messaging
+    updateGameModeDisplay();
+}
+
+// --- Helper function to determine if we're in AI mode ---
+function isAIMode() {
+    return aiDifficulty >= 0;
+}
+
+// --- Update display for game mode ---
+function updateGameModeDisplay() {
+    const modeText = isAIMode() ? 
+        `AI Difficulty: ${difficultySelect.options[aiDifficulty].text}` : 
+        "Mode: Human vs Human";
+    difficultyLabel.textContent = modeText;
 }
 
 // --- FEN Parsing ---
@@ -444,6 +460,7 @@ function showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiec
             promotionModal.style.display = 'none';
 
             setPieceAt(toRow, toCol, promotionPiece); // Finalize board state
+            setPieceAt(fromRow, fromCol, null); // Remove pawn from original position
 
             const finalMoveNotation = baseMoveNotation + "=" + promotionPieceType.toUpperCase();
 
@@ -592,7 +609,7 @@ function finishMoveProcessing(prevStateInfo, piece, capturedPieceLogical, fromRo
     updateStatusDisplay();
 
     // --- Trigger AI if applicable ---
-    if (!isGameOver && currentPlayer === 'b') { // If it's now AI's turn
+    if (!isGameOver && currentPlayer === 'b' && isAIMode()) { // Only trigger AI if in AI mode
         triggerAIMove();
     }
     // console.log("Move processing complete.");
@@ -1118,13 +1135,14 @@ function updateStatusDisplay() {
     }
 
     turnIndicator.textContent = isGameOver ? "Game Over" : `Turn: ${currentPlayer === 'w' ? 'White' : 'Black'}`;
-    difficultyLabel.textContent = `AI Difficulty: ${difficultySelect.options[aiDifficulty].text}`;
+    
+    // Use our updateGameModeDisplay function instead of direct access
+    updateGameModeDisplay();
 
     boardElement.style.pointerEvents = (isGameOver || isAIThinking) ? 'none' : 'auto';
-    hintButton.disabled = isGameOver || isAIThinking || currentPlayer !== 'w';
+    hintButton.disabled = isGameOver || isAIThinking || (currentPlayer !== 'w' || !isAIMode());
     undoButton.disabled = isGameOver || isAIThinking || currentMoveIndex < 1;
 }
-
 
 // --- Move History & Notation ---
 function getAlgebraicNotation(fromRow, fromCol, toRow, toCol, piece, capturedPiece, isPromotion = false) {
@@ -1724,7 +1742,7 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
 
 // --- Hint System ---
 function handleHint() {
-    if (isGameOver || isAIThinking || currentPlayer !== 'w') return; // Only hints for player ('w')
+    if (isGameOver || isAIThinking || currentPlayer !== 'w' || !isAIMode()) return; // Only hints for player ('w') in AI mode
 
     console.log("Generating hint...");
     statusMessageElement.textContent = "Thinking of a hint..."; // Give feedback
@@ -1779,17 +1797,39 @@ toggleAnimationButton.addEventListener('click', toggleCaptureAnimation);
 difficultySelect.addEventListener('change', (e) => {
     const newDifficulty = parseInt(e.target.value, 10);
     if (aiDifficulty !== newDifficulty) {
+        const wasAIMode = isAIMode(); // Store previous mode
         aiDifficulty = newDifficulty;
-        difficultyLabel.textContent = `AI Difficulty: ${difficultySelect.options[aiDifficulty].text}`;
-        console.log("Difficulty changed to:", aiDifficulty);
-        // Consider if a new game should start automatically on difficulty change
-        // initGame(); // Uncomment to force new game
+        const isNowAIMode = isAIMode(); // New mode after change
+        
+        updateGameModeDisplay(); // Update UI to show new mode
+        console.log("Difficulty/Mode changed to:", aiDifficulty, 
+                   isNowAIMode ? "AI mode" : "Human vs Human");
+        
+        // If we switched TO AI mode and it's currently black's turn, trigger AI move
+        if (!wasAIMode && isNowAIMode && currentPlayer === 'b' && !isGameOver) {
+            triggerAIMove(); // Start AI move if it's black's turn
+        }
+        
+        // Update UI to reflect any changes in available actions
+        updateStatusDisplay();
     }
 });
 
 // --- Initial Game Load ---
 document.addEventListener('DOMContentLoaded', () => {
      console.log("DOM Loaded. Initializing Chess Game...");
+     
+     // Check if URL has mode parameter
+     const urlParams = new URLSearchParams(window.location.search);
+     const modeParam = urlParams.get('mode');
+     if (modeParam) {
+         const modeValue = parseInt(modeParam, 10);
+         if (!isNaN(modeValue) && modeValue >= -1 && modeValue <= 3) {
+             aiDifficulty = modeValue;
+             difficultySelect.value = modeValue.toString();
+         }
+     }
+     
      initGame();
      // init3DAnimation(); // Consider initializing based on captureAnimationEnabled state
  });
