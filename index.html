@@ -17,7 +17,7 @@
             <div id="turn-indicator">Turn: White</div>
             <div id="status-message">Good luck!</div>
             <!-- Label updated by JS -->
-            <div id="difficulty-label">Mode: Human vs Human</div>
+            <div id="difficulty-label">Mode: AI vs Human</div>
             <!-- Optional Indicator for Player Color -->
             <div id="player-color-indicator">Playing as: White</div>
 
@@ -26,22 +26,24 @@
                  <!-- Updated Label for Game Mode -->
                 <label for="game-mode-select">Game Mode:</label>
                 <select id="game-mode-select">
-                    <option value="human">Human vs Human</option>
-                    <option value="ai" selected>vs AI</option> <!-- Default to AI -->
+                    <option value="ai-ai">AI vs AI</option>
+                    <option value="ai-human" selected>AI vs Human</option> <!-- Default to AI vs Human -->
+                    <option value="human-human">Human vs Human</option>
                 </select>
 
-                <!-- AI ELO Slider - visible only when 'vs AI' is selected -->
-                <div id="ai-settings" style="margin-top: 10px;"> <!-- Initially shown -->
+                <!-- AI ELO Slider - visible only when AI is involved -->
+                <div id="ai-settings" style="margin-top: 10px;"> <!-- Initially shown for default -->
                      <label for="ai-elo-slider">AI Strength (ELO): </label>
                      <input type="range" id="ai-elo-slider" name="ai-elo" min="300" max="2500" step="100" value="1200"> <!-- Default ELO 1200 -->
                      <span id="ai-elo-value">1200</span>
                 </div>
 
                  <!-- Other Buttons -->
-                 <div style="margin-top: 10px;">
+                 <div id="human-player-settings" style="margin-top: 10px;"> <!-- Container for human-specific settings -->
                      <button id="switch-colors-button">Play as Black</button>
+                 </div>
+                 <div style="margin-top: 10px;">
                      <button id="mute-button">Mute Sounds</button>
-                     <button id="toggle-animation-button">Disable Capture Animations</button>
                  </div>
             </div>
             <div class="instructions">

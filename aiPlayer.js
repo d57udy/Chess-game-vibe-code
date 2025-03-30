@@ -63,154 +63,149 @@ const kingPositionScore = [
 ];
 // TODO: Add King endgame tables
 
+// --- AI Calculation Parameters ---
+const ELO_RANDOM_MOVE_THRESHOLD = 700; // Below this ELO, more random moves
+const ELO_SIMPLE_EVAL_THRESHOLD = 1500; // Below this ELO, use 1-ply evaluation
+const BASE_MINIMAX_DEPTH = 2; // Min depth for minimax
+const ELO_PER_DEPTH_INCREASE = 300; // Increase depth every ~300 ELO points above threshold
+const MAX_MINIMAX_DEPTH = 5; // Cap depth to prevent excessive calculation time
+
 // --- AI Calculation --- 
 
 /**
- * Calculates the best move for the current player using different strategies based on difficulty.
+ * Calculates the best move for the current player based on ELO rating.
  * Relies on global game state variables from gameLogic.js (board, currentPlayer, etc.)
  * and functions like getAllLegalMoves, evaluateBoard, minimax.
- * @param {number} difficulty - AI difficulty level (0-3).
- * @returns {object | null} The best move object { from: {r, c}, to: {r, c}, piece, ... } or null if no moves.
+ * @param {number} elo - AI ELO rating (e.g., 300-2500).
+ * @returns {object | null} The best move object { from: {r, c}, to: {r, c}, piece, isPromotion, promotionPiece, ... } or null if no moves.
  */
-function calculateBestMove(difficulty) {
+function calculateBestMove(elo) {
     // Assumes currentPlayer is set correctly in gameLogic.js
     const availableMoves = getAllLegalMoves(currentPlayer);
     if (availableMoves.length === 0) {
-        console.log("AI: No legal moves available.");
+        console.log(`AI (ELO ${elo}): No legal moves available.`);
         return null;
     }
 
-    // Shuffle moves for randomness in lower difficulties and breaking ties
-    // Use a copy to avoid modifying the original order if needed elsewhere
+    // Shuffle moves initially for randomness & tie-breaking
     const shuffledMoves = [...availableMoves].sort(() => Math.random() - 0.5);
 
     let bestMove = shuffledMoves[0]; // Default to first random move
     let calculationStartTime = performance.now();
 
     try { // Add try-catch around AI logic
-        switch (difficulty) {
-            case 0: // Very Easy: Random move, avoids immediate obvious blunders if possible
-                // Try to find a non-capture move that doesn't hang a piece trivially
-                let nonLosingMoves = shuffledMoves.filter(move => {
-                    const captured = getPieceAt(move.to.row, move.to.col);
-                    if (captured) return true; // Captures are okay
-                    
-                    // Simulate the move briefly
-                    const piece = getPieceAt(move.from.row, move.from.col);
-                    setPieceAt(move.to.row, move.to.col, piece);
-                    setPieceAt(move.from.row, move.from.col, null);
+        if (elo < ELO_RANDOM_MOVE_THRESHOLD) {
+            // --- Low ELO: Mostly Random --- 
+            // Try to find a non-capture move that doesn't immediately hang a piece
+            // (Similar to old 'Very Easy' but simpler)
+            let nonLosingMoves = shuffledMoves.filter(move => {
+                const captured = getPieceAt(move.to.row, move.to.col);
+                if (captured) return true; // Captures are okay
 
-                    // Check if the moved piece is now attacked by a lower-value piece
-                    let isHanging = false;
-                    const opponent = getOpponent(currentPlayer);
-                    if (isSquareAttacked(move.to.row, move.to.col, opponent)) {
-                         // More detailed check: is it attacked by something less valuable?
-                         // (Simplified: just check if attacked at all for 'very easy')
-                         isHanging = true;
-                    }
+                // Simulate move briefly (only check if destination is attacked)
+                const piece = getPieceAt(move.from.row, move.from.col);
+                // Temporarily modify board state (careful!)
+                setPieceAt(move.to.row, move.to.col, piece);
+                setPieceAt(move.from.row, move.from.col, null);
 
-                    // Undo simulation
-                    setPieceAt(move.from.row, move.from.col, piece);
-                    setPieceAt(move.to.row, move.to.col, null); // Must clear the 'to' square
+                let isHanging = isSquareAttacked(move.to.row, move.to.col, getOpponent(currentPlayer));
 
-                    return !isHanging; // Prefer moves that don't immediately hang the piece
-                });
+                // Undo simulation
+                setPieceAt(move.from.row, move.from.col, piece);
+                setPieceAt(move.to.row, move.to.col, captured); // Restore original target square content
 
-                if (nonLosingMoves.length > 0) {
-                    bestMove = nonLosingMoves[0];
-                } 
-                // else: bestMove remains the first random move (might be a blunder)
-                console.log("AI (Very Easy): Chose move (potentially random).", bestMove);
-                break;
+                return !isHanging; // Prefer moves that don't immediately hang the piece
+            });
 
-            case 1: // Easy: Prioritizes captures, otherwise random
-                const captureMoves = shuffledMoves.filter(move => getPieceAt(move.to.row, move.to.col) || move.isEnPassant);
-                if (captureMoves.length > 0) {
-                    bestMove = captureMoves[0]; // Pick a random capture
-                    console.log("AI (Easy): Chose capture move.", bestMove);
+            if (nonLosingMoves.length > 0) {
+                 // Introduce randomness: Sometimes pick a hanging move anyway
+                 if (Math.random() > (elo / ELO_RANDOM_MOVE_THRESHOLD) * 0.7) { // Higher ELO = less chance of blunder
+                      bestMove = shuffledMoves[0]; // Pick potentially bad move
+                      console.log(`AI (ELO ${elo}): Randomly chose potentially hanging move.`);
+                 } else {
+                      bestMove = nonLosingMoves[0]; // Pick from safer moves
+                      console.log(`AI (ELO ${elo}): Chose non-hanging random move.`);
+                 }
+            } else {
+                 // If all moves seem to hang or are captures, just pick the first random one
+                 bestMove = shuffledMoves[0];
+                 console.log(`AI (ELO ${elo}): Chose random move (all hanging or captures).`);
+            }
+
+        } else if (elo < ELO_SIMPLE_EVAL_THRESHOLD) {
+            // --- Mid ELO: Simple Evaluation (1-ply) --- 
+            let bestScore = (currentPlayer === 'w') ? -Infinity : Infinity;
+            let currentBestMove = null;
+            let candidateMoves = []; // Store moves and scores
+
+            shuffledMoves.forEach(move => {
+                // Simulate move (reusing simulation logic)
+                const { score } = simulateMoveAndEvaluate(move); 
+
+                // Store move and score
+                candidateMoves.push({ move, score });
+
+                // Keep track of the absolute best score found
+                if (currentPlayer === 'w') {
+                    if (score > bestScore) { bestScore = score; currentBestMove = move; }
                 } else {
-                    console.log("AI (Easy): Chose random non-capture move.", bestMove);
-                     // bestMove remains the first random non-capture move
+                    if (score < bestScore) { bestScore = score; currentBestMove = move; }
                 }
-                break;
+            });
 
-            case 2: // Medium: Simple evaluation (1-ply lookahead)
-                let bestScore = (currentPlayer === 'w') ? -Infinity : Infinity;
-                let currentBestMove = null; // Track best move found so far
+             // Add randomness: Sometimes pick a slightly worse move
+             const scoreThreshold = 0.5; // How much worse a move can be to still be considered (adjust based on ELO?)
+             const goodEnoughMoves = candidateMoves.filter(c => {
+                 if (currentPlayer === 'w') return c.score >= bestScore - scoreThreshold;
+                 else return c.score <= bestScore + scoreThreshold;
+             });
 
-                shuffledMoves.forEach(move => {
-                    // Simulate move
-                    const piece = getPieceAt(move.from.row, move.from.col);
-                    const captured = getPieceAt(move.to.row, move.to.col);
-                    const prevEnPassant = enPassantTarget ? {...enPassantTarget} : null; // Store prev EP
-                    let capturedEnPassant = null, capturedEnPassantPos = null;
-                    
-                    setPieceAt(move.to.row, move.to.col, piece);
-                    setPieceAt(move.from.row, move.from.col, null);
-                    if (move.isEnPassant) {
-                        // Determine captured pawn position correctly (relative to *destination* square)
-                        capturedEnPassantPos = { row: currentPlayer === 'w' ? move.to.row + 1 : move.to.row - 1, col: move.to.col };
-                        capturedEnPassant = getPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col);
-                        if (capturedEnPassant) setPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col, null);
-                        else console.warn("AI Sim: EP capture simulation failed, no pawn found at", capturedEnPassantPos);
-                    }
-                    // Update EP target temporarily if pawn moved two steps
-                    if (piece.toUpperCase() === 'P' && Math.abs(move.to.row - move.from.row) === 2) {
-                         enPassantTarget = { row: (move.from.row + move.to.row) / 2, col: move.from.col };
-                    } else {
-                         enPassantTarget = null;
-                    }
+             if (goodEnoughMoves.length > 0 && Math.random() < 0.3) { // 30% chance to pick from 'good enough' moves
+                 bestMove = goodEnoughMoves[Math.floor(Math.random() * goodEnoughMoves.length)].move;
+                 console.log(`AI (ELO ${elo}): Chose randomly from good moves (Score ~${bestScore.toFixed(2)}).`, bestMove);
+             } else if (currentBestMove) {
+                 bestMove = currentBestMove;
+                 console.log(`AI (ELO ${elo}): Chose best 1-ply move (Score ${bestScore.toFixed(2)}).`, bestMove);
+             } else {
+                 console.warn(`AI (ELO ${elo}): Simple evaluation failed, falling back to random.`);
+                 bestMove = shuffledMoves[0]; // Fallback
+             }
 
-                    let score = evaluateBoard(); // Evaluate the board *after* the move
-                    
-                    // Undo simulation carefully
-                    enPassantTarget = prevEnPassant; // Restore EP *before* putting pieces back
-                    setPieceAt(move.from.row, move.from.col, piece); // Put moving piece back
-                    setPieceAt(move.to.row, move.to.col, captured); // Put captured piece back (or null)
-                    if (move.isEnPassant && capturedEnPassantPos && capturedEnPassant) {
-                        setPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col, capturedEnPassant); // Restore EP captured pawn
-                    }
-
-                    // Compare score
-                    if (currentPlayer === 'w') { // Maximize for white
-                        if (score > bestScore) { bestScore = score; currentBestMove = move; }
-                    } else { // Minimize for black (AI is usually black)
-                        if (score < bestScore) { bestScore = score; currentBestMove = move; }
-                    }
-                });
-                
-                if (currentBestMove) { // Ensure a move was actually selected
-                     bestMove = currentBestMove;
-                     console.log(`AI (Medium): Chose move with score ${bestScore.toFixed(2)}`, bestMove);
-                } else {
-                     console.warn("AI (Medium): No move selected by evaluation, falling back to random.");
-                     bestMove = shuffledMoves[0]; // Fallback if something went wrong
-                }
-                break;
-
-            case 3: // Hard: Minimax with Alpha-Beta Pruning
-                const depth = 3; // Adjust depth for performance vs strength (3 is decent)
-                 console.log(`AI (Hard): Starting Minimax search with depth ${depth}...`);
-                const result = minimax(depth, -Infinity, Infinity, currentPlayer === 'w');
-                if (result && result.move) { // Check if minimax returned a valid result
-                    bestMove = result.move;
-                     console.log(`AI (Hard): Minimax found move with score ${result.score.toFixed(2)}`, bestMove);
-                } else {
-                     console.warn(`Minimax did not return a valid move (Score: ${result?.score}). Falling back to Medium AI.`);
-                     // Fallback to Medium logic if minimax fails
-                     bestMove = calculateBestMove(2); // Recalculate using Medium logic
-                     if (!bestMove) bestMove = shuffledMoves[0]; // Further fallback to random
-                }
-                break;
+        } else {
+            // --- High ELO: Minimax --- 
+            // Calculate depth based on ELO
+            const eloAboveThreshold = Math.max(0, elo - ELO_SIMPLE_EVAL_THRESHOLD);
+            let depth = BASE_MINIMAX_DEPTH + Math.floor(eloAboveThreshold / ELO_PER_DEPTH_INCREASE);
+            depth = Math.min(depth, MAX_MINIMAX_DEPTH); // Cap depth
             
-            default: // Should not happen
-                console.warn("Invalid AI difficulty level, using random move.");
-                bestMove = shuffledMoves[0]; 
+            console.log(`AI (ELO ${elo}): Starting Minimax search with depth ${depth}...`);
+            const result = minimax(depth, -Infinity, Infinity, currentPlayer === 'w');
+            
+            if (result && result.move) {
+                bestMove = result.move;
+                 // Ensure promotion piece is included (Minimax should return the full move object from getAllLegalMoves)
+                 if (bestMove.isPromotion && !bestMove.promotionPiece) {
+                      console.warn(`Minimax returned promotion move without piece type, defaulting to Queen.`);
+                      bestMove.promotionPiece = 'Q'; // Default promotion
+                 }
+                 console.log(`AI (ELO ${elo}): Minimax (Depth ${depth}) found move with score ${result.score.toFixed(2)}`, bestMove);
+            } else {
+                 console.warn(`Minimax (Depth ${depth}) did not return a valid move (Score: ${result?.score}). Falling back.`);
+                 // Fallback: Try 1-ply eval if minimax fails unexpectedly
+                 const fallbackMoveData = calculateBestMove(ELO_SIMPLE_EVAL_THRESHOLD - 1); // Use mid-ELO logic
+                 if (fallbackMoveData) {
+                     bestMove = fallbackMoveData;
+                 } else {
+                     bestMove = shuffledMoves[0]; // Absolute fallback
+                 }
+            }
         }
+
     } catch (error) {
-         console.error("Error during AI move calculation:", error);
+         console.error(`Error during AI (ELO ${elo}) move calculation:`, error);
          // Fallback to random if calculation fails
          bestMove = shuffledMoves[0];
+         console.log(`AI (ELO ${elo}): Calculation failed, choosing random move.`);
     }
     
     let calculationEndTime = performance.now();
@@ -220,112 +215,62 @@ function calculateBestMove(difficulty) {
 }
 
 /**
- * Helper function for difficulty 0 AI to check if a piece at a given square
- * is attacked by any piece of the opponent.
- * (This is a simplified version, doesn't check piece values)
- * @param {string} attackedPlayer - The player whose piece might be attacked ('w' or 'b').
- * @param {string} attackerPiece - The piece type that just moved.
- * @param {number} attackerRow - The row the attacker moved to.
- * @param {number} attackerCol - The column the attacker moved to.
- * @returns {boolean} - True if any opponent piece is attacked by the attackerPiece.
+ * Helper function to simulate a move, evaluate the board, and undo the move.
+ * Used by Mid ELO AI.
+ * @param {object} move - The move object to simulate.
+ * @returns {{score: number}} - The evaluation score after the move.
  */
-function isAnyPieceAttackedBy(attackedPlayer, attackerPiece, attackerRow, attackerCol) {
-    // This function name is slightly misleading based on original use. 
-    // It seems intended to check if the *attacker* itself attacks any opponent piece *from its new square*.
-    // Let's refine this based on the likely intent for simple AI.
+function simulateMoveAndEvaluate(move) {
+    // --- Simulate Move --- 
+     const piece = getPieceAt(move.from.row, move.from.col);
+     const captured = getPieceAt(move.to.row, move.to.col);
+     // Need to handle state changes carefully for evaluation only
+     const prevEnPassant = enPassantTarget ? {...enPassantTarget} : null; 
+     const prevCastling = JSON.parse(JSON.stringify(castlingRights)); // Need for accurate eval?
+     let capturedEnPassant = null, capturedEnPassantPos = null;
+
+     setPieceAt(move.to.row, move.to.col, piece);
+     setPieceAt(move.from.row, move.from.col, null);
+     if (move.isEnPassant) {
+         capturedEnPassantPos = { row: move.from.row, col: move.to.col }; // Pos of captured pawn
+         capturedEnPassant = getPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col); // Get the piece
+         if (capturedEnPassant) setPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col, null);
+     }
+      // Simplified state updates for 1-ply evaluation (EP target might matter)
+      if (piece.toUpperCase() === 'P' && Math.abs(move.to.row - move.from.row) === 2) {
+           enPassantTarget = { row: (move.from.row + move.to.row) / 2, col: move.from.col };
+      } else {
+           enPassantTarget = null;
+      }
+      // Castling rights update needed? For 1-ply maybe not critical, but good practice
+       updateCastlingRightsSim(piece, captured, move.from.row, move.from.col, move.to.row, move.to.col);
+
+    // --- Evaluate --- 
+    let score = evaluateBoard();
     
-    // Get potential moves *from the attacker's new position*
-    const attackerPlayer = getPlayerForPiece(attackerPiece);
-    const opponent = getOpponent(attackerPlayer);
-    let potentialAttacks = [];
-    const pieceType = attackerPiece.toUpperCase();
-
-    // Generate basic attack patterns (not full legal moves, just direct attacks)
-    switch (pieceType) {
-        case 'P':
-            const dir = attackerPlayer === 'w' ? -1 : 1;
-            potentialAttacks = [
-                {r: attackerRow + dir, c: attackerCol - 1},
-                {r: attackerRow + dir, c: attackerCol + 1}
-            ];
-            break;
-        case 'N':
-             const knightDeltas = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-             potentialAttacks = knightDeltas.map(([dr, dc]) => ({r: attackerRow + dr, c: attackerCol + dc}));
-            break;
-        case 'B':
-            potentialAttacks = getSlidingAttackSquares(attackerRow, attackerCol, [[-1,-1],[-1,1],[1,-1],[1,1]], attackerPlayer);
-            break;
-        case 'R':
-             potentialAttacks = getSlidingAttackSquares(attackerRow, attackerCol, [[-1,0],[1,0],[0,-1],[0,1]], attackerPlayer);
-            break;
-        case 'Q':
-            potentialAttacks = [
-                 ...getSlidingAttackSquares(attackerRow, attackerCol, [[-1,-1],[-1,1],[1,-1],[1,1]], attackerPlayer),
-                 ...getSlidingAttackSquares(attackerRow, attackerCol, [[-1,0],[1,0],[0,-1],[0,1]], attackerPlayer)
-            ];
-            break;
-         case 'K':
-             const kingDeltas = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-             potentialAttacks = kingDeltas.map(([dr, dc]) => ({r: attackerRow + dr, c: attackerCol + dc}));
-             break;
-    }
-    
-    // Check if any of the attacked squares contain an opponent's piece
-    for (const attack of potentialAttacks) {
-         if (attack.r >= 0 && attack.r < BOARD_SIZE && attack.c >= 0 && attack.c < BOARD_SIZE) {
-            const target = getPieceAt(attack.r, attack.c);
-            // Check if the target piece exists and belongs to the opponent
-            if (target && getPlayerForPiece(target) === opponent) {
-                return true; // Yes, the moved piece attacks an opponent piece
-            }
-        }
-    }
-    return false; // The moved piece does not attack any opponent piece
+    // --- Undo Simulation --- 
+     castlingRights = prevCastling; // Restore castling rights
+     enPassantTarget = prevEnPassant; // Restore EP target
+     setPieceAt(move.from.row, move.from.col, piece); // Put moving piece back
+     setPieceAt(move.to.row, move.to.col, captured); // Put captured piece back (or null)
+     if (move.isEnPassant && capturedEnPassantPos && capturedEnPassant) {
+         setPieceAt(capturedEnPassantPos.row, capturedEnPassantPos.col, capturedEnPassant); // Restore EP captured pawn
+     }
+     
+     return { score };
 }
-
-/**
- * Helper for generating squares attacked by sliding pieces.
- * @param {number} r - Starting row.
- * @param {number} c - Starting column.
- * @param {Array<Array<number>>} directions - Array of [dr, dc] pairs.
- * @param {string} player - The player whose piece is attacking.
- * @returns {Array<object>} List of squares {r, c} under attack.
- */
-function getSlidingAttackSquares(r, c, directions, player) {
-    const attackedSquares = [];
-    const opponent = getOpponent(player);
-    directions.forEach(([dr, dc]) => {
-        for (let i = 1; ; i++) {
-            const toRow = r + i * dr;
-            const toCol = c + i * dc;
-            if (toRow < 0 || toRow >= BOARD_SIZE || toCol < 0 || toCol >= BOARD_SIZE) break; // Off board
-            
-            attackedSquares.push({ r: toRow, c: toCol }); // Add the square itself
-            
-            const targetPiece = getPieceAt(toRow, toCol);
-            if (targetPiece) {
-                break; // Path blocked, stop checking further along this line
-            }
-        }
-    });
-    return attackedSquares;
-}
-
 
 /**
  * Generates all legal moves for a given player.
  * This is a crucial function for the AI.
  * @param {string} player - The player ('w' or 'b') whose moves to generate.
  * @returns {Array<object>} A list of all legal move objects for that player.
- *                         Each move object: { from: {r, c}, to: {r, c}, piece, isPromotion, isCastling, isEnPassant }
+ *                         Each move object: { from: {r, c}, to: {r, c}, piece, isPromotion, promotionPiece, isCastling, isEnPassant }
  */
 function getAllLegalMoves(player) {
     const allMoves = [];
     const originalPlayer = currentPlayer; // Backup context
-    // Temporarily set the global currentPlayer for generateLegalMoves context
-    // This is a slight coupling, could be refactored to pass player context explicitly
-    currentPlayer = player;
+    currentPlayer = player; // Temporarily set global context
 
     try {
         for (let r = 0; r < BOARD_SIZE; r++) {
@@ -333,18 +278,22 @@ function getAllLegalMoves(player) {
                 const piece = getPieceAt(r, c);
                 if (piece && getPlayerForPiece(piece) === player) {
                     // generateLegalMoves filters for check internally
-                    const moves = generateLegalMoves(r, c); // Uses the temporary currentPlayer context
+                    const moves = generateLegalMoves(r, c); // Uses the temporary currentPlayer
                     
                     moves.forEach(move => {
-                        // Add detailed info needed by AI
-                        allMoves.push({
+                        // Construct the detailed move object needed by AI
+                        const moveDetails = {
                             from: { row: r, col: c },
                             to: { row: move.row, col: move.col },
                             piece: piece,
                             isPromotion: move.isPromotion || false,
                             isCastling: move.isCastling || false,
-                            isEnPassant: move.isEnPassant || false
-                        });
+                            isEnPassant: move.isEnPassant || false,
+                            promotionPiece: move.isPromotion ? 'Q' : null // *** ADDED Default Promotion Piece ***
+                        };
+                        // TODO: Allow AI to choose promotion? For now, default to Queen.
+                        // If minimax logic is refined, it could potentially return a different piece.
+                        allMoves.push(moveDetails);
                     });
                 }
             }
@@ -468,17 +417,20 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
          for (const move of orderedMoves) {
              // --- Simulate Move --- 
              // Store state needed for undo. Crucial for correctness.
-             const piece = getPieceAt(move.from.row, move.from.col);
+             const piece = move.piece;
              const captured = getPieceAt(move.to.row, move.to.col);
              const prevCastling = JSON.parse(JSON.stringify(castlingRights)); // Deep copy!
              const prevEnPassant = enPassantTarget ? { ...enPassantTarget } : null; // Deep copy!
              const prevHalfmove = halfmoveClock;
              const prevFullmove = fullmoveNumber;
              const prevCurrentPlayer = currentPlayer;
-              let capturedEnPassant = null, capturedEnPassantPos = null; // Keep track for undo
+             let capturedEnPassant = null, capturedEnPassantPos = null; // Keep track for undo
 
              // Make the move on the board
-             setPieceAt(move.to.row, move.to.col, piece);
+             // Handle promotion piece correctly during simulation if needed?
+             // For evaluation, placing the *actual* promoted piece matters.
+             const pieceToPlace = move.isPromotion ? (maximizingPlayer ? move.promotionPiece.toUpperCase() : move.promotionPiece.toLowerCase()) : piece;
+             setPieceAt(move.to.row, move.to.col, pieceToPlace); 
              setPieceAt(move.from.row, move.from.col, null);
               
               // Handle simulation of special move side effects carefully
@@ -505,7 +457,7 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
                    enPassantTarget = null;
               }
               // Update clocks temporarily
-              if (piece.toUpperCase() === 'P' || captured || move.isEnPassant) halfmoveClock = 0;
+              if (piece.toUpperCase() === 'P' || captured || move.isEnPassant || move.isPromotion) halfmoveClock = 0;
               else halfmoveClock++;
               if (prevCurrentPlayer === 'b') fullmoveNumber++; // Increment if it was black's move
 
@@ -533,7 +485,7 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
              // --- Update Max and Alpha --- 
              if (evaluation > maxEval) {
                   maxEval = evaluation;
-                  bestMoveForNode = move; // Store the move that led to this best score
+                  bestMoveForNode = move; // Store the *entire move object*
              }
              alpha = Math.max(alpha, evaluation);
              if (beta <= alpha) {
@@ -548,7 +500,7 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
          
          for (const move of orderedMoves) {
               // --- Simulate Move (Similar to maximizing player) --- 
-             const piece = getPieceAt(move.from.row, move.from.col);
+             const piece = move.piece;
              const captured = getPieceAt(move.to.row, move.to.col);
              const prevCastling = JSON.parse(JSON.stringify(castlingRights));
              const prevEnPassant = enPassantTarget ? { ...enPassantTarget } : null;
@@ -574,7 +526,7 @@ function minimax(depth, alpha, beta, maximizingPlayer) {
              } else {
                  enPassantTarget = null;
              }
-             if (piece.toUpperCase() === 'P' || captured || move.isEnPassant) halfmoveClock = 0;
+             if (piece.toUpperCase() === 'P' || captured || move.isEnPassant || move.isPromotion) halfmoveClock = 0;
              else halfmoveClock++;
               if (prevCurrentPlayer === 'b') fullmoveNumber++;
 

@@ -3,12 +3,12 @@
 // --- UI State Variables ---
 let selectedSquare = null; // { row: r, col: c }
 let legalMovesForSelection = []; // Renamed from legalMoves to avoid conflict with gameLogic.generateLegalMoves
-let gameMode = 'ai'; // 'human' or 'ai'
+let gameMode = 'ai-human'; // 'ai-ai', 'ai-human', 'human-human' (Default to AI vs Human)
 let aiElo = 1200;    // Default ELO, matches slider default
-let playerColor = 'w'; // 'w' or 'b', determines which color the human player controls
+let playerColor = 'w'; // 'w' or 'b', human player's color in ai-human mode
 let soundEnabled = true;
-let captureAnimationEnabled = true;
 let isAIThinking = false;
+let aiThinkingTimeoutId = null; // Store timeout ID for AI moves
 
 // --- DOM Elements ---
 const boardElement = document.getElementById('chess-board');
@@ -21,12 +21,12 @@ const aiEloSlider = document.getElementById('ai-elo-slider');       // ADDED
 const aiEloValueSpan = document.getElementById('ai-elo-value');     // ADDED
 const playerColorIndicator = document.getElementById('player-color-indicator'); // Added
 const switchColorsButton = document.getElementById('switch-colors-button'); // Added
+const humanPlayerSettingsDiv = document.getElementById('human-player-settings'); // ADDED
 const newGameButton = document.getElementById('new-game-button');
 const undoButton = document.getElementById('undo-button');
 const redoButton = document.getElementById('redo-button');
 const hintButton = document.getElementById('hint-button');
 const muteButton = document.getElementById('mute-button');
-const toggleAnimationButton = document.getElementById('toggle-animation-button');
 const moveHistoryElement = document.getElementById('move-history');
 const promotionModal = document.getElementById('promotion-modal');
 const promotionButtons = promotionModal.querySelectorAll('button');
@@ -46,7 +46,7 @@ let scene, camera, renderer;
 function init3DAnimation() {
     console.log("Initializing 3D setup (Placeholder)");
     // Placeholder: Basic setup if needed, but likely not required for simple fallback
-    if (captureAnimationEnabled && !renderer) {
+    if (!renderer) {
          // Setup basic scene/camera/renderer if you intend to use Three.js
          // For now, we just log
          console.log("Placeholder: Three.js would be initialized here.");
@@ -55,11 +55,6 @@ function init3DAnimation() {
 
 function animateCapture3D(attackerPiece, defenderPiece, callback) {
     // This remains a placeholder or could be replaced with a 2D canvas animation
-    if (!captureAnimationEnabled) {
-        console.log("Capture animation disabled.");
-        if (callback) callback();
-        return;
-    }
     console.log(`Placeholder: 3D Animation - ${attackerPiece} captures ${defenderPiece}`);
     captureCanvas.style.display = 'block'; // Show placeholder area
     // Simulate animation delay
@@ -73,6 +68,11 @@ function animateCapture3D(attackerPiece, defenderPiece, callback) {
 // --- Game Initialization (Called from DOMContentLoaded) ---
 function initGame() {
     console.log("UI: Initializing game...");
+    // Clear any pending AI move timeouts
+    if (aiThinkingTimeoutId) {
+        clearTimeout(aiThinkingTimeoutId);
+        aiThinkingTimeoutId = null;
+    }
     isAIThinking = false;
     selectedSquare = null;
     legalMovesForSelection = [];
@@ -112,35 +112,59 @@ function initGame() {
 
 // --- Helper function to determine if the game is in AI mode ---
 function isAIMode() {
-    // return aiDifficulty >= 0; // OLD
-    return gameMode === 'ai'; // NEW
+    // return gameMode === 'ai'; // OLD
+    return gameMode === 'ai-human' || gameMode === 'ai-ai'; // NEW: True if AI is involved
 }
 
 // --- Update display for game mode and player color ---
 function updateGameModeDisplay() {
     let modeText = "Mode: Human vs Human";
-    if (isAIMode()) {
-        modeText = `Mode: vs AI (ELO: ${aiElo})`;
-        aiSettingsDiv.style.display = 'block'; // Show slider if AI mode
-    } else {
-        aiSettingsDiv.style.display = 'none'; // Hide slider if Human mode
+    if (gameMode === 'ai-human') {
+        modeText = "Mode: AI vs Human";
+        aiSettingsDiv.style.display = 'block';
+        humanPlayerSettingsDiv.style.display = 'block';
+        playerColorIndicator.style.display = 'block';
+    } else if (gameMode === 'ai-ai') {
+        modeText = `Mode: AI vs AI (ELO: ${aiElo})`;
+        aiSettingsDiv.style.display = 'block';
+        humanPlayerSettingsDiv.style.display = 'none'; // Hide color switching
+        playerColorIndicator.style.display = 'none'; // Hide playing as
+    } else { // human-human
+        aiSettingsDiv.style.display = 'none';
+        humanPlayerSettingsDiv.style.display = 'block'; // Show color switching
+        playerColorIndicator.style.display = 'block';
     }
     difficultyLabel.textContent = modeText;
-    // Ensure slider and value display match the state
-    aiEloSlider.value = aiElo;
-    aiEloValueSpan.textContent = aiElo;
+    // Ensure slider and value display match the state if visible
+    if (aiSettingsDiv.style.display !== 'none') {
+        aiEloSlider.value = aiElo;
+        aiEloValueSpan.textContent = aiElo;
+    }
 }
 
 // --- Function to read settings from UI and update state ---
 function updateGameSettingsFromUI() {
+    const prevGameMode = gameMode; // Store previous mode
     gameMode = gameModeSelect.value;
     aiElo = parseInt(aiEloSlider.value, 10);
-    updateGameModeDisplay();
+
     console.log(`UI Settings Updated: Mode=${gameMode}, ELO=${aiElo}`);
-    // If switching TO AI mode and it's AI's turn, trigger move
-    if (gameMode === 'ai' && currentPlayer !== playerColor && !isAIThinking) {
-        console.log("Switched to AI mode, checking if AI needs to move...")
+
+    // If switching *away* from AI vs AI, ensure the thinking flag is reset
+    if (prevGameMode === 'ai-ai' && gameMode !== 'ai-ai' && isAIThinking) {
+        console.log("UI: Switched away from AI vs AI mode, resetting thinking flag.");
+        isAIThinking = false;
+        updateStatusDisplay(); // Update display to remove spinner
+    }
+    
+    updateGameModeDisplay(); // Update labels and visibility
+
+    // If switching mode, might need to trigger AI move (respecting the now potentially reset flag)
+    if (!isAIThinking) {
         checkAndTriggerAIMove();
+    } else {
+        // If still thinking, update status display to show spinner
+         updateStatusDisplay();
     }
 }
 
@@ -155,12 +179,11 @@ function updatePlayerColorIndicator() {
     document.querySelectorAll('.piece').forEach(piece => {
         piece.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
     });
+    // Uncomment the label rotation logic
      document.querySelectorAll('.square').forEach(square => {
          // Adjust label orientation if board is flipped
-         const rankLabel = square.querySelector('.rank-label');
-         const fileLabel = square.querySelector('.file-label');
-         if(rankLabel) rankLabel.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
-         if(fileLabel) fileLabel.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
+         const coordLabel = square.querySelector('.coordinate-label');
+         if(coordLabel) coordLabel.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
      });
 }
 
@@ -279,9 +302,9 @@ function handleSquareClick(row, col) {
     // console.log(`UI: Clicked logical square: (${row}, ${col})`);
     if (isGameOver || isAIThinking) return;
     
-    // Prevent interaction if it's not the human player's turn in AI mode
-    if (isAIMode() && currentPlayer !== playerColor) {
-        console.log("UI: Not player's turn.");
+    // Prevent interaction if it's not the human player's turn or in AI vs AI mode
+    if (gameMode === 'ai-ai' || (gameMode === 'ai-human' && currentPlayer !== playerColor)) {
+        console.log("UI: Not player's turn or AI vs AI mode.");
         return;
     }
 
@@ -718,8 +741,8 @@ function finishMoveProcessing(prevStateInfo, movedPiece, capturedPieceLogical, f
     // Push state AFTER all logical updates for the move are done
     pushHistoryState({ notation: finalMoveNotation, moveNumber: prevStateInfo.fullmoveNumber });
 
-    // Reset AI thinking flag BEFORE updating UI for the next turn
-    if (isAIMode() && playerWhoMoved !== playerColor) {
+    // Reset AI thinking flag AFTER all processing but BEFORE UI updates for the *next* turn
+    if ((gameMode === 'ai-human' && playerWhoMoved !== playerColor) || gameMode === 'ai-ai') {
         isAIThinking = false;
         console.log("UI: Reset isAIThinking flag after AI move completion.");
     }
@@ -741,34 +764,63 @@ function checkAndTriggerAIMove() {
          console.log("AI is already thinking, skipping trigger.");
          return;
     }
-    // Check if it's AI's turn (AI mode AND current player is not the human player)
-    if (isAIMode() && currentPlayer !== playerColor) {
-        console.log(`UI: Triggering AI move for ${currentPlayer} (ELO: ${aiElo})`);
-        statusMessageElement.textContent = `AI (ELO: ${aiElo}) is thinking...`;
-        boardElement.classList.add('ai-thinking'); // Add class to disable clicks/show indicator
+    // Check if AI needs to move based on game mode
+    let shouldAIMove = false;
+    if (gameMode === 'ai-human' && currentPlayer !== playerColor) {
+        shouldAIMove = true;
+    } else if (gameMode === 'ai-ai') {
+        shouldAIMove = true;
+    }
+
+    if (shouldAIMove && !isGameOver) {
+        const delay = gameMode === 'ai-ai' ? 500 : 100; // Longer delay for AI vs AI
+        console.log(`UI: Triggering AI move for ${currentPlayer} (ELO: ${aiElo}) with delay ${delay}ms. Mode: ${gameMode}`);
         isAIThinking = true;
-        // Use setTimeout to allow the UI to update before potential blocking calculation
-        setTimeout(() => {
+        updateStatusDisplay(); // Update status to show spinner and message
+        boardElement.classList.add('ai-thinking');
+        
+        // Store timeout ID so it can be cleared if needed (e.g., new game)
+        if (aiThinkingTimeoutId) clearTimeout(aiThinkingTimeoutId); // Clear previous if any
+        aiThinkingTimeoutId = setTimeout(() => {
              triggerAIMove();
-        }, 100); // Short delay
+             aiThinkingTimeoutId = null; // Clear ID after execution
+        }, delay); 
     } else {
-        console.log("UI: Not AI's turn or not AI mode. No AI move triggered.");
-        isAIThinking = false; // Ensure flag is reset
-         boardElement.classList.remove('ai-thinking');
+        isAIThinking = false; 
+        updateStatusDisplay(); // Ensure status is correct and spinner is removed
+        boardElement.classList.remove('ai-thinking');
     }
 }
 
 function triggerAIMove() {
-    if (!isAIMode() || currentPlayer === playerColor || !isAIThinking) {
-        console.log("Aborting AI move trigger: Conditions not met.");
-         isAIThinking = false; // Ensure flag is reset
-         boardElement.classList.remove('ai-thinking');
-        return; // Safety check
+    // Revised condition check:
+    let abort = false;
+    if (!isAIMode()) { // Abort if not any AI mode
+        abort = true;
+        console.log("Aborting AI trigger: Not an AI mode.");
+    } else if (gameMode === 'ai-human' && currentPlayer === playerColor) { // Abort in AI vs Human if it IS the human's turn
+        abort = true;
+         console.log("Aborting AI trigger: It's human's turn in ai-human mode.");
+    } else if (!isAIThinking) { 
+         abort = true;
+         console.log("Aborting AI trigger: AI thinking flag is not set (unexpected).");
+         boardElement.classList.remove('ai-thinking'); // Clean up UI just in case
+         return; 
     }
 
+    if (abort) {
+        console.log("Aborting AI move trigger: Conditions not met.");
+        isAIThinking = false; // Reset thinking flag if we abort for other reasons
+        updateStatusDisplay(); // Update status to remove spinner
+        boardElement.classList.remove('ai-thinking');
+        return;
+    }
+
+    // Clear the timeout ID as we are now executing
+    aiThinkingTimeoutId = null; 
+    
     console.log(`Requesting AI move calculation with ELO: ${aiElo}`);
-    // Pass the current ELO rating to the AI calculation function
-    const aiMove = calculateBestMove(aiElo); // Pass ELO instead of difficulty
+    const aiMove = calculateBestMove(aiElo); 
 
     if (aiMove) {
         console.log("UI: AI chose move:", aiMove);
@@ -796,19 +848,15 @@ function triggerAIMove() {
             console.error("AI move object is missing 'from' or 'to' properties:", aiMove);
             statusMessageElement.textContent = "AI Error: Invalid move format.";
             isAIThinking = false; // Reset thinking flag on error
-             boardElement.classList.remove('ai-thinking');
+            updateStatusDisplay(); // Re-evaluate game status and remove spinner
+            boardElement.classList.remove('ai-thinking');
         }
     } else {
-        // Handle case where AI returns null (no legal moves - checkmate/stalemate)
         console.log("UI: AI returned no move. Game might be over.");
-        // Status should be updated by checkGameStatus in finishMoveProcessing,
-        // but we might need an update here if no move is made.
-        updateStatusDisplay(); // Re-evaluate game status
         isAIThinking = false; // Reset thinking flag
-         boardElement.classList.remove('ai-thinking');
+        updateStatusDisplay(); // Re-evaluate game status and remove spinner
+        boardElement.classList.remove('ai-thinking');
     }
-    // Note: isAIThinking is reset inside makeMove's completion logic (finishMoveProcessing)
-    // or directly here if no move is made/error occurs.
 }
 
 // --- AI Promotion Handler --- 
@@ -822,7 +870,7 @@ function handleAIPromotion(fromRow, fromCol, toRow, toCol, chosenPieceType) {
      if (!piece || piece.toUpperCase() !== 'P') {
           console.error("AI Promotion Error: Invalid piece for promotion.", {fromRow, fromCol, piece});
            isAIThinking = false; // Reset flag on error
-           updateStatusDisplay();
+           updateStatusDisplay(); // Update status to remove spinner
           return;
      }
 
@@ -889,38 +937,36 @@ function animatePieceMovement(pieceElement, targetSquareElement, toRow, toCol, o
 function animateAndRemovePiece(row, col, pieceType, isEnPassant = false, onComplete, attackerRow, attackerCol) {
     const pieceElement = getPieceElement(row, col); // Find piece at logical capture square
     if (pieceElement) {
-         if (captureAnimationEnabled && !isEnPassant) {
-              // Try to get attacker piece type for 3D animation context
-              let attackerPiece = null;
-              if (selectedSquare) { // If human move
-                  attackerPiece = getPieceAt(selectedSquare.row, selectedSquare.col);
-              } else if (attackerRow !== undefined && attackerCol !== undefined) { // If AI move
-                  attackerPiece = getPieceAt(attackerRow, attackerCol);
-              }
-              
-              if (attackerPiece) {
-                  console.log("UI: Triggering 3D capture animation (placeholder).");
-                  animateCapture3D(attackerPiece, pieceType, () => {
-                      if (document.body.contains(pieceElement)) pieceElement.remove();
-                      if (onComplete) onComplete();
-                  });
-                  return; // Use 3D animation
-              } else {
-                   console.warn("UI: Could not determine attacker for 3D animation, using fade.");
-              }
-         }
+        // Try to get attacker piece type for 3D animation context
+        let attackerPiece = null;
+        if (selectedSquare) { // If human move
+            attackerPiece = getPieceAt(selectedSquare.row, selectedSquare.col);
+        } else if (attackerRow !== undefined && attackerCol !== undefined) { // If AI move
+            attackerPiece = getPieceAt(attackerRow, attackerCol);
+        }
+        
+        if (attackerPiece && !isEnPassant) { // Use 3D animation if attacker found and not EP
+            console.log("UI: Triggering 3D capture animation (placeholder).");
+            animateCapture3D(attackerPiece, pieceType, () => {
+                if (document.body.contains(pieceElement)) pieceElement.remove();
+                if (onComplete) onComplete();
+            });
+            return; // Use 3D animation
+        } else if (!isEnPassant) {
+            console.warn("UI: Could not determine attacker for 3D animation or it was En Passant, using fade.");
+        }
 
-         // Fallback: Simple fade out
-          console.log("UI: Using fade out animation for captured piece.");
-          pieceElement.style.transition = 'opacity 0.3s ease-out';
-          pieceElement.style.opacity = '0';
-          setTimeout(() => {
-              // Double check element exists before removing
-              if (document.body.contains(pieceElement)) {
-                 pieceElement.remove();
-              }
-              if (onComplete) onComplete();
-          }, 300); // Duration matches transition
+        // Fallback: Simple fade out (also used for En Passant)
+        console.log("UI: Using fade out animation for captured piece.");
+        pieceElement.style.transition = 'opacity 0.3s ease-out';
+        pieceElement.style.opacity = '0';
+        setTimeout(() => {
+            // Double check element exists before removing
+            if (document.body.contains(pieceElement)) {
+                pieceElement.remove();
+            }
+            if (onComplete) onComplete();
+        }, 300); // Duration matches transition
 
     } else {
         console.warn(`UI Capture Animation: Piece element not found at target (${row}, ${col})`);
@@ -940,43 +986,46 @@ function toggleMute() {
     muteButton.textContent = soundEnabled ? "Mute Sounds" : "Unmute Sounds";
     console.log("UI: Sound enabled:", soundEnabled);
 }
-function toggleCaptureAnimation() {
-    captureAnimationEnabled = !captureAnimationEnabled;
-    toggleAnimationButton.textContent = captureAnimationEnabled ? "Disable Capture Animations" : "Enable Capture Animations";
-    console.log("UI: Capture animations enabled:", captureAnimationEnabled);
-     if (captureAnimationEnabled && !renderer) { // Check if renderer exists
-         console.log("Note: 3D animation setup is currently a placeholder.");
-         // init3DAnimation(); // Optionally initialize here if needed
-     }
-}
 
 // --- UI Update Functions ---
 function updateStatusDisplay() {
-    let currentStatusText = "";
+    let baseStatusText = "";
     if (isGameOver) {
-        currentStatusText = gameStatusMessage; // Use the final stored game over message
+        baseStatusText = gameStatusMessage;
     } else {
-        // Use the status message generated during finishMoveProcessing or initial state
-        currentStatusText = gameStatusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
-        if (isAIThinking) {
-             currentStatusText = "AI is thinking...";
+        baseStatusText = gameStatusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
+        if (isAIThinking && isAIMode()) { 
+             // Original: Set text directly without spinner
+             baseStatusText = `AI (ELO: ${aiElo}) is thinking...`;
+             // statusMessageElement.innerHTML = `<span class="spinner-inline"></span>${thinkingText}`; // REMOVED
+        // } else {
+             // Just use textContent when not thinking - Handled below
+             // statusMessageElement.textContent = baseStatusText;
         }
     }
+    // Always set text content at the end
+    statusMessageElement.textContent = baseStatusText;
+    // if (!(isAIThinking && isAIMode())) { // REMOVED redundant check
+    //      statusMessageElement.textContent = baseStatusText;
+    // }
 
-    statusMessageElement.textContent = currentStatusText;
     turnIndicator.textContent = isGameOver ? "Game Over" : `Turn: ${currentPlayer === 'w' ? 'White' : 'Black'}`;
 
     // Enable/disable board interaction
-    const isHumanTurn = !isGameOver && !isAIThinking && (!isAIMode() || currentPlayer === playerColor);
+    const isHumanTurn = !isGameOver && !isAIThinking && 
+                        (gameMode === 'human-human' || (gameMode === 'ai-human' && currentPlayer === playerColor));
     boardElement.style.pointerEvents = isHumanTurn ? 'auto' : 'none';
     boardElement.style.opacity = isHumanTurn ? '1' : '0.7'; // Dim board when not interactive
 
     // Update button states
-    hintButton.disabled = isGameOver || isAIThinking || !isAIMode() || currentPlayer !== playerColor;
-    undoButton.disabled = isAIThinking || currentMoveIndex < 1;
-    redoButton.disabled = isAIThinking || currentMoveIndex >= gameHistory.length - 1;
-    switchColorsButton.disabled = isAIThinking; // Disable while AI thinks
-    difficultyLabel.disabled = isAIThinking; // Disable while AI thinks
+    hintButton.disabled = isGameOver || isAIThinking || gameMode !== 'ai-human' || currentPlayer !== playerColor;
+    // Disable undo/redo in AI vs AI mode? Maybe allow for observation?
+    undoButton.disabled = isAIThinking || currentMoveIndex < 1 || gameMode === 'ai-ai'; 
+    redoButton.disabled = isAIThinking || currentMoveIndex >= gameHistory.length - 1 || gameMode === 'ai-ai';
+    switchColorsButton.disabled = isAIThinking || gameMode === 'ai-ai'; // Disable in AI vs AI
+    // difficultyLabel.disabled = isAIThinking; // This doesn't make sense to disable the label
+    gameModeSelect.disabled = isAIThinking;
+    aiEloSlider.disabled = isAIThinking;
     newGameButton.disabled = isAIThinking;
 
     updateGameModeDisplay(); // Ensure mode display is current
@@ -1134,9 +1183,22 @@ function handleRedo() {
 
 // --- Hint System ---
 function handleHint() {
-    if (isGameOver || isAIThinking || !isAIMode() || currentPlayer !== playerColor) return;
+    if (isGameOver || isAIThinking || gameMode === 'ai-ai' ) return; // Also disable hints in AI vs AI
 
-    console.log("UI: Generating hint...");
+    // Determine whose turn it *should* be for the hint
+    // In Human vs Human, hint for current player
+    // In AI vs Human, hint *only* for the human player
+    let playerToHintFor = currentPlayer;
+    if (gameMode === 'ai-human' && currentPlayer !== playerColor) {
+        console.log("UI: Hint requested, but it's AI's turn.");
+        statusMessageElement.textContent = "Hint available only on your turn.";
+        // Temporarily show message, then revert
+        setTimeout(() => { updateStatusDisplay(); }, 2000);
+        return;
+    } 
+
+    console.log("UI: Generating hint for player:", playerToHintFor);
+    // Show thinking message directly
     statusMessageElement.textContent = "Thinking of a hint...";
     hintButton.disabled = true; // Disable while thinking
 
@@ -1144,17 +1206,25 @@ function handleHint() {
     setTimeout(() => {
         let hintMove = null;
         try {
-            // Calculate the best move for the current human player using MAX difficulty
-            const maxDifficulty = 3; // Use the hardest AI for hints
-            console.log(`UI: Calculating hint using AI difficulty: ${maxDifficulty}`);
-            hintMove = calculateBestMove(maxDifficulty); 
+            // Calculate the best move using the MAXIMUM ELO setting
+            const maxElo = parseInt(aiEloSlider.max, 10) || 2500; // Read max from slider or use default max
+            console.log(`UI: Calculating hint using AI ELO: ${maxElo}`);
+            // Ensure the context for calculateBestMove has the correct player
+            const originalPlayerForHint = currentPlayer; // Store original
+            currentPlayer = playerToHintFor; // Set context for the calculation
+            
+            hintMove = calculateBestMove(maxElo); // Use max ELO
+            
+            currentPlayer = originalPlayerForHint; // Restore original player context
+
         } catch (error) {
              console.error("Error generating hint:", error);
-             statusMessageElement.textContent = "Error generating hint.";
+             statusMessageElement.textContent = "Error generating hint."; // Show error (no spinner)
              updateStatusDisplay(); // Re-enable hint button potentially
              return;
         }
 
+        // Update status AFTER calculation is done 
         if (hintMove && hintMove.from && hintMove.to) {
             console.log("UI Hint:", hintMove);
             clearSelectionAndHighlights(); // Clear previous highlights
@@ -1197,10 +1267,10 @@ function handleHint() {
         } else {
             statusMessageElement.textContent = "No good move found for hint.";
             console.log("UI: No hint generated or invalid hint move.");
-             updateStatusDisplay(); // Update button states etc.
+             updateStatusDisplay(); // Update buttons and potentially revert status text after delay
         }
-        // Re-enable hint button if game not over etc.
-        // updateStatusDisplay() handles general button state update.
+         updateStatusDisplay(); // Update buttons and revert status text after delay
+
     }, 30); // Short delay for UI
 }
 
@@ -1220,7 +1290,6 @@ function setupEventListeners() {
         checkAndTriggerAIMove(); // If it's now AI's turn
     });
     muteButton.addEventListener('click', toggleMute);
-    toggleAnimationButton.addEventListener('click', toggleCaptureAnimation);
 
     // REMOVE old listener
     // difficultySelect.addEventListener('change', (e) => {
