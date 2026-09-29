@@ -1,362 +1,288 @@
 // --- START OF FILE ui.js ---
+// UI layer: board rendering, input handling, animations, history review and AI orchestration.
+// Game rules and state globals live in gameLogic.js; AI moves come from aiClient.js (requestAIMove).
 
 // --- UI State Variables ---
-let selectedSquare = null; // { row: r, col: c }
-let legalMovesForSelection = []; // Renamed from legalMoves to avoid conflict with gameLogic.generateLegalMoves
-let gameMode = 'ai-human'; // 'ai-ai', 'ai-human', 'human-human' (Default to AI vs Human)
-let aiElo = 1200;    // Default ELO, matches slider default
-let playerColor = 'w'; // 'w' or 'b', human player's color in ai-human mode
+let selectedSquare = null; // { row, col } (logical coordinates)
+let legalMovesForSelection = [];
+let gameMode = 'ai-human'; // 'ai-ai', 'ai-human', 'human-human'
+let aiElo = 1200;
+let playerColor = 'w'; // Human color in ai-human mode; also sets board orientation
 let soundEnabled = true;
-let isAIThinking = false;
-let aiThinkingTimeoutId = null; // Store timeout ID for AI moves
+
+let isAIThinking = false;   // An AI move is scheduled or being computed
+let aiRequest = null;       // { promise, cancel } handle of the in-flight AI move request
+let aiDelayTimeoutId = null;
+let hintRequest = null;     // { promise, cancel } handle of the in-flight hint request
+let hintMessage = null;     // Transient status text for a shown hint
+let hintTimeoutId = null;
+
+let isAnimating = false;       // A move is being executed/animated; input is locked until it finishes
+let pendingPromotion = null;   // { fromRow, fromCol, toRow, toCol } while the promotion dialog is open
+let isReviewing = false;       // Browsing history; the AI does not move until the user resumes
+let lastMove = null;           // { from: {row, col}, to: {row, col} } of the move leading to the shown position
+let positionVersion = 0;       // Bumped whenever the shown position changes; async work compares against it
 
 // --- DOM Elements ---
 const boardElement = document.getElementById('chess-board');
 const turnIndicator = document.getElementById('turn-indicator');
 const statusMessageElement = document.getElementById('status-message');
 const difficultyLabel = document.getElementById('difficulty-label');
-const gameModeSelect = document.getElementById('game-mode-select'); // ADDED
-const aiSettingsDiv = document.getElementById('ai-settings');       // ADDED
-const aiEloSlider = document.getElementById('ai-elo-slider');       // ADDED
-const aiEloValueSpan = document.getElementById('ai-elo-value');     // ADDED
-const playerColorIndicator = document.getElementById('player-color-indicator'); // Added
-const switchColorsButton = document.getElementById('switch-colors-button'); // Added
-const humanPlayerSettingsDiv = document.getElementById('human-player-settings'); // ADDED
+const gameModeSelect = document.getElementById('game-mode-select');
+const aiSettingsDiv = document.getElementById('ai-settings');
+const aiEloSlider = document.getElementById('ai-elo-slider');
+const aiEloValueSpan = document.getElementById('ai-elo-value');
+const playerColorIndicator = document.getElementById('player-color-indicator');
+const switchColorsButton = document.getElementById('switch-colors-button');
+const humanPlayerSettingsDiv = document.getElementById('human-player-settings');
 const newGameButton = document.getElementById('new-game-button');
 const undoButton = document.getElementById('undo-button');
 const redoButton = document.getElementById('redo-button');
 const hintButton = document.getElementById('hint-button');
 const muteButton = document.getElementById('mute-button');
 const moveHistoryElement = document.getElementById('move-history');
+const reviewBar = document.getElementById('review-bar');
+const reviewLabel = document.getElementById('review-label');
+const resumeButton = document.getElementById('resume-button');
+const liveButton = document.getElementById('live-button');
 const promotionModal = document.getElementById('promotion-modal');
-const promotionButtons = promotionModal.querySelectorAll('button');
-const captureCanvas = document.getElementById('capture-animation-canvas'); // For Three.js (placeholder)
+const promotionPieceButtons = promotionModal.querySelectorAll('button[data-piece]');
+const promotionCancelButton = document.getElementById('promotion-cancel');
 
 // --- Audio Elements ---
 const sounds = {
-    move: new Audio('move.mp3'),       // Replace with your sound file paths
+    move: new Audio('move.mp3'),
     capture: new Audio('capture.mp3'),
     check: new Audio('check.mp3'),
     gameOver: new Audio('game-over.mp3')
 };
-Object.values(sounds).forEach(sound => sound.preload = 'auto'); // Preload sounds
+Object.values(sounds).forEach(sound => sound.preload = 'auto');
 
-// --- Three.js Placeholder ---
-let scene, camera, renderer;
-function init3DAnimation() {
-    console.log("Initializing 3D setup (Placeholder)");
-    // Placeholder: Basic setup if needed, but likely not required for simple fallback
-    if (!renderer) {
-         // Setup basic scene/camera/renderer if you intend to use Three.js
-         // For now, we just log
-         console.log("Placeholder: Three.js would be initialized here.");
-    }
+const MOVE_ANIMATION_SECONDS = 0.35;
+const HINT_TIME_MS = 1500;
+const HINT_DISPLAY_MS = 3000;
+
+function uiLog(...args) {
+    if (typeof debugLog === 'function') debugLog(...args);
 }
 
-function animateCapture3D(attackerPiece, defenderPiece, callback) {
-    // This remains a placeholder or could be replaced with a 2D canvas animation
-    console.log(`Placeholder: 3D Animation - ${attackerPiece} captures ${defenderPiece}`);
-    captureCanvas.style.display = 'block'; // Show placeholder area
-    // Simulate animation delay
-    setTimeout(() => {
-        console.log("3D Animation finished (Placeholder)");
-        captureCanvas.style.display = 'none'; // Hide placeholder area
-        if (callback) callback();
-    }, 1500); // Simulate 1.5 second animation
+function sideName(player) {
+    return player === 'w' ? 'White' : 'Black';
 }
 
-// --- Game Initialization (Called from DOMContentLoaded) ---
+function squareName(row, col) {
+    return String.fromCharCode('a'.charCodeAt(0) + col) + (BOARD_SIZE - row);
+}
+
+// --- Mode helpers ---
+function isAIMode() {
+    return gameMode === 'ai-human' || gameMode === 'ai-ai';
+}
+
+function isHumanTurn() {
+    return gameMode === 'human-human' || (gameMode === 'ai-human' && currentPlayer === playerColor);
+}
+
+function isAITurn() {
+    return gameMode === 'ai-ai' || (gameMode === 'ai-human' && currentPlayer !== playerColor);
+}
+
+// True while a move is animating or waiting for a promotion choice
+function isInputLocked() {
+    return isAnimating || pendingPromotion !== null;
+}
+
+// --- Game Initialization ---
 function initGame() {
-    console.log("UI: Initializing game...");
-    // Clear any pending AI move timeouts
-    if (aiThinkingTimeoutId) {
-        clearTimeout(aiThinkingTimeoutId);
-        aiThinkingTimeoutId = null;
-    }
-    isAIThinking = false;
-    selectedSquare = null;
-    legalMovesForSelection = [];
-    gameHistory = []; // Clear history in gameLogic state
-    currentMoveIndex = -1; // Reset index in gameLogic state
+    uiLog("UI: Initializing game...");
+    abortInFlightWork();
+    isReviewing = false;
+    lastMove = null;
+    clearSelectionAndHighlights();
+    gameHistory = [];
+    currentMoveIndex = -1;
 
-    // Set initial game mode and ELO from controls
-    // updateGameSettingsFromUI(); // Call this to ensure state matches UI on init
-
-    // Initialize board state using gameLogic
     if (!parseFen(INITIAL_BOARD_FEN)) {
         console.error("Failed to parse initial FEN. Cannot start game.");
-         statusMessageElement.textContent = "Error: Could not load initial position.";
+        statusMessageElement.textContent = "Error: Could not load initial position.";
         return;
     }
 
-    // Set player based on initial FEN (should be white)
-    // playerColor is set by user preference, currentPlayer is from FEN
+    createBoardDOM();
+    pushHistoryState({ truncate: false }); // Initial position, no move info
+    evaluateGameState();
+    gameHistory[currentMoveIndex].statusMessage = gameStatusMessage;
+
+    renderBoard();
     updatePlayerColorIndicator();
-
-    createBoardDOM(); // Create the visual board squares
-    renderBoard();    // Render pieces based on gameLogic.board
-    
-    // Push the initial state to history (handled in gameLogic via parseFen? No, needs explicit push)
-     pushHistoryState({ truncate: false }); // Save the initial state (no move info)
-     console.log("Initial state pushed. History length:", gameHistory.length);
-
+    updateGameModeDisplay();
     updateStatusDisplay();
     updateMoveHistoryDisplay();
-    updateHistoryButtons();
-    updateGameModeDisplay(); // Update based on selected mode/ELO
-    
-    // Check if AI needs to move immediately (e.g., player chose black)
-    checkAndTriggerAIMove();
-    console.log(`UI: Game Initialized. Mode: ${gameMode}, ELO: ${aiElo}, Current Player: ${currentPlayer}`);
+
+    checkAndTriggerAIMove(); // AI opens if it plays White
+    uiLog(`UI: Game initialized. Mode: ${gameMode}, ELO: ${aiElo}, Current player: ${currentPlayer}`);
 }
 
-// --- Helper function to determine if the game is in AI mode ---
-function isAIMode() {
-    // return gameMode === 'ai'; // OLD
-    return gameMode === 'ai-human' || gameMode === 'ai-ai'; // NEW: True if AI is involved
+// Cancels AI/hint work, stops running animations and closes the promotion dialog.
+// Invalidates every pending async callback via positionVersion.
+function abortInFlightWork() {
+    cancelAIRequest();
+    cancelHint();
+    cancelCaptureAnimations();
+    positionVersion++;
+    if (typeof gsap !== 'undefined') {
+        gsap.killTweensOf(boardElement.querySelectorAll('.piece'));
+    }
+    isAnimating = false;
+    closePromotionDialog();
 }
 
-// --- Update display for game mode and player color ---
+// --- Display for game mode and player color ---
 function updateGameModeDisplay() {
     let modeText = "Mode: Human vs Human";
     if (gameMode === 'ai-human') {
         modeText = "Mode: AI vs Human";
         aiSettingsDiv.style.display = 'block';
-        humanPlayerSettingsDiv.style.display = 'block'; // Show for AI vs Human
         playerColorIndicator.style.display = 'block';
     } else if (gameMode === 'ai-ai') {
         modeText = `Mode: AI vs AI (ELO: ${aiElo})`;
         aiSettingsDiv.style.display = 'block';
-        // *** MODIFIED: Keep container visible, button will be disabled by updateStatusDisplay ***
-        humanPlayerSettingsDiv.style.display = 'block'; 
-        playerColorIndicator.style.display = 'none'; // Still hide playing as
-    } else { // human-human
+        playerColorIndicator.style.display = 'none';
+    } else {
         aiSettingsDiv.style.display = 'none';
-        humanPlayerSettingsDiv.style.display = 'block'; // Show for Human vs Human
         playerColorIndicator.style.display = 'block';
     }
+    humanPlayerSettingsDiv.style.display = 'block';
     difficultyLabel.textContent = modeText;
-    // Ensure slider and value display match the state if visible
-    if (aiSettingsDiv.style.display !== 'none') {
-        aiEloSlider.value = aiElo;
-        aiEloValueSpan.textContent = aiElo;
-    }
-}
-
-// --- Function to read settings from UI and update state ---
-function updateGameSettingsFromUI() {
-    // *** ADDED: Cancel any pending AI move calculation (Keep as safety) ***
-    if (aiThinkingTimeoutId) {
-        clearTimeout(aiThinkingTimeoutId);
-        aiThinkingTimeoutId = null;
-        console.log("UI: Cleared pending AI move timeout due to settings change.");
-    }
-    // *** END ADDED ***
-
-    // *** isAIThinking flag is now reset directly in the event listener ***
-    // const prevGameMode = gameMode; // No longer needed here for resetting flag
-    gameMode = gameModeSelect.value;
-    aiElo = parseInt(aiEloSlider.value, 10);
-
-    console.log(`UI Settings Updated: Mode=${gameMode}, ELO=${aiElo}`);
-
-    // *** Removed redundant isAIThinking reset logic ***
-    // if (isAIThinking && (prevGameMode === 'ai-ai' || gameMode !== prevGameMode)) {
-    //    ...
-    // }
-
-    updateGameModeDisplay(); // Update labels and visibility
-
-    // Check if AI needs to move based on the *new* settings
-    // This should only happen if the flag was successfully reset by the event listener
-    if (!isAIThinking) {
-        checkAndTriggerAIMove();
-    }
-     // Update the status display fully at the end to reflect all changes
-     updateStatusDisplay();
 }
 
 function updatePlayerColorIndicator() {
-    const playingAsText = `Playing as: ${playerColor === 'w' ? 'White' : 'Black'}`;
-    playerColorIndicator.textContent = playingAsText;
+    playerColorIndicator.textContent = `Playing as: ${sideName(playerColor)}`;
     playerColorIndicator.className = playerColor === 'w' ? 'white' : 'black';
     switchColorsButton.textContent = `Play as ${playerColor === 'w' ? 'Black' : 'White'}`;
-    
-    // Flip board visually if player chooses black
-    boardElement.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
-    document.querySelectorAll('.piece').forEach(piece => {
-        piece.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
-    });
-    // Uncomment the label rotation logic
-     document.querySelectorAll('.square').forEach(square => {
-         // Adjust label orientation if board is flipped
-         const coordLabel = square.querySelector('.coordinate-label');
-         if(coordLabel) coordLabel.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
-     });
+}
+
+// --- Board geometry ---
+// The board is oriented by mapping coordinates (no CSS rotation): with White at the bottom,
+// visual (row, col) equals logical (row, col); with Black at the bottom both axes are mirrored.
+function toVisual(row, col) {
+    return playerColor === 'w'
+        ? { row, col }
+        : { row: BOARD_SIZE - 1 - row, col: BOARD_SIZE - 1 - col };
+}
+
+function visualPosition(row, col) {
+    const v = toVisual(row, col);
+    return { left: `${v.col * 100 / BOARD_SIZE}%`, top: `${v.row * 100 / BOARD_SIZE}%` };
 }
 
 // --- Board DOM Creation ---
 function createBoardDOM() {
-    boardElement.innerHTML = ''; // Clear existing board
-    for (let r_visual = 0; r_visual < BOARD_SIZE; r_visual++) {
-        for (let c_visual = 0; c_visual < BOARD_SIZE; c_visual++) {
-             // Determine logical coordinates based on player color
-             const r_logical = playerColor === 'w' ? r_visual : BOARD_SIZE - 1 - r_visual;
-             const c_logical = playerColor === 'w' ? c_visual : BOARD_SIZE - 1 - c_visual;
+    boardElement.innerHTML = '';
+    for (let rVisual = 0; rVisual < BOARD_SIZE; rVisual++) {
+        for (let cVisual = 0; cVisual < BOARD_SIZE; cVisual++) {
+            const rLogical = playerColor === 'w' ? rVisual : BOARD_SIZE - 1 - rVisual;
+            const cLogical = playerColor === 'w' ? cVisual : BOARD_SIZE - 1 - cVisual;
 
             const square = document.createElement('div');
-            square.classList.add('square');
-            // Color based on logical coordinates for consistency
-            square.classList.add((r_logical + c_logical) % 2 === 0 ? 'light' : 'dark');
-            square.dataset.row = r_logical; // Store LOGICAL row/col
-            square.dataset.col = c_logical;
-            
-             // Add coordinate labels (always based on logical position)
-             const rank = BOARD_SIZE - r_logical;
-             const file = String.fromCharCode('a'.charCodeAt(0) + c_logical);
-             const notation = file + rank;
+            square.classList.add('square', (rLogical + cLogical) % 2 === 0 ? 'light' : 'dark');
+            square.dataset.row = rLogical;
+            square.dataset.col = cLogical;
 
-             const coordLabel = document.createElement('span');
-             coordLabel.classList.add('coordinate-label');
-             coordLabel.textContent = notation;
-             square.appendChild(coordLabel);
+            const coordLabel = document.createElement('span');
+            coordLabel.classList.add('coordinate-label');
+            coordLabel.textContent = squareName(rLogical, cLogical);
+            square.appendChild(coordLabel);
 
-            square.addEventListener('click', () => handleSquareClick(r_logical, c_logical));
             boardElement.appendChild(square);
         }
     }
-    // Apply initial rotation based on player color
-     updatePlayerColorIndicator(); 
 }
 
-// --- Board Rendering (Pieces) ---
+// --- Board Rendering (Pieces and highlights) ---
 function renderBoard() {
-    // Remove existing piece elements safely
     boardElement.querySelectorAll('.piece').forEach(p => p.remove());
-    // Clear previous check highlights
-    boardElement.querySelectorAll('.square.in-check').forEach(sq => sq.classList.remove('in-check'));
+    boardElement.querySelectorAll('.square.in-check, .square.last-move')
+        .forEach(sq => sq.classList.remove('in-check', 'last-move'));
 
-    for (let r_logical = 0; r_logical < BOARD_SIZE; r_logical++) {
-        for (let c_logical = 0; c_logical < BOARD_SIZE; c_logical++) {
-            const piece = getPieceAt(r_logical, c_logical); // Get piece from gameLogic state
-            if (piece) {
-                const squareElement = getSquareElement(r_logical, c_logical);
-                if (squareElement) {
-                    const pieceElement = document.createElement('div');
-                    pieceElement.classList.add('piece');
-                    pieceElement.textContent = PIECES[piece]; // Use constant from gameLogic
-                    pieceElement.dataset.piece = piece;
-                    pieceElement.dataset.row = r_logical; // Store logical coords
-                    pieceElement.dataset.col = c_logical;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            const piece = getPieceAt(r, c);
+            if (!piece) continue;
 
-                    // Calculate visual position based on logical coords and player color
-                    const r_visual = playerColor === 'w' ? r_logical : BOARD_SIZE - 1 - r_logical;
-                    const c_visual = playerColor === 'w' ? c_logical : BOARD_SIZE - 1 - c_logical;
-
-                    pieceElement.style.position = 'absolute';
-                    pieceElement.style.left = `${c_visual * 100 / BOARD_SIZE}%`;
-                    pieceElement.style.top = `${r_visual * 100 / BOARD_SIZE}%`;
-                    pieceElement.style.width = `${100 / BOARD_SIZE}%`;
-                    pieceElement.style.height = `${100 / BOARD_SIZE}%`;
-                    // pieceElement.style.fontSize = '7vmin'; // Let CSS handle font size
-                    pieceElement.style.display = 'flex';
-                    pieceElement.style.justifyContent = 'center';
-                    pieceElement.style.alignItems = 'center';
-                    pieceElement.style.lineHeight = '1';
-                    // Apply rotation if player is black
-                    pieceElement.style.transform = playerColor === 'b' ? 'rotate(180deg)' : 'none';
-
-                    // Add click handler to piece as well (stopPropagation needed)
-                    pieceElement.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Prevent square click from firing too
-                        handleSquareClick(r_logical, c_logical);
-                    });
-
-                    boardElement.appendChild(pieceElement);
-
-                    // Highlight king if in check (use gameLogic functions)
-                    const kingPieceForCurrent = (currentPlayer === 'w') ? 'K' : 'k';
-                    const kingPieceForOpponent = (currentPlayer === 'w') ? 'k' : 'K';
-                    
-                    if (piece === kingPieceForCurrent && isKingInCheck(currentPlayer)) {
-                       squareElement.classList.add('in-check');
-                    }
-                    if (piece === kingPieceForOpponent && isKingInCheck(getOpponent(currentPlayer))) {
-                         squareElement.classList.add('in-check');
-                    }
-                }
-            }
+            const pieceElement = document.createElement('div');
+            pieceElement.classList.add('piece');
+            pieceElement.textContent = PIECES[piece];
+            pieceElement.dataset.piece = piece;
+            pieceElement.dataset.row = r;
+            pieceElement.dataset.col = c;
+            const pos = visualPosition(r, c);
+            pieceElement.style.left = pos.left;
+            pieceElement.style.top = pos.top;
+            boardElement.appendChild(pieceElement);
         }
     }
+
+    const kingPos = findKing(currentPlayer);
+    if (kingPos && isKingInCheck(currentPlayer)) {
+        getSquareElement(kingPos.row, kingPos.col)?.classList.add('in-check');
+    }
+    if (lastMove) {
+        getSquareElement(lastMove.from.row, lastMove.from.col)?.classList.add('last-move');
+        getSquareElement(lastMove.to.row, lastMove.to.col)?.classList.add('last-move');
+    }
+
     highlightSelectedSquare();
-    highlightLegalMoves(); // Call even if no square selected to clear old highlights
-    // console.log("UI: Board rendered.");
+    highlightLegalMoves();
 }
 
-// --- UI Element Getters ---
-// Gets square based on LOGICAL coordinates
+// --- UI Element Getters (logical coordinates) ---
 function getSquareElement(row, col) {
     return boardElement.querySelector(`.square[data-row="${row}"][data-col="${col}"]`);
 }
 
-// Gets piece based on LOGICAL coordinates
 function getPieceElement(row, col) {
-    // Pieces are direct children of boardElement in this structure
     return boardElement.querySelector(`.piece[data-row="${row}"][data-col="${col}"]`);
 }
 
 // --- Event Handling ---
+// Single delegated listener: pieces and squares both carry logical data-row/data-col
+function handleBoardClick(event) {
+    const target = event.target.closest('.piece, .square');
+    if (!target || !boardElement.contains(target)) return;
+    handleSquareClick(parseInt(target.dataset.row, 10), parseInt(target.dataset.col, 10));
+}
+
 function handleSquareClick(row, col) {
-    // console.log(`UI: Clicked logical square: (${row}, ${col})`);
-    if (isGameOver || isAIThinking) return;
-    
-    // Prevent interaction if it's not the human player's turn or in AI vs AI mode
-    if (gameMode === 'ai-ai' || (gameMode === 'ai-human' && currentPlayer !== playerColor)) {
-        console.log("UI: Not player's turn or AI vs AI mode.");
+    if (isInputLocked() || isGameOver || isAIThinking) return;
+    if (!isHumanTurn()) {
+        uiLog("UI: Not the human player's turn.");
         return;
     }
 
-    const clickedPiece = getPieceAt(row, col); // From gameLogic
+    const clickedPiece = getPieceAt(row, col);
 
     if (selectedSquare) {
-        // Check if the clicked square is a legal move for the selected piece
         const move = legalMovesForSelection.find(m => m.row === row && m.col === col);
         if (move) {
-            console.log("UI: Attempting move:", selectedSquare, "->", { row, col }, "Promotion?", move.isPromotion);
-            // Initiate the move process
-            makeMove(selectedSquare.row, selectedSquare.col, row, col, move.isPromotion);
+            const from = selectedSquare;
             clearSelectionAndHighlights();
-            // AI move is triggered after player move completes in finishMoveProcessing
-        } else {
-            // Clicked on a square that is NOT a legal move
-            clearSelectionAndHighlights();
-            // If clicked on another piece of the current player, select it
-            if (clickedPiece && isPlayerPiece(clickedPiece, currentPlayer)) {
-                selectPiece(row, col);
-            }
+            makeMove(from.row, from.col, row, col);
+            return;
         }
-    } else {
-        // No piece currently selected
-        if (clickedPiece && isPlayerPiece(clickedPiece, currentPlayer)) {
-            selectPiece(row, col);
-        }
+        clearSelectionAndHighlights();
+    }
+    if (clickedPiece && isPlayerPiece(clickedPiece, currentPlayer)) {
+        selectPiece(row, col);
     }
 }
 
 function selectPiece(row, col) {
-    // Ensure it's the correct player's piece
     const piece = getPieceAt(row, col);
-    if (!piece || getPlayerForPiece(piece) !== currentPlayer) {
-        return;
-    }
-    
+    if (!piece || getPlayerForPiece(piece) !== currentPlayer) return;
+
     selectedSquare = { row, col };
-    // console.log("UI: Selected piece:", piece, "at", selectedSquare);
-    
-    // Generate legal moves for this piece using gameLogic
-    legalMovesForSelection = generateLegalMoves(row, col); 
-    // console.log("UI: Generated legal moves:", legalMovesForSelection);
-    
+    legalMovesForSelection = generateLegalMoves(row, col);
     highlightSelectedSquare();
     highlightLegalMoves();
 }
@@ -364,1018 +290,737 @@ function selectPiece(row, col) {
 // --- Highlighting Functions ---
 function clearSelectionAndHighlights() {
     selectedSquare = null;
-    legalMovesForSelection = []; // Clear UI move list
-    document.querySelectorAll('.square.selected').forEach(sq => sq.classList.remove('selected'));
-    document.querySelectorAll('.square.legal-move').forEach(sq => sq.classList.remove('legal-move'));
-    document.querySelectorAll('.square.capture-move').forEach(sq => sq.classList.remove('capture-move'));
-     // Clear hint highlights if any
-     document.querySelectorAll('.square.hint-from').forEach(sq => sq.classList.remove('hint-from'));
-     document.querySelectorAll('.square.hint-to').forEach(sq => sq.classList.remove('hint-to'));
+    legalMovesForSelection = [];
+    boardElement.querySelectorAll('.square.selected, .square.legal-move, .square.capture-move')
+        .forEach(sq => sq.classList.remove('selected', 'legal-move', 'capture-move'));
+    clearHintHighlights();
+}
+
+function clearHintHighlights() {
+    boardElement.querySelectorAll('.square.hint-from, .square.hint-to')
+        .forEach(sq => sq.classList.remove('hint-from', 'hint-to'));
 }
 
 function highlightSelectedSquare() {
-    document.querySelectorAll('.square.selected').forEach(sq => sq.classList.remove('selected'));
+    boardElement.querySelectorAll('.square.selected').forEach(sq => sq.classList.remove('selected'));
     if (selectedSquare) {
-        const squareElement = getSquareElement(selectedSquare.row, selectedSquare.col);
-        if (squareElement) {
-            squareElement.classList.add('selected');
-        }
+        getSquareElement(selectedSquare.row, selectedSquare.col)?.classList.add('selected');
     }
 }
 
 function highlightLegalMoves() {
-    // Clear previous move highlights
-    document.querySelectorAll('.square.legal-move, .square.capture-move').forEach(sq => {
-        sq.classList.remove('legal-move', 'capture-move');
+    boardElement.querySelectorAll('.square.legal-move, .square.capture-move')
+        .forEach(sq => sq.classList.remove('legal-move', 'capture-move'));
+    legalMovesForSelection.forEach(move => {
+        const isCapture = getPieceAt(move.row, move.col) !== null || move.isEnPassant;
+        getSquareElement(move.row, move.col)?.classList.add(isCapture ? 'capture-move' : 'legal-move');
     });
-
-    // Ensure legalMovesForSelection is always an array before using forEach
-    if (Array.isArray(legalMovesForSelection)) {
-        legalMovesForSelection.forEach(move => {
-            const squareElement = getSquareElement(move.row, move.col);
-            if (squareElement) {
-                // Check for capture using gameLogic state
-                const isCapture = getPieceAt(move.row, move.col) !== null || move.isEnPassant;
-                squareElement.classList.add(isCapture ? 'capture-move' : 'legal-move');
-            } else {
-                 console.warn(`UI: Could not find square element for legal move: ${move.row}, ${move.col}`);
-            }
-        });
-    } else {
-         console.error("UI: highlightLegalMoves called when legalMovesForSelection is not an array:", legalMovesForSelection);
-         legalMovesForSelection = []; // Reset to prevent further errors if state is corrupt
-    }
 }
 
-// --- Move Execution (Initiation and Animation) ---
-// This function starts the move process, including animations.
-// It calls finishMoveProcessing after animations complete.
-function makeMove(fromRow, fromCol, toRow, toCol, needsPromotion = false) {
-    const piece = getPieceAt(fromRow, fromCol); // Get piece from logic
+// --- Move Execution ---
+// Validates and executes a move for the current player: updates the logical board immediately,
+// locks input, animates, then finishMoveProcessing switches the turn and records history.
+// promotionChoice ('Q'|'R'|'B'|'N') is required for promotions; without it the dialog opens.
+function makeMove(fromRow, fromCol, toRow, toCol, promotionChoice = null) {
+    if (isAnimating) return false;
+    const piece = getPieceAt(fromRow, fromCol);
     if (!piece) {
-        console.error("UI Error: Attempted to move from an empty square!", {fromRow, fromCol});
-        clearSelectionAndHighlights();
-        return;
+        console.error("UI Error: Attempted to move from an empty square!", { fromRow, fromCol });
+        return false;
     }
-    const capturedPiece = getPieceAt(toRow, toCol); // Logical captured piece
-    let specialMoveType = null; // 'castling', 'enpassant', 'promotion'
+    const legalMove = generateLegalMoves(fromRow, fromCol).find(m => m.row === toRow && m.col === toCol);
+    if (!legalMove) {
+        console.error("UI Error: Illegal move rejected.", { fromRow, fromCol, toRow, toCol, piece });
+        return false;
+    }
+    if (legalMove.isPromotion && !promotionChoice) {
+        showPromotionDialog(fromRow, fromCol, toRow, toCol);
+        return false;
+    }
 
-    // --- Store previous state info (needed for history) --- 
+    // Gather everything that depends on the pre-move position before mutating the board
+    const capturedOnTarget = getPieceAt(toRow, toCol);
+    const isCastling = piece.toUpperCase() === 'K' && Math.abs(toCol - fromCol) === 2;
+    const isEnPassant = piece.toUpperCase() === 'P' && toCol !== fromCol && !capturedOnTarget &&
+        enPassantTarget !== null && toRow === enPassantTarget.row && toCol === enPassantTarget.col;
+    // An en passant victim stands beside the attacker, on the attacker's starting rank
+    const victimRow = isEnPassant ? fromRow : toRow;
+    const victimPiece = isEnPassant ? getPieceAt(fromRow, toCol) : capturedOnTarget;
+    const promotionType = legalMove.isPromotion ? promotionChoice.toUpperCase() : null;
+    const placedPiece = promotionType
+        ? (currentPlayer === 'w' ? promotionType : promotionType.toLowerCase())
+        : piece;
+
+    let notation = getAlgebraicNotation(fromRow, fromCol, toRow, toCol, piece, capturedOnTarget, isEnPassant, isCastling);
+    if (promotionType) notation += '=' + promotionType;
+
     const prevStateInfo = {
-        currentPlayer: currentPlayer,
-        castlingRights: JSON.parse(JSON.stringify(castlingRights)), // Deep copy needed
-        enPassantTarget: enPassantTarget ? {...enPassantTarget} : null, // Deep copy needed
-        halfmoveClock: halfmoveClock,
-        fullmoveNumber: fullmoveNumber
+        currentPlayer,
+        castlingRights: JSON.parse(JSON.stringify(castlingRights)),
+        enPassantTarget: enPassantTarget ? { ...enPassantTarget } : null,
+        halfmoveClock,
+        fullmoveNumber
     };
 
-    // --- Determine Move Type and Base Notation --- 
-    const isCastling = (piece.toUpperCase() === 'K') && Math.abs(toCol - fromCol) === 2;
-    const isEnPassantCapture = (piece.toUpperCase() === 'P') && 
-                               toCol !== fromCol && !capturedPiece &&
-                               enPassantTarget && toRow === enPassantTarget.row && toCol === enPassantTarget.col;
-
-    if (isCastling) specialMoveType = 'castling';
-    if (isEnPassantCapture) specialMoveType = 'enpassant';
-    // Promotion is handled slightly differently
-
-    // Calculate base algebraic notation (before check/mate/promotion symbols)
-    let baseMoveNotation = getAlgebraicNotation(fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, isCastling);
-
-    // --- Handle Promotion --- 
-    if (needsPromotion) {
-        specialMoveType = 'promotion';
-        // Don't execute the move yet, show dialog first.
-        // Pass necessary info to the dialog handler.
-        showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation);
-        return; // Stop execution here, promotion dialog will continue
-    }
-
-    // --- Execute Non-Promotion Moves Logically (Update Board State) --- 
-    let capturedPawnActual = null;
-    let capturedPawnRow = -1;
-    let rookFromCol, rookToCol, rookRow, rookPiece;
-
-    // 1. En Passant: Remove the captured pawn logically
-    if (isEnPassantCapture) {
-        capturedPawnRow = currentPlayer === 'w' ? toRow + 1 : toRow - 1;
-        capturedPawnActual = getPieceAt(capturedPawnRow, toCol); // Should be 'P' or 'p'
-        setPieceAt(capturedPawnRow, toCol, null); 
-        console.log(`UI: Logical EP capture. Removed pawn at (${capturedPawnRow}, ${toCol})`);
-    }
-
-    // 2. Castling: Move the rook logically
+    const movingElement = getPieceElement(fromRow, fromCol);
+    const victimSquareElement = victimPiece ? getSquareElement(victimRow, toCol) : null;
+    let rookElement = null, rookFromCol = -1, rookToCol = -1;
     if (isCastling) {
         rookFromCol = toCol > fromCol ? BOARD_SIZE - 1 : 0;
         rookToCol = toCol > fromCol ? toCol - 1 : toCol + 1;
-        rookRow = fromRow;
-        rookPiece = getPieceAt(rookRow, rookFromCol); // Get the actual rook piece
-
-        if (rookPiece) {
-             setPieceAt(rookRow, rookToCol, rookPiece);
-             setPieceAt(rookRow, rookFromCol, null);
-             console.log(`UI: Logical castling. Moved rook from ${rookFromCol} to ${rookToCol}`);
-        } else {
-             console.error("UI Castling Error: Rook not found at expected position:", {rookRow, rookFromCol});
-             // TODO: How to handle this error gracefully? Revert King move?
-        }
+        rookElement = getPieceElement(fromRow, rookFromCol);
     }
 
-    // 3. Standard Move: Update board array
-    setPieceAt(toRow, toCol, piece);
+    // Lock input and apply the move to the logical board
+    isAnimating = true;
+    const version = ++positionVersion;
+    cancelHint();
+    clearSelectionAndHighlights();
+
+    if (isEnPassant) setPieceAt(fromRow, toCol, null);
+    if (isCastling) {
+        setPieceAt(fromRow, rookToCol, getPieceAt(fromRow, rookFromCol));
+        setPieceAt(fromRow, rookFromCol, null);
+    }
+    setPieceAt(toRow, toCol, placedPiece);
     setPieceAt(fromRow, fromCol, null);
+    updateStatusDisplay();
 
-    // --- Animate Movement --- 
-    const movingPieceElement = getPieceElement(fromRow, fromCol); // Get element from ORIGINAL pos
-    const targetSquareElement = getSquareElement(toRow, toCol);
-
-    // Callback after main piece animation completes
-    const onMainMoveComplete = () => {
-        // If castling, animate the rook *after* the king finishes
-        if (isCastling && rookPiece) {
-             // Find the visual rook element *where it logically ended up*
-             const finalRookElement = getPieceElement(rookRow, rookToCol); 
-             const rookTargetSquareElement = getSquareElement(rookRow, rookToCol);
-             
-             // We need to *re-render* the board quickly *before* rook animation
-             // to create the rook element at its new logical spot if it wasn't rendered yet.
-             // However, this might cause flicker. A better way is to create/move the rook element manually.
-
-             // **Alternative: Manually create/move rook for animation**
-             let rookElementToAnimate = getPieceElement(rookRow, rookFromCol); // Try finding original
-             if (!rookElementToAnimate) {
-                // If original doesn't exist (maybe due to previous render issues),
-                // create a temporary one for animation? Or find the logically moved one?
-                // Let's find the one that *should* be there after the logical move.
-                renderBoard(); // Quick render to ensure piece exists visually at rookToCol
-                rookElementToAnimate = getPieceElement(rookRow, rookToCol);
-                console.warn("Castling animation: Had to re-render to find rook element.")
-             } else {
-                 // Move existing rook element visually before animation
-                  const r_vis = playerColor === 'w' ? rookRow : BOARD_SIZE - 1 - rookRow;
-                  const c_vis_start = playerColor === 'w' ? rookFromCol : BOARD_SIZE - 1 - rookFromCol;
-                  rookElementToAnimate.style.top = `${r_vis * 100 / BOARD_SIZE}%`;
-                  rookElementToAnimate.style.left = `${c_vis_start * 100 / BOARD_SIZE}%`;
-                  // Update its dataset AFTER animation
-             }
-
-             if (rookElementToAnimate && rookTargetSquareElement) {
-                 console.log("UI: Animating castling rook...");
-                 animatePieceMovement(rookElementToAnimate, rookTargetSquareElement, rookRow, rookToCol, () => {
-                     finishMoveProcessing(prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, specialMoveType, baseMoveNotation);
-                 });
-             } else {
-                 console.error("UI Castling Animation Error: Rook element not found for animation.");
-                 // Proceed without rook animation if element missing
-                 finishMoveProcessing(prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, specialMoveType, baseMoveNotation);
-             }
-        } else {
-             // For non-castling moves, or castling where rook animation failed
-             // Pass the correct captured piece info (including for en passant)
-             const logicalCapture = capturedPiece || (isEnPassantCapture ? capturedPawnActual : null);
-             finishMoveProcessing(prevStateInfo, piece, logicalCapture, fromRow, fromCol, toRow, toCol, specialMoveType, baseMoveNotation);
-        }
-    };
-
-    // --- Handle Capture Animation --- 
-    let pieceToAnimateRemoval = null;
-    let removalRow = -1, removalCol = -1;
-    let removalPieceType = null;
-
-    if (capturedPiece && !isEnPassantCapture) {
-         pieceToAnimateRemoval = getPieceElement(toRow, toCol); // Piece at destination
-         removalRow = toRow;
-         removalCol = toCol;
-         removalPieceType = capturedPiece;
-         console.log("UI: Standard capture animation setup.");
-    } else if (isEnPassantCapture && capturedPawnActual) {
-         pieceToAnimateRemoval = getPieceElement(capturedPawnRow, toCol); // Piece at EP capture square
-         removalRow = capturedPawnRow;
-         removalCol = toCol;
-         removalPieceType = capturedPawnActual;
-          console.log("UI: En Passant capture animation setup.");
+    const moveInfo = { prevStateInfo, piece, capturedPiece: victimPiece, fromRow, fromCol, toRow, toCol, notation, captureSoundPlayed: false };
+    let capturePhase = Promise.resolve(false);
+    if (victimPiece) {
+        const outcome = previewCheckAfterMove(piece, fromRow, toRow, fromCol);
+        const ctx = {
+            enPassant: isEnPassant,
+            promotionTo: promotionType,
+            givesCheck: outcome.givesCheck,
+            isMate: outcome.isMate,
+            isAI: isAITurn()
+        };
+        capturePhase = playCaptureAnimation(piece, victimPiece, victimSquareElement, ctx);
     }
 
-    // Start the animation sequence
-    if (pieceToAnimateRemoval) {
-        animateAndRemovePiece(removalRow, removalCol, removalPieceType, isEnPassantCapture, () => {
-             // After capture animation, animate the main piece move
-             if (movingPieceElement && targetSquareElement) {
-                  animatePieceMovement(movingPieceElement, targetSquareElement, toRow, toCol, onMainMoveComplete);
-             } else {
-                 console.warn("UI: Moving piece element missing for animation after capture.");
-                 onMainMoveComplete(); // Proceed without animation
-             }
-         }, fromRow, fromCol); // Pass attacker coords for 3D anim context
-    } else {
-         // No capture, just animate the main piece move
-         if (movingPieceElement && targetSquareElement) {
-              animatePieceMovement(movingPieceElement, targetSquareElement, toRow, toCol, onMainMoveComplete);
-         } else {
-             console.warn("UI: Moving piece element missing for animation (non-capture).");
-             onMainMoveComplete(); // Proceed without animation
-         }
-    }
+    capturePhase
+        .then(soundPlayed => {
+            if (version !== positionVersion) return;
+            moveInfo.captureSoundPlayed = soundPlayed === true;
+            return Promise.all([
+                animatePieceTo(movingElement, toRow, toCol),
+                isCastling ? animatePieceTo(rookElement, fromRow, rookToCol) : null
+            ]);
+        })
+        .catch(error => console.error("UI: Move animation failed:", error))
+        .then(() => {
+            if (version !== positionVersion) return; // Aborted by new game / navigation
+            finishMoveProcessing(moveInfo);
+        });
+    return true;
 }
 
-// --- Promotion Handling --- 
-function showPromotionDialog(fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation) {
-    promotionModal.style.display = 'flex';
-
-    // Store move details temporarily on the modal element itself
-    promotionModal.moveDetails = { fromRow, fromCol, toRow, toCol, piece, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation };
-
-    // Clear previous listeners by cloning and replacing buttons
-    promotionButtons.forEach(button => {
-        const newButton = button.cloneNode(true);
-        button.parentNode.replaceChild(newButton, button);
+// --- Promotion Handling ---
+function showPromotionDialog(fromRow, fromCol, toRow, toCol) {
+    pendingPromotion = { fromRow, fromCol, toRow, toCol };
+    const isWhite = currentPlayer === 'w';
+    promotionPieceButtons.forEach(button => {
+        const type = button.dataset.piece;
+        button.querySelector('.promo-symbol').textContent = PIECES[isWhite ? type : type.toLowerCase()];
     });
-    // Get the new buttons
-    const currentPromotionButtons = promotionModal.querySelectorAll('button');
-
-    // Add listeners to the NEW buttons
-    currentPromotionButtons.forEach(button => {
-        button.onclick = () => { // Use onclick for simplicity after cloning
-            const chosenPieceType = button.getAttribute('data-piece');
-             // Retrieve stored move details
-             const moveDetails = promotionModal.moveDetails;
-             if (moveDetails && chosenPieceType) {
-                 console.log(`Promotion choice: ${chosenPieceType}`);
-                 promotionModal.style.display = 'none';
-                 // Execute the promotion logic with the chosen piece
-                 executePromotion(
-                     moveDetails.fromRow, 
-                     moveDetails.fromCol, 
-                     moveDetails.toRow, 
-                     moveDetails.toCol, 
-                     chosenPieceType, 
-                     moveDetails.piece, // Original pawn
-                     moveDetails.capturedPiece, 
-                     moveDetails.isEnPassantCapture, 
-                     moveDetails.prevStateInfo, 
-                     moveDetails.baseMoveNotation
-                 );
-             } else {
-                 console.error("Error retrieving move details or chosen piece for promotion.");
-                 promotionModal.style.display = 'none'; // Hide modal anyway
-             }
-        }; // End of onclick handler
-    }); // End of currentPromotionButtons.forEach
+    promotionModal.style.display = 'flex';
+    updateStatusDisplay();
+    promotionPieceButtons[0]?.focus();
 }
 
-// --- Helper function to execute promotion logic after choice --- 
-function executePromotion(fromRow, fromCol, toRow, toCol, chosenPieceType, originalPawn, capturedPiece, isEnPassantCapture, prevStateInfo, baseMoveNotation) {
-    const promotionPiece = prevStateInfo.currentPlayer === 'w' ? chosenPieceType.toUpperCase() : chosenPieceType.toLowerCase();
-    const finalMoveNotation = baseMoveNotation + "=" + chosenPieceType.toUpperCase();
-
-    // --- Execute Promotion Logically --- 
-    let capturedPawnActual = null;
-    let capturedPawnRow = -1;
-    // 1. Handle potential en passant capture during promotion (rare but possible)
-    if (isEnPassantCapture) {
-        capturedPawnRow = prevStateInfo.currentPlayer === 'w' ? toRow + 1 : toRow - 1;
-        capturedPawnActual = getPieceAt(capturedPawnRow, toCol); 
-        setPieceAt(capturedPawnRow, toCol, null); 
-    }
-    // 2. Update board: Place promoted piece, remove original pawn
-    setPieceAt(toRow, toCol, promotionPiece);
-    setPieceAt(fromRow, fromCol, null);
-
-    // --- Finish Move Processing --- 
-    const logicalCapture = capturedPiece || (isEnPassantCapture ? capturedPawnActual : null);
-    // Pass 'promotion' as specialMoveType explicitly, and use originalPawn for history tracking
-    finishMoveProcessing(prevStateInfo, originalPawn, logicalCapture, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
+function closePromotionDialog() {
+    pendingPromotion = null;
+    promotionModal.style.display = 'none';
 }
 
-// --- Post-Animation Move Processing (Handles Logic Updates, State Checks, UI Updates) ---
-function finishMoveProcessing(prevStateInfo, movedPiece, capturedPieceLogical, fromRow, fromCol, toRow, toCol, specialMoveType, finalMoveNotationBase) {
-    // console.log("UI: Finishing move processing for:", finalMoveNotationBase);
+function choosePromotion(pieceType) {
+    const pending = pendingPromotion;
+    if (!pending) return;
+    closePromotionDialog();
+    makeMove(pending.fromRow, pending.fromCol, pending.toRow, pending.toCol, pieceType);
+}
+
+// Nothing has changed on the board yet, so cancelling just closes the dialog
+function cancelPromotion() {
+    if (!pendingPromotion) return;
+    closePromotionDialog();
+    clearSelectionAndHighlights();
+    updateStatusDisplay();
+}
+
+// --- Post-Animation Move Processing ---
+// Called after the logical board is updated but before the turn switches: does the move give check / mate?
+function previewCheckAfterMove(piece, fromRow, toRow, fromCol) {
+    const opponent = getOpponent(currentPlayer);
+    const savedEnPassant = enPassantTarget;
+    enPassantTarget = (piece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2)
+        ? { row: (fromRow + toRow) / 2, col: fromCol }
+        : null;
+    const givesCheck = isKingInCheck(opponent);
+    const isMate = givesCheck && !hasLegalMoves(opponent);
+    enPassantTarget = savedEnPassant;
+    return { givesCheck, isMate };
+}
+
+function finishMoveProcessing({ prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, notation, captureSoundPlayed }) {
     const playerWhoMoved = prevStateInfo.currentPlayer;
 
-    // --- Update Game State (Castling, EP, Clocks) --- 
-    // 1. Update Castling Rights
-    if (movedPiece === 'K') { castlingRights.w.K = castlingRights.w.Q = false; }
-    if (movedPiece === 'k') { castlingRights.b.K = castlingRights.b.Q = false; }
-    if (movedPiece === 'R') {
-         if (playerWhoMoved === 'w') {
-             if (fromRow === 7 && fromCol === 0) castlingRights.w.Q = false; // a1
-             if (fromRow === 7 && fromCol === 7) castlingRights.w.K = false; // h1
-         } else {
-             if (fromRow === 0 && fromCol === 0) castlingRights.b.Q = false; // a8
-             if (fromRow === 0 && fromCol === 7) castlingRights.b.K = false; // h8
-         }
+    // 1. Castling rights
+    if (piece === 'K') castlingRights.w.K = castlingRights.w.Q = false;
+    if (piece === 'k') castlingRights.b.K = castlingRights.b.Q = false;
+    if (piece === 'R' && fromRow === 7) {
+        if (fromCol === 0) castlingRights.w.Q = false;
+        if (fromCol === 7) castlingRights.w.K = false;
     }
-    // If a rook is captured *on its starting square*
-    if (capturedPieceLogical && capturedPieceLogical.toUpperCase() === 'R') {
-         const opponent = getOpponent(playerWhoMoved);
-         if (opponent === 'w') {
-             if (toRow === 7 && toCol === 0) castlingRights.w.Q = false; // a1 captured
-             if (toRow === 7 && toCol === 7) castlingRights.w.K = false; // h1 captured
-         } else {
-             if (toRow === 0 && toCol === 0) castlingRights.b.Q = false; // a8 captured
-             if (toRow === 0 && toCol === 7) castlingRights.b.K = false; // h8 captured
-         }
+    if (piece === 'r' && fromRow === 0) {
+        if (fromCol === 0) castlingRights.b.Q = false;
+        if (fromCol === 7) castlingRights.b.K = false;
+    }
+    // A rook captured on its starting square
+    if (capturedPiece === 'R' && toRow === 7) {
+        if (toCol === 0) castlingRights.w.Q = false;
+        if (toCol === 7) castlingRights.w.K = false;
+    }
+    if (capturedPiece === 'r' && toRow === 0) {
+        if (toCol === 0) castlingRights.b.Q = false;
+        if (toCol === 7) castlingRights.b.K = false;
     }
 
-    // 2. Update En Passant Target
-    if (movedPiece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2) {
-        enPassantTarget = { row: (fromRow + toRow) / 2, col: fromCol };
-    } else {
-        enPassantTarget = null;
-    }
+    // 2. En passant target
+    enPassantTarget = (piece.toUpperCase() === 'P' && Math.abs(toRow - fromRow) === 2)
+        ? { row: (fromRow + toRow) / 2, col: fromCol }
+        : null;
 
-    // 3. Update Clocks
-    if (movedPiece.toUpperCase() === 'P' || capturedPieceLogical) {
-        halfmoveClock = 0;
-    } else {
-        halfmoveClock++;
-    }
-    if (playerWhoMoved === 'b') {
-        fullmoveNumber++;
-    }
+    // 3. Clocks
+    halfmoveClock = (piece.toUpperCase() === 'P' || capturedPiece) ? 0 : halfmoveClock + 1;
+    if (playerWhoMoved === 'b') fullmoveNumber++;
 
-    // 4. Switch Player
+    // 4. Switch player and record the new position (truncates any reviewed future moves)
     currentPlayer = getOpponent(playerWhoMoved);
+    pushHistoryState({ notation, moveNumber: prevStateInfo.fullmoveNumber });
+    const entry = gameHistory[currentMoveIndex];
+    entry.lastMove = { from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol } };
 
-    // --- Check Game End Conditions --- 
-    let endCondition = checkGameEndCondition(); // Checks for mate/stalemate for the *new* current player
-    let isCheck = false;
-    let finalMoveNotation = finalMoveNotationBase;
+    // 5. Game end / check (the new position is already in history for the repetition count)
+    const { isCheck, isCheckmate } = evaluateGameState();
+    entry.moveNotation = notation + (isCheckmate ? '#' : isCheck ? '+' : '');
+    entry.statusMessage = gameStatusMessage;
 
-    if (endCondition === 'checkmate') {
-        isGameOver = true;
-        gameStatusMessage = `Checkmate! ${playerWhoMoved === 'w' ? 'White' : 'Black'} wins.`;
-        finalMoveNotation += '#';
-        playSound(sounds.gameOver);
-    } else if (endCondition === 'stalemate') {
-        isGameOver = true;
-        gameStatusMessage = "Stalemate! Game is a draw.";
-        playSound(sounds.gameOver);
-    } else {
-        // Not mate/stalemate, check for other draw conditions or simple check
-        isCheck = isKingInCheck(currentPlayer); // Is the *new* current player in check?
-        if (isCheck) {
-             finalMoveNotation += '+';
-        }
+    if (isGameOver) playSound(sounds.gameOver);
+    else if (isCheck) playSound(sounds.check);
+    else if (!capturedPiece) playSound(sounds.move);
+    else if (!captureSoundPlayed) playSound(sounds.capture);
 
-        if (halfmoveClock >= 100) {
-            isGameOver = true;
-            gameStatusMessage = "Draw by 50-move rule.";
-            playSound(sounds.gameOver);
-        } else if (checkThreefoldRepetition()) { // Needs history access
-            isGameOver = true;
-            gameStatusMessage = "Draw by threefold repetition.";
-            playSound(sounds.gameOver);
-        } else if (hasInsufficientMaterial()) {
-            isGameOver = true;
-            gameStatusMessage = "Draw by insufficient material.";
-            playSound(sounds.gameOver);
-        }
-    }
-    
-    // If game didn't end, set status based on check
-    if (!isGameOver) {
-         if (isCheck) {
-             gameStatusMessage = `${currentPlayer === 'w' ? 'White' : 'Black'} is in Check!`;
-             playSound(sounds.check); // Play check sound
-         } else {
-              gameStatusMessage = `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
-              // Play move/capture sound only if not check/game over
-              playSound(capturedPieceLogical ? sounds.capture : sounds.move);
-         }
-    }
+    lastMove = entry.lastMove;
+    isAnimating = false;
+    isReviewing = false;
+    positionVersion++;
 
-    // --- Record History --- 
-    // Push state AFTER all logical updates for the move are done
-    pushHistoryState({ notation: finalMoveNotation, moveNumber: prevStateInfo.fullmoveNumber });
-
-    // Reset AI thinking flag AFTER all processing but BEFORE UI updates for the *next* turn
-    if ((gameMode === 'ai-human' && playerWhoMoved !== playerColor) || gameMode === 'ai-ai') {
-        isAIThinking = false;
-        console.log("UI: Reset isAIThinking flag after AI move completion.");
-    }
-
-    // --- Update UI --- 
-    renderBoard(); // Re-render with new piece positions and check highlights
+    renderBoard();
     updateStatusDisplay();
     updateMoveHistoryDisplay();
-    updateHistoryButtons();
-
-    // --- Trigger AI if applicable --- 
     checkAndTriggerAIMove();
-    // console.log("UI: Move processing complete.");
 }
 
-// --- Helper to check conditions and trigger AI --- 
+// Sets isGameOver and gameStatusMessage for the current position (whose state is at gameHistory[currentMoveIndex])
+function evaluateGameState() {
+    const endCondition = checkGameEndCondition();
+    const isCheck = isKingInCheck(currentPlayer);
+    isGameOver = true;
+    if (endCondition === 'checkmate') {
+        gameStatusMessage = `Checkmate! ${sideName(getOpponent(currentPlayer))} wins.`;
+    } else if (endCondition === 'stalemate') {
+        gameStatusMessage = "Stalemate! Game is a draw.";
+    } else if (halfmoveClock >= 100) {
+        gameStatusMessage = "Draw by 50-move rule.";
+    } else if (checkThreefoldRepetition()) {
+        gameStatusMessage = "Draw by threefold repetition.";
+    } else if (hasInsufficientMaterial()) {
+        gameStatusMessage = "Draw by insufficient material.";
+    } else {
+        isGameOver = false;
+        gameStatusMessage = isCheck ? `${sideName(currentPlayer)} is in check!` : `${sideName(currentPlayer)}'s turn.`;
+    }
+    return { isCheck, isCheckmate: endCondition === 'checkmate' };
+}
+
+// --- AI Orchestration ---
 function checkAndTriggerAIMove() {
-    if (isAIThinking) {
-         console.log("AI is already thinking, skipping trigger.");
-         return;
-    }
-    // Check if AI needs to move based on game mode
-    let shouldAIMove = false;
-    if (gameMode === 'ai-human' && currentPlayer !== playerColor) {
-        shouldAIMove = true;
-    } else if (gameMode === 'ai-ai') {
-        shouldAIMove = true;
-    }
-
-    if (shouldAIMove && !isGameOver) {
-        const delay = gameMode === 'ai-ai' ? 500 : 100; // Longer delay for AI vs AI
-        console.log(`UI: Triggering AI move for ${currentPlayer} (ELO: ${aiElo}) with delay ${delay}ms. Mode: ${gameMode}`);
-        isAIThinking = true;
-        updateStatusDisplay(); // Update status to show spinner and message
-        boardElement.classList.add('ai-thinking');
-        
-        // Store timeout ID so it can be cleared if needed (e.g., new game)
-        if (aiThinkingTimeoutId) clearTimeout(aiThinkingTimeoutId); // Clear previous if any
-        aiThinkingTimeoutId = setTimeout(() => {
-             triggerAIMove();
-             aiThinkingTimeoutId = null; // Clear ID after execution
-        }, delay); 
-    } else {
-        isAIThinking = false; 
-        updateStatusDisplay(); // Ensure status is correct and spinner is removed
-        boardElement.classList.remove('ai-thinking');
-    }
-}
-
-function triggerAIMove() {
-    // Revised condition check:
-    let abort = false;
-    if (!isAIMode()) { // Abort if not any AI mode
-        abort = true;
-        console.log("Aborting AI trigger: Not an AI mode.");
-    } else if (gameMode === 'ai-human' && currentPlayer === playerColor) { // Abort in AI vs Human if it IS the human's turn
-        abort = true;
-         console.log("Aborting AI trigger: It's human's turn in ai-human mode.");
-    // *** ADDED: Check if the thinking flag is still true. It might have been reset by user interaction. ***
-    } else if (!isAIThinking) {
-         abort = true;
-         console.log("Aborting AI trigger: AI thinking flag is not set (likely interrupted).");
-         boardElement.classList.remove('ai-thinking'); // Clean up UI just in case
-         return;
-    }
-    // *** END ADDED ***
-
-    if (abort) {
-        console.log("Aborting AI move trigger: Conditions not met.");
-        // Ensure thinking flag is reset if we abort here, unless it was already false
-        if (isAIThinking) {
-            isAIThinking = false; 
-            updateStatusDisplay(); // Update status to remove spinner
-        }
-        boardElement.classList.remove('ai-thinking');
+    if (isAIThinking || isInputLocked() || isReviewing || isGameOver || !isAITurn()) {
+        updateStatusDisplay();
         return;
     }
+    const version = positionVersion;
+    isAIThinking = true;
+    updateStatusDisplay();
 
-    // Clear the timeout ID as we are now executing
-    aiThinkingTimeoutId = null;
-
-    console.log(`Requesting AI move calculation with ELO: ${aiElo}`);
-    const aiMove = calculateBestMove(aiElo);
-
-    // *** ADDED: Check if still thinking after calculation, might have been interrupted ***
-    if (!isAIThinking) {
-        console.log("AI move calculation finished, but thinking was interrupted. Discarding move.");
-        boardElement.classList.remove('ai-thinking');
-        // No need to call updateStatusDisplay again unless state changed unexpectedly
-        return;
-    }
-    // *** END ADDED ***
-
-    if (aiMove) {
-        console.log("UI: AI chose move:", aiMove);
-        // Ensure the move object has the necessary 'from' and 'to' structure
-        if (aiMove.from && aiMove.to) {
-            // Check if promotion is needed based on AI move details
-            const needsPromotion = aiMove.isPromotion || (aiMove.piece?.toUpperCase() === 'P' && (aiMove.to.row === 0 || aiMove.to.row === 7));
-
-            if (needsPromotion) {
-                 // AI should ideally decide promotion piece type.
-                 // For now, assume Queen promotion if AI doesn't specify.
-                 // The calculateBestMove should be updated to return promotion choice.
-                 // Let's assume the AI function adds a 'promotionPiece' property if needed.
-                 let promotionPieceType = aiMove.promotionPiece || 'Q'; // Default to Queen
-                 console.log(`AI promoting pawn to ${promotionPieceType}`);
-                 // *** Pass thinking flag reset responsibility to the called function ***
-                 handleAIPromotion(aiMove.from.row, aiMove.from.col, aiMove.to.row, aiMove.to.col, promotionPieceType);
-            } else {
-                 // Simulate making the move through the UI function to trigger animations/updates
-                 // Use the core makeMove logic, but skip the player turn check
-                 console.log(`Executing AI move: ${JSON.stringify(aiMove.from)} -> ${JSON.stringify(aiMove.to)}`);
-                 // *** Pass thinking flag reset responsibility to the called function ***
-                 makeMove(aiMove.from.row, aiMove.from.col, aiMove.to.row, aiMove.to.col, false);
-                 // makeMove already handles setting isAIThinking to false via finishMoveProcessing AFTER processing is complete
-            }
-        } else {
-            console.error("AI move object is missing 'from' or 'to' properties:", aiMove);
-            statusMessageElement.textContent = "AI Error: Invalid move format.";
-            isAIThinking = false; // Reset thinking flag on error
-            updateStatusDisplay(); // Re-evaluate game status and remove spinner
-            boardElement.classList.remove('ai-thinking');
-        }
-    } else {
-        console.log("UI: AI returned no move. Game might be over.");
-        isAIThinking = false; // Reset thinking flag
-        updateStatusDisplay(); // Re-evaluate game status and remove spinner
-        boardElement.classList.remove('ai-thinking');
-    }
+    const delay = gameMode === 'ai-ai' ? 500 : 100; // Lets the "thinking" state render first
+    aiDelayTimeoutId = setTimeout(() => {
+        aiDelayTimeoutId = null;
+        startAIRequest(version);
+    }, delay);
 }
 
-// --- AI Promotion Handler --- 
-// Simplified version of makeMove for AI promotion (always Queen)
-function handleAIPromotion(fromRow, fromCol, toRow, toCol, chosenPieceType) {
-     console.log(`UI: Handling AI promotion to ${chosenPieceType}`);
-     const piece = getPieceAt(fromRow, fromCol); 
-     const capturedPiece = getPieceAt(toRow, toCol); // May be null
-     const promotionPiece = currentPlayer === 'w' ? chosenPieceType.toUpperCase() : chosenPieceType.toLowerCase(); // AI's color
+function startAIRequest(version) {
+    if (!isAIThinking || version !== positionVersion) return;
+    uiLog(`UI: Requesting AI move for ${currentPlayer} (ELO ${aiElo})`);
 
-     if (!piece || piece.toUpperCase() !== 'P') {
-          console.error("AI Promotion Error: Invalid piece for promotion.", {fromRow, fromCol, piece});
-           isAIThinking = false; // Reset flag on error
-           updateStatusDisplay(); // Update status to remove spinner
-          return;
-     }
-
-     const prevStateInfo = {
-         currentPlayer: currentPlayer, // AI is making the move
-         castlingRights: JSON.parse(JSON.stringify(castlingRights)),
-         enPassantTarget: enPassantTarget ? {...enPassantTarget} : null,
-         halfmoveClock: halfmoveClock,
-         fullmoveNumber: fullmoveNumber
-     };
-
-     let baseMoveNotation = getAlgebraicNotation(fromRow, fromCol, toRow, toCol, piece, capturedPiece, false, false); // No EP/Castle
-     const finalMoveNotation = baseMoveNotation + "=" + chosenPieceType.toUpperCase(); // Standard notation uses uppercase
-
-     // --- Execute Promotion Logically --- 
-     setPieceAt(toRow, toCol, promotionPiece); // Place promoted piece
-     setPieceAt(fromRow, fromCol, null);      // Remove original pawn
-
-     // --- Animation (Skip complex animation for AI promo) ---
-     // Rely on finishMoveProcessing -> renderBoard for visual update.
-
-     // --- Finish Move Processing --- 
-     finishMoveProcessing(prevStateInfo, piece, capturedPiece, fromRow, fromCol, toRow, toCol, 'promotion', finalMoveNotation);
-     
-     // isAIThinking will be set to false inside finishMoveProcessing if it triggers the next player's turn correctly.
-}
-
-// --- Animation Functions ---
-function animatePieceMovement(pieceElement, targetSquareElement, toRow, toCol, onComplete) {
-    if (!pieceElement || !targetSquareElement) {
-        console.warn("UI Animation: Target elements missing for move.", {pieceElement, targetSquareElement});
-        if (onComplete) onComplete();
+    let handle;
+    try {
+        handle = requestAIMove(getCurrentGameStateSnapshot(), aiElo);
+    } catch (error) {
+        console.error("UI: AI request failed to start:", error);
+        isAIThinking = false;
+        updateStatusDisplay();
+        statusMessageElement.textContent = "AI error: could not compute a move.";
         return;
     }
+    aiRequest = handle;
 
-    // Calculate visual destination based on logical coords and player color
-    const r_visual = playerColor === 'w' ? toRow : BOARD_SIZE - 1 - toRow;
-    const c_visual = playerColor === 'w' ? toCol : BOARD_SIZE - 1 - toCol;
-
-    const targetLeft = `${c_visual * 100 / BOARD_SIZE}%`;
-    const targetTop = `${r_visual * 100 / BOARD_SIZE}%`;
-
-    // Ensure the piece is visually on top during animation
-    pieceElement.style.zIndex = '100'; 
-
-    gsap.to(pieceElement, {
-        left: targetLeft,
-        top: targetTop,
-        duration: 0.35,
-        ease: "power2.out",
-        onComplete: () => {
-            // Update data attributes AFTER animation
-            pieceElement.dataset.row = toRow;
-            pieceElement.dataset.col = toCol;
-             // Reset z-index after animation
-             pieceElement.style.zIndex = '10'; 
-            if (onComplete) {
-                onComplete();
-            }
+    handle.promise.then(move => {
+        if (aiRequest !== handle) return; // Cancelled or superseded
+        aiRequest = null;
+        isAIThinking = false;
+        if (version !== positionVersion) {
+            uiLog("UI: Discarding AI move for a stale position.");
+            checkAndTriggerAIMove();
+            return;
         }
+        applyAIMove(move);
+    }).catch(error => {
+        if (aiRequest !== handle) return;
+        aiRequest = null;
+        isAIThinking = false;
+        console.error("UI: AI move request failed:", error);
+        updateStatusDisplay();
+        statusMessageElement.textContent = "AI error: could not compute a move.";
     });
 }
 
-function animateAndRemovePiece(row, col, pieceType, isEnPassant = false, onComplete, attackerRow, attackerCol) {
-    const pieceElement = getPieceElement(row, col); // Find piece at logical capture square
-    if (pieceElement) {
-        // Try to get attacker piece type for 3D animation context
-        let attackerPiece = null;
-        if (selectedSquare) { // If human move
-            attackerPiece = getPieceAt(selectedSquare.row, selectedSquare.col);
-        } else if (attackerRow !== undefined && attackerCol !== undefined) { // If AI move
-            attackerPiece = getPieceAt(attackerRow, attackerCol);
-        }
-        
-        if (attackerPiece && !isEnPassant) { // Use 3D animation if attacker found and not EP
-            console.log("UI: Triggering 3D capture animation (placeholder).");
-            animateCapture3D(attackerPiece, pieceType, () => {
-                if (document.body.contains(pieceElement)) pieceElement.remove();
-                if (onComplete) onComplete();
-            });
-            return; // Use 3D animation
-        } else if (!isEnPassant) {
-            console.warn("UI: Could not determine attacker for 3D animation or it was En Passant, using fade.");
-        }
-
-        // Fallback: Simple fade out (also used for En Passant)
-        console.log("UI: Using fade out animation for captured piece.");
-        pieceElement.style.transition = 'opacity 0.3s ease-out';
-        pieceElement.style.opacity = '0';
-        setTimeout(() => {
-            // Double check element exists before removing
-            if (document.body.contains(pieceElement)) {
-                pieceElement.remove();
-            }
-            if (onComplete) onComplete();
-        }, 300); // Duration matches transition
-
-    } else {
-        console.warn(`UI Capture Animation: Piece element not found at target (${row}, ${col})`);
-        if (onComplete) onComplete(); // Ensure callback happens even if piece missing
+function applyAIMove(move) {
+    if (!move || !move.from || !move.to) {
+        if (move) console.error("UI: AI returned a malformed move:", move);
+        updateStatusDisplay();
+        statusMessageElement.textContent = "AI could not find a move.";
+        return;
+    }
+    uiLog("UI: AI chose move:", move);
+    const started = makeMove(move.from.row, move.from.col, move.to.row, move.to.col, move.promotionPiece || 'Q');
+    if (!started) {
+        updateStatusDisplay();
+        statusMessageElement.textContent = "AI error: returned an illegal move.";
     }
 }
+
+function cancelAIRequest() {
+    if (aiDelayTimeoutId) {
+        clearTimeout(aiDelayTimeoutId);
+        aiDelayTimeoutId = null;
+    }
+    if (aiRequest) {
+        const handle = aiRequest;
+        aiRequest = null;
+        handle.cancel();
+    }
+    isAIThinking = false;
+}
+
+// --- Animation ---
+function animatePieceTo(pieceElement, row, col) {
+    return new Promise(resolve => {
+        if (!pieceElement) return resolve();
+        const { left, top } = visualPosition(row, col);
+        const done = () => {
+            pieceElement.dataset.row = row;
+            pieceElement.dataset.col = col;
+            pieceElement.style.zIndex = '';
+            resolve();
+        };
+        if (typeof gsap === 'undefined') {
+            pieceElement.style.left = left;
+            pieceElement.style.top = top;
+            done();
+            return;
+        }
+        pieceElement.style.zIndex = '100'; // Stay above other pieces while moving
+        gsap.to(pieceElement, { left, top, duration: MOVE_ANIMATION_SECONDS, ease: "power2.out", onComplete: done });
+    });
+}
+
+// Capture animation hook. attackerPiece/victimPiece are piece codes ('N', 'p', ...) and squareEl is
+// the square the victim stands on (differs from the destination for en passant).
+// ctx = { enPassant, promotionTo, givesCheck, isMate, isAI }.
+// Resolves once the victim's piece element is gone: true if the animation already played the capture
+// sound (finishMoveProcessing then skips capture.mp3). It must never stall the move flow, so it also
+// resolves after a timeout or when the page is hidden. Currently a simple fade that plays no sound.
+const CAPTURE_FADE_SECONDS = 0.25;
+
+function playCaptureAnimation(attackerPiece, victimPiece, squareEl, ctx = {}) {
+    const victimElement = squareEl ? getPieceElement(squareEl.dataset.row, squareEl.dataset.col) : null;
+    return new Promise(resolve => {
+        let settled = false;
+        let timeoutId = null;
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') finish();
+        };
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            if (victimElement) {
+                if (typeof gsap !== 'undefined') gsap.killTweensOf(victimElement);
+                victimElement.remove();
+            }
+            resolve(false);
+        };
+        if (!victimElement || typeof gsap === 'undefined') return finish();
+        timeoutId = setTimeout(finish, CAPTURE_FADE_SECONDS * 1000 + 500);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        gsap.to(victimElement, { opacity: 0, duration: CAPTURE_FADE_SECONDS, ease: "power1.out", onComplete: finish });
+    });
+}
+
+// Stops running capture animations (called on undo/navigation, new game and color flip).
+// No-op for the fade; the battle animation system will hook in here.
+function cancelCaptureAnimations() {}
 
 // --- Sound Control ---
 function playSound(audioElement) {
-    if (soundEnabled && audioElement) {
-        audioElement.currentTime = 0; // Rewind to start
-        audioElement.play().catch(e => console.warn("Sound play failed:", e)); // Be less noisy on errors
+    if (!soundEnabled || !audioElement) return;
+    try {
+        audioElement.currentTime = 0;
+        const playback = audioElement.play();
+        if (playback && playback.catch) playback.catch(e => console.warn("Sound play failed:", e));
+    } catch (e) {
+        console.warn("Sound play failed:", e);
     }
 }
+
 function toggleMute() {
     soundEnabled = !soundEnabled;
     muteButton.textContent = soundEnabled ? "Mute Sounds" : "Unmute Sounds";
-    console.log("UI: Sound enabled:", soundEnabled);
 }
 
-// --- UI Update Functions ---
+// --- Status and Controls (single source of truth for all button states) ---
 function updateStatusDisplay() {
-    let baseStatusText = "";
-    if (isGameOver) {
-        baseStatusText = gameStatusMessage;
+    const locked = isInputLocked();
+    let text;
+    if (isGameOver) text = gameStatusMessage;
+    else if (isAIThinking) text = `AI (ELO: ${aiElo}) is thinking...`;
+    else if (hintRequest) text = "Thinking of a hint...";
+    else if (hintMessage) text = hintMessage;
+    else text = gameStatusMessage || `${sideName(currentPlayer)}'s turn.`;
+    statusMessageElement.textContent = text;
+    statusMessageElement.classList.toggle('thinking', !isGameOver && (isAIThinking || hintRequest !== null));
+    turnIndicator.textContent = isGameOver ? "Game Over" : `Turn: ${sideName(currentPlayer)}`;
+
+    const canMove = !isGameOver && !isAIThinking && !locked && isHumanTurn();
+    boardElement.classList.toggle('interactive', canMove);
+    boardElement.classList.toggle('ai-thinking', isAIThinking);
+
+    undoButton.disabled = locked || currentMoveIndex < 1;
+    redoButton.disabled = locked || currentMoveIndex >= gameHistory.length - 1;
+    hintButton.disabled = locked || isGameOver || isAIThinking || hintRequest !== null || !isHumanTurn();
+    switchColorsButton.disabled = locked || gameMode === 'ai-ai';
+    gameModeSelect.disabled = pendingPromotion !== null;
+    aiEloSlider.disabled = gameMode === 'human-human';
+
+    updateReviewBar();
+}
+
+function updateReviewBar() {
+    reviewBar.hidden = !isReviewing;
+    if (!isReviewing) return;
+    const state = gameHistory[currentMoveIndex];
+    if (currentMoveIndex === 0 || !state?.moveNotation) {
+        reviewLabel.textContent = "Reviewing start position.";
     } else {
-        baseStatusText = gameStatusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`;
-        if (isAIThinking && isAIMode()) {
-             baseStatusText = `AI (ELO: ${aiElo}) is thinking...`;
-        }
+        const mover = gameHistory[currentMoveIndex - 1].currentPlayer;
+        reviewLabel.textContent = `Reviewing move ${state.moveNumber}${mover === 'w' ? '.' : '...'} ${state.moveNotation}`;
     }
-    // Always set text content at the end
-    statusMessageElement.textContent = baseStatusText;
-
-    turnIndicator.textContent = isGameOver ? "Game Over" : `Turn: ${currentPlayer === 'w' ? 'White' : 'Black'}`;
-
-    // Enable/disable board interaction
-    const isHumanTurn = !isGameOver && !isAIThinking &&
-                        (gameMode === 'human-human' || (gameMode === 'ai-human' && currentPlayer === playerColor));
-    boardElement.style.pointerEvents = isHumanTurn ? 'auto' : 'none';
-    boardElement.style.opacity = isHumanTurn ? '1' : '0.7'; // Dim board when not interactive
-
-    // Add/Remove thinking class for visual feedback (e.g., spinner)
-    if (isAIThinking && isAIMode()) {
-        boardElement.classList.add('ai-thinking');
-    } else {
-        boardElement.classList.remove('ai-thinking');
-    }
-
-    // Update button states
-    hintButton.disabled = isGameOver || isAIThinking || gameMode !== 'ai-human' || currentPlayer !== playerColor;
-    undoButton.disabled = isAIThinking || currentMoveIndex < 1 || gameMode === 'ai-ai';
-    redoButton.disabled = isAIThinking || currentMoveIndex >= gameHistory.length - 1 || gameMode === 'ai-ai';
-    switchColorsButton.disabled = isAIThinking || gameMode === 'ai-ai';
-
-    // *** REVERTED: Disable controls when AI is thinking or not human turn ***
-    gameModeSelect.disabled = !isHumanTurn && gameMode !== 'human-human'; // Disable if not human turn (except in HvsH)
-    aiEloSlider.disabled = !isHumanTurn || gameMode === 'human-human'; // Disable if not human turn or in HvsH
-    newGameButton.disabled = isAIThinking; // Disable New Game only when AI is actively thinking
-    // *** END REVERTED ***
-
-    updateGameModeDisplay(); // Ensure mode display is current
+    const locked = isInputLocked();
+    resumeButton.disabled = locked || isGameOver;
+    liveButton.disabled = locked;
 }
 
 // --- Game History & Navigation ---
 function updateMoveHistoryDisplay() {
-    moveHistoryElement.innerHTML = ''; // Clear previous history
+    moveHistoryElement.innerHTML = '';
     let currentPairDiv = null;
+    let currentMoveElement = null;
 
-    // Start from index 1 (after initial state) up to the current state
-    for (let i = 1; i <= currentMoveIndex; i++) { 
-        const state = gameHistory[i]; // The state *after* the move was made
-        const prevState = gameHistory[i-1]; // The state *before* the move was made
-        
-        // Ensure move notation exists for this state transition
-        if (!state || !state.moveNotation) continue; 
+    for (let i = 1; i < gameHistory.length; i++) {
+        const state = gameHistory[i];
+        if (!state || !state.moveNotation) continue;
+        const mover = gameHistory[i - 1].currentPlayer;
 
-        const moveNum = state.moveNumber; 
-        const playerWhoMadeMove = prevState.currentPlayer; // Player who made the move leading to state i
-        const isCurrentDisplayPosition = (i === currentMoveIndex);
-
-        // Start a new row for White's move
-        if (playerWhoMadeMove === 'w') {
-             currentPairDiv = document.createElement('div');
-             currentPairDiv.className = 'move-pair';
-             moveHistoryElement.appendChild(currentPairDiv);
-             
-             const moveNumSpan = document.createElement('span');
-             moveNumSpan.className = 'move-number';
-             moveNumSpan.textContent = `${moveNum}.`;
-             currentPairDiv.appendChild(moveNumSpan);
-        }
-        
-        // Ensure pair div exists (should normally exist if starting with white)
-        if (!currentPairDiv && i > 0) {
-            // This might happen if history somehow starts with black move or gets corrupted
-            console.warn("Move history rendering issue: Pair div missing for move index", i);
-            currentPairDiv = document.createElement('div'); // Create defensively
+        if (mover === 'w' || !currentPairDiv) {
+            currentPairDiv = document.createElement('div');
             currentPairDiv.className = 'move-pair';
             moveHistoryElement.appendChild(currentPairDiv);
-            // Add placeholder for missing white move? Or just log?
+
+            const moveNumSpan = document.createElement('span');
+            moveNumSpan.className = 'move-number';
+            moveNumSpan.textContent = mover === 'w' ? `${state.moveNumber}.` : `${state.moveNumber}...`;
+            currentPairDiv.appendChild(moveNumSpan);
         }
 
-        if (currentPairDiv) {
-            const moveSpan = document.createElement('span');
-            moveSpan.className = `move-text ${playerWhoMadeMove}-move`;
-            if (isCurrentDisplayPosition) {
-                moveSpan.classList.add('current-move');
-            }
-            moveSpan.textContent = state.moveNotation;
-            
-            // Add click handler for move navigation
-            moveSpan.dataset.historyIndex = i; // Store index for click handler
-            moveSpan.addEventListener('click', (e) => {
-                if (!isAIThinking) {
-                    const targetIdx = parseInt(e.target.dataset.historyIndex, 10);
-                    if (!isNaN(targetIdx)) {
-                        navigateToHistoryState(targetIdx);
-                    }
-                }
-            });
-            
-            currentPairDiv.appendChild(moveSpan);
+        const moveSpan = document.createElement('span');
+        moveSpan.className = `move-text ${mover}-move`;
+        if (i === currentMoveIndex) {
+            moveSpan.classList.add('current-move');
+            currentMoveElement = moveSpan;
+        } else if (i > currentMoveIndex) {
+            moveSpan.classList.add('future-move');
         }
+        moveSpan.textContent = state.moveNotation;
+        moveSpan.dataset.historyIndex = i;
+        currentPairDiv.appendChild(moveSpan);
 
-        // Reset pair div after Black's move (or if white didn't create one)
-        if (playerWhoMadeMove === 'b') {
-            currentPairDiv = null; 
-        }
+        if (mover === 'b') currentPairDiv = null;
     }
-    
-    // Scroll to the bottom
-    moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
+
+    if (currentMoveElement && typeof currentMoveElement.scrollIntoView === 'function') {
+        currentMoveElement.scrollIntoView({ block: 'nearest' });
+    } else if (currentMoveIndex === gameHistory.length - 1) {
+        moveHistoryElement.scrollTop = moveHistoryElement.scrollHeight;
+    }
 }
 
-function updateHistoryButtons() {
-    undoButton.disabled = isAIThinking || currentMoveIndex < 1;
-    redoButton.disabled = isAIThinking || currentMoveIndex >= gameHistory.length - 1;
-}
-
-// Renamed from restoreGameState to avoid conflict/confusion
+// Shows a stored position. Positions before the end of history enter review mode, where the AI
+// waits until the user resumes or moves. Returning to the last position resumes live play.
 function navigateToHistoryState(targetIndex) {
+    if (isInputLocked()) return;
     if (targetIndex < 0 || targetIndex >= gameHistory.length) {
         console.error("UI Error: Invalid game state index for navigation:", targetIndex);
         return;
     }
-    
-    console.log(`UI: Navigating to history index: ${targetIndex}`);
-    const stateToRestore = gameHistory[targetIndex];
-    currentMoveIndex = targetIndex; // Update current index tracker
-    
-    // --- Restore Core Game Logic State --- 
-    // Create deep copies when restoring to prevent mutations
-    board = stateToRestore.board.map(row => [...row]); 
-    currentPlayer = stateToRestore.currentPlayer;
-    castlingRights = JSON.parse(JSON.stringify(stateToRestore.castlingRights));
-    enPassantTarget = stateToRestore.enPassantTarget ? {...stateToRestore.enPassantTarget} : null;
-    halfmoveClock = stateToRestore.halfmoveClock;
-    fullmoveNumber = stateToRestore.fullmoveNumber;
-    gameStatusMessage = stateToRestore.statusMessage || `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`; // Restore status message
-    isGameOver = false; // When navigating history, game is no longer considered over
-     isAIThinking = false; // Ensure AI thinking flag is off
 
-    // --- Update UI --- 
+    cancelAIRequest();
+    cancelHint();
+    cancelCaptureAnimations();
+    positionVersion++;
+
+    const state = gameHistory[targetIndex];
+    currentMoveIndex = targetIndex;
+    board = state.board.map(row => [...row]);
+    currentPlayer = state.currentPlayer;
+    castlingRights = JSON.parse(JSON.stringify(state.castlingRights));
+    enPassantTarget = state.enPassantTarget ? { ...state.enPassantTarget } : null;
+    halfmoveClock = state.halfmoveClock;
+    fullmoveNumber = state.fullmoveNumber;
+    lastMove = state.lastMove || null;
+    evaluateGameState();
+
+    isReviewing = targetIndex < gameHistory.length - 1;
+
     clearSelectionAndHighlights();
     renderBoard();
     updateStatusDisplay();
-    updateMoveHistoryDisplay(); // Highlight the correct move
-    updateHistoryButtons();
-    
-    // Check if AI needs to move from this restored state
-    checkAndTriggerAIMove(); 
+    updateMoveHistoryDisplay();
+    checkAndTriggerAIMove(); // No-op while reviewing
+}
+
+// Continue the game from the reviewed position; later moves are discarded
+function resumeFromHere() {
+    if (!isReviewing || isInputLocked() || isGameOver) return;
+    gameHistory = gameHistory.slice(0, currentMoveIndex + 1);
+    isReviewing = false;
+    positionVersion++;
+    updateStatusDisplay();
+    updateMoveHistoryDisplay();
+    checkAndTriggerAIMove();
+}
+
+function backToLive() {
+    navigateToHistoryState(gameHistory.length - 1);
+}
+
+// In ai-human mode undo/redo skip over AI positions so the user lands on their own turn
+function stepsLandOnAITurn(index) {
+    return gameMode === 'ai-human' && gameHistory[index].currentPlayer !== playerColor;
 }
 
 function handleUndo() {
-    if (isAIThinking || currentMoveIndex < 1) return;
-
-    // Determine how many steps to undo
-    let steps = 1;
-    // If AI is enabled and the move *before* the current one was made by the AI,
-    // undo two steps (AI move + Player move) to get back to the player's previous turn.
-     if (isAIMode() && currentMoveIndex >= 2) {
-         const playerWhoMadePrevMove = gameHistory[currentMoveIndex - 1]?.currentPlayer; // Player before the *previous* state
-         if (playerWhoMadePrevMove !== playerColor) { // If the player who made the move leading to state N-1 was the AI
-             steps = 2;
-         }
-     }
-    
-    const targetIndex = Math.max(0, currentMoveIndex - steps);
-    console.log(`UI: Undoing ${steps} step(s) to index ${targetIndex}`);
-    navigateToHistoryState(targetIndex);
+    if (isInputLocked() || currentMoveIndex < 1) return;
+    let target = currentMoveIndex - 1;
+    if (target > 0 && stepsLandOnAITurn(target)) target--;
+    navigateToHistoryState(target);
 }
 
 function handleRedo() {
-    if (isAIThinking || currentMoveIndex >= gameHistory.length - 1) return;
-
-     // Determine how many steps to redo
-     let steps = 1;
-      // If AI is enabled and the player whose turn it is *now* is the AI,
-      // redo two steps (Player move + AI move) to get to the next player turn.
-     if (isAIMode() && currentMoveIndex < gameHistory.length - 2) { // Ensure there are at least 2 moves ahead
-          const playerWhoseTurnIsNext = gameHistory[currentMoveIndex + 1]?.currentPlayer;
-          if (playerWhoseTurnIsNext !== playerColor) { // If the turn after the next state belongs to the AI
-               steps = 2;
-          }
-     }
-     // Ensure we don't go past the end of history
-     steps = Math.min(steps, gameHistory.length - 1 - currentMoveIndex);
-
-    const targetIndex = currentMoveIndex + steps;
-     console.log(`UI: Redoing ${steps} step(s) to index ${targetIndex}`);
-    navigateToHistoryState(targetIndex);
+    if (isInputLocked() || currentMoveIndex >= gameHistory.length - 1) return;
+    let target = currentMoveIndex + 1;
+    if (target < gameHistory.length - 1 && stepsLandOnAITurn(target)) target++;
+    navigateToHistoryState(target);
 }
 
 // --- Hint System ---
 function handleHint() {
-    if (isGameOver || isAIThinking || gameMode === 'ai-ai' ) return; // Also disable hints in AI vs AI
+    if (isInputLocked() || isGameOver || isAIThinking || hintRequest || !isHumanTurn()) return;
 
-    // Determine whose turn it *should* be for the hint
-    // In Human vs Human, hint for current player
-    // In AI vs Human, hint *only* for the human player
-    let playerToHintFor = currentPlayer;
-    if (gameMode === 'ai-human' && currentPlayer !== playerColor) {
-        console.log("UI: Hint requested, but it's AI's turn.");
-        statusMessageElement.textContent = "Hint available only on your turn.";
-        // Temporarily show message, then revert
-        setTimeout(() => { updateStatusDisplay(); }, 2000);
+    const version = positionVersion;
+    const hintElo = parseInt(aiEloSlider.max, 10) || 2500;
+    let handle;
+    try {
+        handle = requestAIMove(getCurrentGameStateSnapshot(), hintElo, { timeMs: HINT_TIME_MS });
+    } catch (error) {
+        console.error("UI: Hint request failed to start:", error);
+        showHintMessage("Error generating hint.", version);
         return;
-    } 
+    }
+    clearSelectionAndHighlights();
+    hintRequest = handle;
+    updateStatusDisplay();
 
-    console.log("UI: Generating hint for player:", playerToHintFor);
-    // Show thinking message directly
-    statusMessageElement.textContent = "Thinking of a hint...";
-    hintButton.disabled = true; // Disable while thinking
-
-    // Use setTimeout to allow UI update before calculation
-    setTimeout(() => {
-        let hintMove = null;
-        try {
-            // Calculate the best move using the MAXIMUM ELO setting
-            const maxElo = parseInt(aiEloSlider.max, 10) || 2500; // Read max from slider or use default max
-            console.log(`UI: Calculating hint using AI ELO: ${maxElo}`);
-            // Ensure the context for calculateBestMove has the correct player
-            const originalPlayerForHint = currentPlayer; // Store original
-            currentPlayer = playerToHintFor; // Set context for the calculation
-            
-            hintMove = calculateBestMove(maxElo); // Use max ELO
-            
-            currentPlayer = originalPlayerForHint; // Restore original player context
-
-        } catch (error) {
-             console.error("Error generating hint:", error);
-             statusMessageElement.textContent = "Error generating hint."; // Show error (no spinner)
-             updateStatusDisplay(); // Re-enable hint button potentially
-             return;
+    handle.promise.then(move => {
+        if (hintRequest !== handle) return;
+        hintRequest = null;
+        if (version !== positionVersion) return;
+        if (!move || !move.from || !move.to) {
+            showHintMessage("No good move found for hint.", version);
+            return;
         }
+        const fromSq = getSquareElement(move.from.row, move.from.col);
+        const toSq = getSquareElement(move.to.row, move.to.col);
+        const piece = getPieceAt(move.from.row, move.from.col);
+        fromSq?.classList.add('hint-from');
+        toSq?.classList.add('hint-to');
+        const promo = move.promotionPiece ? `=${move.promotionPiece}` : '';
+        showHintMessage(`Hint: Try ${piece ? PIECES[piece] : ''} from ${squareName(move.from.row, move.from.col)} to ${squareName(move.to.row, move.to.col)}${promo}.`, version);
+    }).catch(error => {
+        if (hintRequest !== handle) return;
+        hintRequest = null;
+        console.error("UI: Hint request failed:", error);
+        showHintMessage("Error generating hint.", version);
+    });
+}
 
-        // Update status AFTER calculation is done 
-        if (hintMove && hintMove.from && hintMove.to) {
-            console.log("UI Hint:", hintMove);
-            clearSelectionAndHighlights(); // Clear previous highlights
+function showHintMessage(message, version) {
+    hintMessage = message;
+    updateStatusDisplay();
+    clearTimeout(hintTimeoutId);
+    hintTimeoutId = setTimeout(() => {
+        hintTimeoutId = null;
+        if (version !== positionVersion) return;
+        hintMessage = null;
+        clearHintHighlights();
+        updateStatusDisplay();
+    }, HINT_DISPLAY_MS);
+}
 
-            const fromSq = getSquareElement(hintMove.from.row, hintMove.from.col);
-            const toSq = getSquareElement(hintMove.to.row, hintMove.to.col);
-            
-            if (fromSq && toSq) {
-                 // Use distinct classes for hint highlighting
-                 fromSq.classList.add('hint-from'); 
-                 const isCaptureHint = getPieceAt(hintMove.to.row, hintMove.to.col) !== null || hintMove.isEnPassant;
-                 toSq.classList.add('hint-to');
-                 toSq.classList.add(isCaptureHint ? 'capture-move' : 'legal-move'); // Reuse existing styles
+function cancelHint() {
+    if (hintRequest) {
+        const handle = hintRequest;
+        hintRequest = null;
+        handle.cancel();
+    }
+    clearTimeout(hintTimeoutId);
+    hintTimeoutId = null;
+    hintMessage = null;
+    clearHintHighlights();
+}
 
-                // Convert logical coords to algebraic for message
-                 const fromAlg = String.fromCharCode('a'.charCodeAt(0) + hintMove.from.col) + (BOARD_SIZE - hintMove.from.row);
-                 const toAlg = String.fromCharCode('a'.charCodeAt(0) + hintMove.to.col) + (BOARD_SIZE - hintMove.to.row);
-                 const pieceToMove = getPieceAt(hintMove.from.row, hintMove.from.col); // Get piece from logical board
-                 const pieceSymbol = pieceToMove ? PIECES[pieceToMove] : ''; // Get symbol
-                 statusMessageElement.textContent = `Hint: Try ${pieceSymbol} from ${fromAlg} to ${toAlg}.`;
+// --- Settings handlers ---
+function handleGameModeChange() {
+    gameMode = gameModeSelect.value;
+    cancelAIRequest();
+    cancelHint();
+    clearSelectionAndHighlights();
+    updateGameModeDisplay();
+    updateStatusDisplay();
+    checkAndTriggerAIMove();
+}
 
-                // Remove hint highlight after a delay
-                setTimeout(() => {
-                    // Check if classes are still present before removing
-                     if (fromSq.classList.contains('hint-from')) fromSq.classList.remove('hint-from');
-                     if (toSq.classList.contains('hint-to')) {
-                          toSq.classList.remove('hint-to', 'legal-move', 'capture-move');
-                     }
-                      // Restore status message if it hasn't changed
-                      if (statusMessageElement.textContent.startsWith("Hint:")) {
-                           gameStatusMessage = `${currentPlayer === 'w' ? 'White' : 'Black'}'s turn.`; // Reset based on current turn
-                           updateStatusDisplay();
-                      }
-                }, 3000); // Show hint for 3 seconds
-            } else {
-                 console.warn("UI Hint Error: Could not find square elements for hint.");
-                 statusMessageElement.textContent = "Could not display hint.";
-                 updateStatusDisplay();
-            }
-        } else {
-            statusMessageElement.textContent = "No good move found for hint.";
-            console.log("UI: No hint generated or invalid hint move.");
-             updateStatusDisplay(); // Update buttons and potentially revert status text after delay
-        }
-         updateStatusDisplay(); // Update buttons and revert status text after delay
+function handleEloChange() {
+    aiElo = parseInt(aiEloSlider.value, 10);
+    aiEloValueSpan.textContent = aiElo;
+    if (isAIThinking) {
+        cancelAIRequest(); // Restart the pending AI move at the new strength
+    }
+    updateGameModeDisplay();
+    updateStatusDisplay();
+    checkAndTriggerAIMove();
+}
 
-    }, 30); // Short delay for UI
+function handleSwitchColors() {
+    if (isInputLocked()) return;
+    cancelAIRequest();
+    cancelHint();
+    cancelCaptureAnimations();
+    playerColor = playerColor === 'w' ? 'b' : 'w';
+    clearSelectionAndHighlights();
+    createBoardDOM();
+    renderBoard();
+    updatePlayerColorIndicator();
+    updateStatusDisplay();
+    checkAndTriggerAIMove();
+}
+
+function handleKeyDown(event) {
+    if (event.key === 'Escape') {
+        if (pendingPromotion) cancelPromotion();
+        else clearSelectionAndHighlights();
+        return;
+    }
+    const tag = event.target && event.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return; // Keep native arrow behavior
+    if (event.key === 'ArrowLeft' && currentMoveIndex > 0) {
+        event.preventDefault();
+        navigateToHistoryState(currentMoveIndex - 1);
+    } else if (event.key === 'ArrowRight' && currentMoveIndex < gameHistory.length - 1) {
+        event.preventDefault();
+        navigateToHistoryState(currentMoveIndex + 1);
+    }
 }
 
 // --- Event Listeners Setup ---
 function setupEventListeners() {
-    console.log("Setting up event listeners...");
+    boardElement.addEventListener('click', handleBoardClick);
     newGameButton.addEventListener('click', initGame);
     undoButton.addEventListener('click', handleUndo);
     redoButton.addEventListener('click', handleRedo);
     hintButton.addEventListener('click', handleHint);
-    switchColorsButton.addEventListener('click', () => {
-        // *** ADDED: Interrupt AI on color switch ***
-        if (aiThinkingTimeoutId) clearTimeout(aiThinkingTimeoutId);
-        isAIThinking = false;
-        boardElement.classList.remove('ai-thinking');
-        updateStatusDisplay(); // << Add immediate UI update
-        // *** END ADDED ***
-        playerColor = (playerColor === 'w') ? 'b' : 'w';
-        updatePlayerColorIndicator();
-        createBoardDOM();
-        renderBoard();
-        checkAndTriggerAIMove();
-    });
+    switchColorsButton.addEventListener('click', handleSwitchColors);
     muteButton.addEventListener('click', toggleMute);
+    resumeButton.addEventListener('click', resumeFromHere);
+    liveButton.addEventListener('click', backToLive);
 
-    // ADD new listeners with immediate interruption
-    gameModeSelect.addEventListener('change', () => {
-        console.log("Game mode changed via UI.");
-        // *** Interrupt AI Immediately ***
-        if (aiThinkingTimeoutId) {
-            clearTimeout(aiThinkingTimeoutId);
-            aiThinkingTimeoutId = null;
-            console.log("Cleared pending AI move timeout (Game Mode Change).");
-        }
-        if (isAIThinking) {
-            isAIThinking = false;
-            boardElement.classList.remove('ai-thinking');
-            console.log("Reset isAIThinking flag (Game Mode Change).");
-            updateStatusDisplay(); // << Add immediate UI update
-        }
-        // *** Now update settings ***
-        updateGameSettingsFromUI(); // This still handles subsequent logic
+    moveHistoryElement.addEventListener('click', (event) => {
+        const moveSpan = event.target.closest('.move-text');
+        if (!moveSpan) return;
+        const index = parseInt(moveSpan.dataset.historyIndex, 10);
+        if (!isNaN(index)) navigateToHistoryState(index);
     });
+
+    promotionPieceButtons.forEach(button => {
+        button.addEventListener('click', () => choosePromotion(button.dataset.piece));
+    });
+    promotionCancelButton.addEventListener('click', cancelPromotion);
+    promotionModal.addEventListener('click', (event) => {
+        if (event.target === promotionModal) cancelPromotion(); // Backdrop click
+    });
+
+    gameModeSelect.addEventListener('change', handleGameModeChange);
     aiEloSlider.addEventListener('input', () => {
-         // Update display value live
-         aiEloValueSpan.textContent = aiEloSlider.value;
-         // We don't need to interrupt calculation on every *input* event,
-         // only when the value is *finalized* (on 'change').
-         // However, the current setup calls updateGameSettingsFromUI on input,
-         // let's modify to interrupt on input as well for consistency,
-         // though 'change' event might be better UX.
-        console.log("ELO slider input detected.");
-        // *** Interrupt AI Immediately ***
-        if (aiThinkingTimeoutId) {
-            clearTimeout(aiThinkingTimeoutId);
-            aiThinkingTimeoutId = null;
-             console.log("Cleared pending AI move timeout (ELO Slider Input).");
-        }
-        if (isAIThinking) {
-            isAIThinking = false;
-            boardElement.classList.remove('ai-thinking');
-            console.log("Reset isAIThinking flag (ELO Slider Input).");
-            updateStatusDisplay(); // << Add immediate UI update
-        }
-        // *** Now update settings ***
-        updateGameSettingsFromUI(); // This still handles subsequent logic
+        aiEloValueSpan.textContent = aiEloSlider.value; // Label only; applied on 'change'
     });
+    aiEloSlider.addEventListener('change', handleEloChange);
+    document.addEventListener('keydown', handleKeyDown);
 
-    // Ensure initial UI state is correct based on default HTML values
-    updateGameSettingsFromUI();
-    updatePlayerColorIndicator();
-
-    console.log("Event listeners setup complete.");
+    // Sync state with the initial control values
+    gameMode = gameModeSelect.value;
+    aiElo = parseInt(aiEloSlider.value, 10);
+    aiEloValueSpan.textContent = aiElo;
 }
 
 // --- Initialization on Load ---
 document.addEventListener('DOMContentLoaded', () => {
-    console.log("DOM fully loaded.");
-    setupEventListeners(); // Setup listeners first
-    initGame();            // Then initialize the game state and board
-     init3DAnimation(); // Initialize 3D placeholder if needed
+    setupEventListeners();
+    initGame();
 });
 
-// --- END OF FILE ui.js --- 
+// --- END OF FILE ui.js ---

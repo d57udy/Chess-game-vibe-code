@@ -10,6 +10,13 @@ const PIECES = {
 };
 const INITIAL_BOARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"; // Standard starting position
 
+// --- Debug Logging ---
+// Set DEBUG = true to see verbose logs. Use debugLog() instead of console.log on hot paths.
+const DEBUG = false;
+function debugLog(...args) {
+    if (DEBUG) console.log(...args);
+}
+
 // --- Game State Variables (Managed Primarily Here) ---
 let board = []; // 2D array representing the board [row][col]
 let currentPlayer = 'w'; // 'w' for white, 'b' for black
@@ -30,7 +37,7 @@ let gameStatusMessage = ""; // Initial status set in init or UI
 
 // --- FEN Parsing ---
 function parseFen(fen) {
-    console.log("Parsing FEN:", fen);
+    debugLog("Parsing FEN:", fen);
     const parts = fen.split(' ');
     if (parts.length !== 6) {
         console.error("Invalid FEN string:", fen);
@@ -151,7 +158,7 @@ function parseFen(fen) {
          fullmoveNumber = 1;
     }
 
-    console.log("FEN Parsed Successfully:", { board: board.map(r=>r.slice()), currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber });
+    debugLog("FEN Parsed Successfully:", { board: board.map(r=>r.slice()), currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber });
     return true; // Success
 }
 
@@ -567,70 +574,25 @@ function checkGameEndCondition() {
 }
 
 // --- Draw Condition Checks ---
+// Draw only for K v K, K + one minor v K, and positions where every remaining minor piece is a
+// bishop and all bishops stand on the same square color (e.g. K+B v K+B with same-colored
+// bishops). K+B v K+N, opposite-colored bishops and K+N+N v K are not automatic draws.
 function hasInsufficientMaterial() {
-    const pieces = { w: [], b: [] };
-    let lightBishops = { w: 0, b: 0 };
-    let darkBishops = { w: 0, b: 0 };
-    let pieceCount = 0;
-
+    const minors = [];
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
             const piece = getPieceAt(r, c);
-            if (piece) {
-                pieceCount++;
-                const player = getPlayerForPiece(piece);
-                const type = piece.toUpperCase();
-                if (!pieces[player]) pieces[player] = []; // Ensure array exists
-                pieces[player].push(type);
-
-                if (type === 'B') {
-                     const squareColor = (r + c) % 2; // 0 for dark, 1 for light (standard algebraic)
-                     if (squareColor === 0) darkBishops[player]++;
-                     else lightBishops[player]++;
-                }
-            }
+            if (!piece) continue;
+            const type = piece.toUpperCase();
+            if (type === 'K') continue;
+            if (type === 'P' || type === 'R' || type === 'Q') return false;
+            minors.push({ type, squareColor: (r + c) % 2 });
         }
     }
-
-    // King vs King
-    if (pieceCount <= 2) return true;
-
-    // Function to check if a side has ONLY: K, K+N, K+B (single), K+B's (all same color)
-    const checkSide = (player) => {
-        const pList = pieces[player] || []; // Handle case where player has no pieces (shouldn't happen if K exists)
-        if (pList.length === 0) return true; // Should be impossible if called correctly
-        if (pList.length === 1 && pList[0] === 'K') return true; // King only
-        if (pList.length === 2 && pList.includes('N') && pList.includes('K')) return true; // King + Knight
-        if (pList.length >= 2 && pList.includes('K') && pList.every(p => p === 'K' || p === 'B')) {
-             // King + Bishop(s)
-             // Check if there are bishops on *both* light and dark squares
-             if (lightBishops[player] > 0 && darkBishops[player] > 0) {
-                 return false; // Bishops on different colors CAN mate (KBB vs K)
-             }
-             return true; // Only king or king + bishops all on the same color squares
-        }
-        // If any other pieces (P, R, Q, multiple knights) exist, it's sufficient material
-        return false;
-    };
-
-    // Check if BOTH sides have insufficient material
-    if (checkSide('w') && checkSide('b')) {
-        return true;
+    if (minors.length <= 1) return true;
+    if (minors.every(m => m.type === 'B')) {
+        return minors.every(m => m.squareColor === minors[0].squareColor);
     }
-
-    // Specific K+B vs K+B case where bishops are same color (draw)
-    if (pieceCount === 4 && pieces.w.length === 2 && pieces.b.length === 2 &&
-        pieces.w.includes('K') && pieces.w.includes('B') &&
-        pieces.b.includes('K') && pieces.b.includes('B')) {
-        // Check if both bishops are on the same color squares
-        const wBishColor = lightBishops.w > 0 ? 'light' : 'dark';
-        const bBishColor = lightBishops.b > 0 ? 'light' : 'dark';
-        if (wBishColor === bBishColor) {
-            return true;
-        }
-    }
-
-
     return false;
 }
 
@@ -702,6 +664,21 @@ function checkThreefoldRepetition() {
 }
 
 
+// --- Game State Snapshots ---
+// Loads a plain state object into the globals above. Expected shape:
+// { board, currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber }
+function loadGameStateSnapshot(state) {
+    board = state.board.map(row => [...row]);
+    currentPlayer = state.currentPlayer;
+    castlingRights = {
+        w: { K: !!state.castlingRights?.w?.K, Q: !!state.castlingRights?.w?.Q },
+        b: { K: !!state.castlingRights?.b?.K, Q: !!state.castlingRights?.b?.Q }
+    };
+    enPassantTarget = state.enPassantTarget ? { ...state.enPassantTarget } : null;
+    halfmoveClock = state.halfmoveClock || 0;
+    fullmoveNumber = state.fullmoveNumber || 1;
+}
+
 // --- Game History Management ---
 function pushHistoryState(moveInfo = {}) {
     // Important: Create deep copies of mutable state parts
@@ -725,7 +702,7 @@ function pushHistoryState(moveInfo = {}) {
     // If we're not at the end of history (e.g., after undo), truncate future moves
     if (moveInfo.truncate !== false && currentMoveIndex < gameHistory.length - 1) {
         gameHistory = gameHistory.slice(0, currentMoveIndex + 1);
-         console.log(`History truncated. Length now: ${gameHistory.length}`);
+         debugLog(`History truncated. Length now: ${gameHistory.length}`);
     }
 
     gameHistory.push(state);
