@@ -28,7 +28,7 @@ body {
 }
 
 .board-container {
-    position: relative; /* Needed for positioning animation canvas */
+    position: relative;
     width: clamp(320px, 85vmin, 600px); /* Adjusted max size slightly */
     height: clamp(320px, 85vmin, 600px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
@@ -42,7 +42,20 @@ body {
     height: 100%;
     border: 5px solid #3a3a3a;
     position: relative; /* For piece positioning */
+    transition: opacity 0.2s ease;
 }
+
+/* Overlay above the board for capture animations; never intercepts clicks */
+.battle-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 200;
+}
+
+/* Waiting for the AI: slightly dimmed, no piece cursor */
+#chess-board.ai-thinking { opacity: 0.85; cursor: progress; }
+#chess-board:not(.interactive) .piece { cursor: default; }
 
 /* Board Squares */
 .square {
@@ -136,13 +149,32 @@ body {
     box-shadow: inset 0 0 0 4px rgba(255, 0, 0, 0.7);
 }
 
+/* Last move (from and to squares) */
+.square.last-move::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: rgba(255, 213, 0, 0.35);
+    pointer-events: none;
+}
+
 /* Hint Highlighting */
 .square.hint-from {
     background-color: rgba(74, 124, 89, 0.6); /* Slightly different green from selected */
 }
 
 .square.hint-to {
-    /* Styles for hint destination are handled by adding legal-move or capture-move */
+    background-color: rgba(74, 124, 89, 0.45);
+    box-shadow: inset 0 0 0 5px rgba(46, 110, 70, 0.95);
+    animation: hint-pulse 0.9s ease-in-out 3;
+}
+
+@keyframes hint-pulse {
+    50% { box-shadow: inset 0 0 0 9px rgba(46, 110, 70, 0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .square.hint-to { animation: none; }
 }
 
 /* Info Panels */
@@ -166,11 +198,27 @@ body {
 }
 
 #turn-indicator { font-weight: bold; font-size: 1.1em; }
-#status-message { 
-    font-style: italic; 
-    color: #555; 
+#status-message {
+    font-style: italic;
+    color: #555;
     min-height: 1.2em; /* Ensure space for messages */
 }
+
+/* Spinner shown while the AI or a hint is being computed */
+#status-message.thinking::before {
+    content: '';
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    margin-right: 6px;
+    vertical-align: -0.1em;
+    border: 2px solid #bbb;
+    border-top-color: #4a7c59;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
 #difficulty-label { margin-top: 10px; color: #777; font-size: 0.9em; }
 
 .settings { margin-top: auto; }
@@ -266,9 +314,33 @@ body {
     padding: 0 3px;
 }
 
-/* Optional: Styles for white/black moves */
-/* .w-move { } */
-/* .b-move { } */
+/* Moves after the reviewed position */
+.move-text.future-move { color: #999; }
+
+/* History review controls */
+#review-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background-color: #fff8d6;
+    border: 1px solid #e6d98a;
+    border-radius: 5px;
+    font-size: 0.9em;
+}
+#review-bar[hidden] { display: none; }
+.review-actions { display: flex; gap: 6px; }
+.review-actions button {
+    flex: 1;
+    padding: 6px 8px;
+    background-color: #4a7c59;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.review-actions button:hover { background-color: #3a6648; }
+.review-actions button:disabled { background-color: #cccccc; color: #888888; cursor: not-allowed; }
 
 /* Player Color Indicator Styles */
 #player-color-indicator {
@@ -349,19 +421,16 @@ body {
     border-radius: 5px;
 }
 .modal-content button:hover { background-color: #3a6648; }
-
-/* 3D Canvas Placeholder */
-#capture-animation-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 50;
-    display: none;
-    /* background-color: rgba(0,0,0,0.1); */ /* Removed background dim */
+.promo-symbol { display: block; font-size: 1.6em; line-height: 1.1; }
+.modal-content .promotion-cancel {
+    display: block;
+    width: calc(100% - 10px);
+    margin-top: 12px;
+    font-size: 0.95em;
+    padding: 8px;
+    background-color: #888;
 }
+.modal-content .promotion-cancel:hover { background-color: #666; }
 
 /* Responsive Adjustments */
 @media (max-width: 900px) {
@@ -378,6 +447,9 @@ body {
         order: 0;
     }
     .right-panel {
+        order: 1; /* Controls and history directly under the board */
+    }
+    .left-panel {
         order: 2;
     }
     .controls {
@@ -392,19 +464,23 @@ body {
 
 @media (max-width: 480px) {
     .controls {
-        flex-direction: column; /* Stack controls vertically */
+        display: grid; /* 2x2 grid keeps the buttons reachable without scrolling */
+        grid-template-columns: 1fr 1fr;
+    }
+    .game-container {
+        padding: 16px;
     }
     .info-panel {
         min-width: unset;
-        width: 90%;
+        width: 100%;
+        max-width: 100%;
+    }
+    .board-container {
+        width: min(100%, 85vmin);
+        height: auto;
+        aspect-ratio: 1 / 1;
     }
     .piece {
        font-size: 8vmin; /* Slightly larger pieces on small mobile */
     }
-}
-
-/* Simple Capture Animation Fallback (Fade out/in) */
-.piece.captured-fade-out {
-    opacity: 0;
-    transition: opacity 0.5s ease-out;
 }
