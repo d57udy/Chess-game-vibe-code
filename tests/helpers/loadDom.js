@@ -1,5 +1,6 @@
 // Boots index.html in jsdom with the game scripts evaluated in the window, without the CDN
-// script (GSAP is replaced by a stub). Returns the window plus helpers to drive the UI.
+// script (GSAP is replaced by a stub, or the real GSAP from node_modules). Returns the window plus
+// helpers to drive the UI.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -8,7 +9,8 @@ const { JSDOM } = require('jsdom');
 const { ROOT, square } = require('./loadEngine');
 
 // Minimal gsap: to() + killTweensOf(). Tweens set their end values and call onComplete either on
-// the next macrotask ('auto') or when the test calls tweens.flush() ('manual').
+// the next macrotask ('auto') or when the test calls tweens.flush() ('manual'). It has no
+// timeline(), so BattleFX reports itself unavailable and captures use the plain fade.
 const GSAP_STUB = `
 window.__tweens = [];
 window.__tweenMode = 'auto';
@@ -45,6 +47,8 @@ window.requestAIMove = function (state, elo, options = {}) {
     return { promise, cancel: call.cancel };
 };`;
 
+const GSAP_REAL = path.join(ROOT, 'node_modules', 'gsap', 'dist', 'gsap.js');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -52,6 +56,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @param {boolean} [options.realClient] keep the real aiClient.js requestAIMove (jsdom has no
  *        Worker, so the engine runs through the main-thread fallback). Default: stubbed.
  * @param {'auto'|'manual'} [options.tweens] how GSAP tweens complete. Default 'auto'.
+ * @param {boolean} [options.realGsap] load the real GSAP (rAF driven, jsdom pretendToBeVisual)
+ *        instead of the stub; battle scenes then play. options.tweens is ignored.
+ * @param {number} [options.gsapSpeed] global GSAP time scale with realGsap (default 1).
+ * @param {(w: Window) => void} [options.setup] runs before the game scripts (e.g. seed localStorage).
  */
 async function loadDom(options = {}) {
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
@@ -78,19 +86,27 @@ async function loadDom(options = {}) {
     const get = (expr) => { const s = g(`JSON.stringify(${expr})`); return s === undefined ? undefined : JSON.parse(s); };
     const file = (f) => g(fs.readFileSync(path.join(ROOT, f), 'utf8'), f);
 
-    g(GSAP_STUB, 'gsap-stub.js');
-    g(`__tweenMode = ${JSON.stringify(options.tweens || 'auto')};`);
+    if (options.setup) options.setup(w);
+    if (options.realGsap) {
+        g(fs.readFileSync(GSAP_REAL, 'utf8'), 'gsap.js');
+        g(`gsap.globalTimeline.timeScale(${Number(options.gsapSpeed) || 1});`);
+    } else {
+        g(GSAP_STUB, 'gsap-stub.js');
+        g(`__tweenMode = ${JSON.stringify(options.tweens || 'auto')};`);
+    }
     file('gameLogic.js');
     file('aiPlayer.js');
     file('aiClient.js');
     if (!options.realClient) g(AI_STUB, 'ai-stub.js');
+    file('battleFx.js');
     file('ui.js');
     if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r));
     else doc.dispatchEvent(new w.Event('DOMContentLoaded'));
     await sleep(0);
 
-    const pendingTweens = () => g('__tweens.filter(t => !t.done).length');
-    const flushTweens = () => g('__tweens.filter(t => !t.done).forEach(__completeTween)');
+    // With the real GSAP there is nothing to flush: settle() just waits for the move to finish.
+    const pendingTweens = () => g('typeof __tweens === "undefined" ? 0 : __tweens.filter(t => !t.done).length');
+    const flushTweens = () => g('typeof __tweens === "undefined" || __tweens.filter(t => !t.done).forEach(__completeTween)');
 
     const api = {
         w, doc, g, get, errors, warnings, played,
@@ -99,6 +115,7 @@ async function loadDom(options = {}) {
         sleep,
         el: (id) => doc.getElementById(id),
         status: () => doc.getElementById('status-message').textContent,
+        layer: () => doc.querySelector('.battle-layer'),
         turn: () => doc.getElementById('turn-indicator').textContent,
         notations: () => get('gameHistory.slice(1).map(s => s.moveNotation)'),
         pieceAt: (name) => { const { row, col } = square(name); return g(`getPieceAt(${row}, ${col})`); },

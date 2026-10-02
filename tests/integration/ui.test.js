@@ -459,7 +459,8 @@ describe('capture hook', () => {
              };`);
         await D.play('e2e4', 'e7e5', 'f1c4', 'a7a6', 'c4f7');
         let hook = D.get('__hook');
-        assert.deepEqual(hook, [{ a: 'B', v: 'p', sq: 'f7', enPassant: false, promotionTo: null, givesCheck: true, isMate: false, isAI: false }]);
+        assert.deepEqual(hook, [{ a: 'B', v: 'p', sq: 'f7', from: { row: 4, col: 2 }, to: { row: 1, col: 5 },
+            enPassant: false, promotionTo: null, givesCheck: true, isMate: false, isAI: false }]);
         assert.equal(D.played.at(-1), 'check.mp3', 'check sound wins over capture sound');
 
         await D.play('e8f7');
@@ -596,6 +597,189 @@ describe('real engine (aiClient main-thread fallback)', () => {
         await D.play('a1b1');
         D.setMode('ai-human');
         await D.waitFor(() => D.g('gameHistory.length') === 25 && !D.g('isAIThinking') && !D.g('isAnimating'), { timeout: 8000, message: 'AI reply' });
+        D.el('new-game-button').click();
+        await sleep(50);
+        assert.deepEqual(D.errors, []);
+        assert.deepEqual(D.warnings, []);
+    }));
+});
+
+describe('battle scenes (real GSAP)', () => {
+    const REAL = { realGsap: true, gsapSpeed: 4 };
+    const hidden = (D) => Array.from(D.doc.querySelectorAll('#chess-board .piece')).filter(p => p.style.visibility === 'hidden');
+    const count = (D, name) => D.played.filter(s => s === name).length;
+    // Records the arguments of every BattleFX.play / playFinale call
+    const spy = (D) => D.g(`window.__fx = { play: [], finale: 0 };
+        const __play = BattleFX.play, __finale = BattleFX.playFinale;
+        BattleFX.play = (args) => { __fx.play.push({ mode: args.mode, a: args.attackerPiece, v: args.victimPiece }); return __play(args); };
+        BattleFX.playFinale = (args) => { __fx.finale++; return __finale(args); };`);
+
+    test('a capture plays a scene in both orientations, with one capture sound each', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        await D.play('e2e4', 'd7d5');
+        D.click('e4'); D.click('d5');
+        assert.equal(D.layer().querySelectorAll('.battle-actor').length, 2, 'scene running');
+        assert.equal(hidden(D).length, 2, 'attacker and victim originals hidden');
+        await D.settle();
+        assert.equal(D.layer().children.length, 0);
+        assert.deepEqual(hidden(D), []);
+        assert.equal(D.notations()[2], 'exd5');
+        assert.equal(D.pieceEl('d5').dataset.piece, 'P');
+        assert.equal(D.doc.querySelectorAll('.piece').length, 31);
+        assert.equal(count(D, 'capture.mp3'), 1);
+
+        D.el('switch-colors-button').click(); // Black at the bottom
+        D.click('d8'); D.click('d5');
+        assert.equal(D.layer().querySelectorAll('.battle-actor').length, 2);
+        await D.settle();
+        assert.equal(D.notations()[3], 'Qxd5');
+        assert.equal(D.pieceEl('d5').dataset.piece, 'q');
+        assert.equal(D.doc.querySelectorAll('.piece').length, 30);
+        assert.equal(count(D, 'capture.mp3'), 2, 'capture sound once per capture');
+        assert.equal(D.layer().children.length, 0);
+        assert.deepEqual(D.errors, []);
+    }));
+
+    test('checkmate plays the finale once after the move; game over state is unchanged', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        spy(D);
+        D.loadPosition('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1');
+        await D.play('a1a8');
+        assert.equal(D.g('__fx.finale'), 1);
+        assert.equal(D.g('isGameOver'), true);
+        assert.equal(D.status(), 'Checkmate! White wins.');
+        assert.equal(D.g('isAnimating'), false, 'the finale does not lock input');
+        assert.ok(D.layer().querySelector('.battle-crown'), 'finale running');
+        await D.waitFor(() => D.layer().children.length === 0, { message: 'finale end' });
+        assert.ok(D.pieceEl('g8').classList.contains('toppled'));
+        assert.equal(D.pieceEl('g8').style.visibility, '');
+        assert.equal(count(D, 'game-over.mp3'), 1);
+        assert.equal(D.g('__fx.finale'), 1);
+        assert.deepEqual(D.notations(), ['Ra8#']);
+    }));
+
+    test('the mated king stays toppled after a color switch and after undo/redo', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        D.loadPosition('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1');
+        await D.play('a1a8');
+        await D.waitFor(() => D.layer().children.length === 0, { message: 'finale end' });
+        D.el('switch-colors-button').click();
+        await D.settle();
+        assert.ok(D.pieceEl('g8').classList.contains('toppled'), 'after switching colors');
+        D.el('undo-button').click();
+        await D.settle();
+        assert.equal(D.pieceEl('g8').classList.contains('toppled'), false, 'standing before the mate');
+        D.el('redo-button').click();
+        await D.settle();
+        assert.ok(D.pieceEl('g8').classList.contains('toppled'), 'toppled again at the mate');
+    }));
+
+    test('undo and keys during the finale: no stray clones; a key only skips', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        D.loadPosition('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1');
+        await D.play('a1a8');
+        assert.ok(D.layer().children.length > 0);
+        D.key('ArrowLeft');
+        assert.equal(D.layer().children.length, 0, 'key skipped the finale');
+        assert.equal(D.g('currentMoveIndex'), 1, 'and did not navigate');
+        assert.ok(D.pieceEl('g8').classList.contains('toppled'));
+
+        D.loadPosition('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1');
+        await D.play('a1a8');
+        D.el('undo-button').click();
+        assert.equal(D.layer().children.length, 0);
+        assert.deepEqual(hidden(D), []);
+        assert.equal(D.g('currentMoveIndex'), 0);
+        assert.equal(D.g('isGameOver'), false);
+        assert.equal(D.doc.querySelectorAll('.piece.toppled').length, 0);
+        assert.equal(D.g('BattleFX.isPlaying()'), false);
+    }));
+
+    test('new game during a capture scene cleans up and releases the lock', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        await D.play('e2e4', 'd7d5');
+        D.click('e4'); D.click('d5');
+        assert.ok(D.layer().children.length > 0);
+        D.el('new-game-button').click();
+        assert.equal(D.layer().children.length, 0);
+        assert.deepEqual(hidden(D), []);
+        assert.equal(D.g('isAnimating'), false);
+        assert.equal(D.doc.querySelectorAll('.piece').length, 32);
+        await sleep(400);
+        assert.equal(D.g('gameHistory.length'), 1, 'aborted capture never recorded');
+        assert.equal(D.layer().children.length, 0);
+        await D.play('d2d4');
+        assert.deepEqual(D.notations(), ['d4']);
+        assert.deepEqual(D.errors, []);
+    }));
+
+    test('clicks during a scene skip it and never make a move', withDom(REAL, async (D) => {
+        D.setMode('human-human');
+        await D.play('e2e4', 'd7d5');
+        D.click('e4'); D.click('d5');
+        D.click('a7');
+        assert.equal(D.layer().children.length, 0, 'first click skipped the scene');
+        D.click('a6');
+        await D.settle();
+        assert.deepEqual(D.notations(), ['e4', 'd5', 'exd5']);
+        assert.equal(D.pieceAt('a7'), 'p');
+        assert.equal(D.g('selectedSquare'), null);
+        assert.equal(count(D, 'capture.mp3'), 1, 'skipped before impact: ui.js plays the sound');
+    }));
+
+    test('AI vs AI plays Fast unless the user picked a mode', withDom(REAL, async (D) => {
+        spy(D);
+        D.loadPosition('4k3/8/2p5/3p4/4P3/8/8/4K3 w - - 0 1');
+        D.setMode('ai-ai');
+        await D.waitFor(() => D.aiCalls().length === 1, { message: 'AI request' });
+        D.aiCalls()[0].resolve(move({ row: 4, col: 4 }, { row: 3, col: 3 }));
+        await D.waitFor(() => D.g('gameHistory.length') === 2, { message: 'white capture' });
+        const select = D.el('battle-mode-select');
+        assert.equal(select.value, 'fast', 'the select shows the speed that will actually play');
+        select.value = 'full';
+        select.dispatchEvent(new D.w.Event('change'));
+        await D.waitFor(() => D.aiCalls().length === 2, { message: 'second AI request' });
+        D.aiCalls()[1].resolve(move({ row: 2, col: 2 }, { row: 3, col: 3 }));
+        await D.waitFor(() => D.g('gameHistory.length') === 3, { message: 'black capture' });
+        D.setMode('human-human');
+        await D.settle();
+        assert.deepEqual(D.get('__fx.play.map(p => p.mode)'), ['fast', 'full']);
+        assert.equal(D.w.localStorage.getItem('chess.battleMode'), 'full');
+    }));
+
+    test('"Off" uses the plain fade; the select reflects the stored mode', withDom({ ...REAL, setup: (w) => w.localStorage.setItem('chess.battleMode', 'off') }, async (D) => {
+        spy(D);
+        assert.equal(D.el('battle-mode-select').value, 'off');
+        D.setMode('human-human');
+        await D.play('e2e4', 'd7d5');
+        D.click('e4'); D.click('d5');
+        assert.equal(D.layer().children.length, 0, 'no scene');
+        await D.settle();
+        assert.equal(D.g('__fx.play.length'), 0);
+        assert.equal(D.pieceEl('d5').dataset.piece, 'P');
+        assert.equal(count(D, 'capture.mp3'), 1);
+    }));
+
+    test('prefers-reduced-motion starts with battle animations off', withDom({
+        ...REAL, setup: (w) => { w.matchMedia = (q) => ({ matches: q.includes('reduce'), media: q }); }
+    }, async (D) => {
+        assert.equal(D.el('battle-mode-select').value, 'off');
+        assert.equal(D.g('battleMode()'), 'off');
+    }));
+
+    test('a scripted game with captures logs no console errors', withDom({ ...REAL, gsapSpeed: 8 }, async (D) => {
+        D.setMode('human-human');
+        await D.play('e2e4', 'd7d5', 'e4e5', 'f7f5', 'e5f6', 'g8f6', 'g1f3', 'c8g4', 'f1e2', 'b8c6',
+            'e1g1', 'd8d6', 'd2d4', 'e8c8', 'c2c4', 'd5c4', 'b2b4', 'c4c3', 'b4b5', 'c3c2', 'b5c6', 'c2b1r');
+        const n = D.notations();
+        assert.equal(n[4], 'exf6');
+        assert.equal(n[21], 'cxb1=R');
+        assert.equal(D.pieceEl('b1').dataset.piece, 'r');
+        assert.equal(D.layer().children.length, 0);
+        assert.deepEqual(hidden(D), []);
+        D.el('undo-button').click();
+        D.el('redo-button').click();
+        await D.play('a1b1');
         D.el('new-game-button').click();
         await sleep(50);
         assert.deepEqual(D.errors, []);
