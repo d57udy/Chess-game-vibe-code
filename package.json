@@ -10,6 +10,7 @@
     "test:slow": "RUN_SLOW=1 node --test --test-concurrency=1 \"tests/slow/*.test.js\""
   },
   "devDependencies": {
+    "gsap": "3.12.2",
     "jsdom": "^24.1.3"
   }
 }

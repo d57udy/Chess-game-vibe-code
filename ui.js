@@ -40,6 +40,7 @@ const undoButton = document.getElementById('undo-button');
 const redoButton = document.getElementById('redo-button');
 const hintButton = document.getElementById('hint-button');
 const muteButton = document.getElementById('mute-button');
+const battleModeSelect = document.getElementById('battle-mode-select');
 const moveHistoryElement = document.getElementById('move-history');
 const reviewBar = document.getElementById('review-bar');
 const reviewLabel = document.getElementById('review-label');
@@ -226,6 +227,10 @@ function renderBoard() {
     const kingPos = findKing(currentPlayer);
     if (kingPos && isKingInCheck(currentPlayer)) {
         getSquareElement(kingPos.row, kingPos.col)?.classList.add('in-check');
+        // A mated king stays toppled after redraws (color switch, undo/redo back to the mate)
+        if (isGameOver && battleMode() !== 'off' && !hasLegalMoves(currentPlayer)) {
+            getPieceElement(kingPos.row, kingPos.col)?.classList.add('toppled');
+        }
     }
     if (lastMove) {
         getSquareElement(lastMove.from.row, lastMove.from.col)?.classList.add('last-move');
@@ -391,6 +396,8 @@ function makeMove(fromRow, fromCol, toRow, toCol, promotionChoice = null) {
     if (victimPiece) {
         const outcome = previewCheckAfterMove(piece, fromRow, toRow, fromCol);
         const ctx = {
+            from: { row: fromRow, col: fromCol },
+            to: { row: toRow, col: toCol },
             enPassant: isEnPassant,
             promotionTo: promotionType,
             givesCheck: outcome.givesCheck,
@@ -521,6 +528,7 @@ function finishMoveProcessing({ prevStateInfo, piece, capturedPiece, fromRow, fr
     renderBoard();
     updateStatusDisplay();
     updateMoveHistoryDisplay();
+    if (isCheckmate) playCheckmateFinale();
     checkAndTriggerAIMove();
 }
 
@@ -651,14 +659,25 @@ function animatePieceTo(pieceElement, row, col) {
 
 // Capture animation hook. attackerPiece/victimPiece are piece codes ('N', 'p', ...) and squareEl is
 // the square the victim stands on (differs from the destination for en passant).
-// ctx = { enPassant, promotionTo, givesCheck, isMate, isAI }.
+// ctx = { from, to, enPassant, promotionTo, givesCheck, isMate, isAI }.
 // Resolves once the victim's piece element is gone: true if the animation already played the capture
 // sound (finishMoveProcessing then skips capture.mp3). It must never stall the move flow, so it also
-// resolves after a timeout or when the page is hidden. Currently a simple fade that plays no sound.
+// resolves after a timeout or when the page is hidden. Plays a battle scene (battleFx.js) unless
+// battle animations are off or unavailable; then it falls back to a simple fade that plays no sound.
 const CAPTURE_FADE_SECONDS = 0.25;
 
 function playCaptureAnimation(attackerPiece, victimPiece, squareEl, ctx = {}) {
     const victimElement = squareEl ? getPieceElement(squareEl.dataset.row, squareEl.dataset.col) : null;
+    const attackerElement = ctx.from ? getPieceElement(ctx.from.row, ctx.from.col) : null;
+    const mode = battleMode();
+    if (mode !== 'off' && victimElement && attackerElement) {
+        return BattleFX.play({
+            attackerEl: attackerElement, victimEl: victimElement, attackerPiece, victimPiece,
+            from: ctx.from, to: ctx.to, victimSquareEl: squareEl,
+            checkedKingEl: ctx.givesCheck ? opponentKingElement() : null,
+            ctx, mode
+        });
+    }
     return new Promise(resolve => {
         let settled = false;
         let timeoutId = null;
@@ -683,9 +702,34 @@ function playCaptureAnimation(attackerPiece, victimPiece, squareEl, ctx = {}) {
     });
 }
 
-// Stops running capture animations (called on undo/navigation, new game and color flip).
-// No-op for the fade; the battle animation system will hook in here.
-function cancelCaptureAnimations() {}
+// Effective battle animation mode: AI vs AI plays at Fast speed unless the user picked a mode
+function battleMode() {
+    if (typeof BattleFX === 'undefined' || !BattleFX.isAvailable()) return 'off';
+    if (gameMode === 'ai-ai' && BattleFX.mode === 'full' && !BattleFX.modeIsUserSet) return 'fast';
+    return BattleFX.mode;
+}
+
+// The king of the side that did not just move (called before the turn switches)
+function opponentKingElement() {
+    const pos = findKing(getOpponent(currentPlayer));
+    return pos ? getPieceElement(pos.row, pos.col) : null;
+}
+
+// Fire and forget: the game is already over and input is not locked, so nothing waits on it.
+// Undo/navigation/new game end it through cancelCaptureAnimations().
+function playCheckmateFinale() {
+    const mode = battleMode();
+    const pos = findKing(currentPlayer);
+    const kingElement = pos ? getPieceElement(pos.row, pos.col) : null;
+    if (mode === 'off' || !kingElement) return;
+    BattleFX.playFinale({ kingEl: kingElement, kingPiece: kingElement.dataset.piece, mode });
+}
+
+// Stops running capture scenes and the checkmate finale (called on undo/navigation, new game and
+// color flip). Their promises resolve right away and leave no clones or hidden pieces behind.
+function cancelCaptureAnimations() {
+    if (typeof BattleFX !== 'undefined') BattleFX.cancelAll();
+}
 
 // --- Sound Control ---
 function playSound(audioElement) {
@@ -702,6 +746,17 @@ function playSound(audioElement) {
 function toggleMute() {
     soundEnabled = !soundEnabled;
     muteButton.textContent = soundEnabled ? "Mute Sounds" : "Unmute Sounds";
+}
+
+function handleBattleModeChange() {
+    if (typeof BattleFX !== 'undefined') BattleFX.mode = battleModeSelect.value;
+}
+
+// Show the mode that will actually play (AI vs AI defaults to Fast), so picking Full there is a real change
+function syncBattleModeSelect() {
+    const available = typeof BattleFX !== 'undefined' && BattleFX.isAvailable();
+    battleModeSelect.disabled = !available;
+    battleModeSelect.value = available ? battleMode() : 'off';
 }
 
 // --- Status and Controls (single source of truth for all button states) ---
@@ -930,6 +985,7 @@ function handleGameModeChange() {
     cancelAIRequest();
     cancelHint();
     clearSelectionAndHighlights();
+    syncBattleModeSelect();
     updateGameModeDisplay();
     updateStatusDisplay();
     checkAndTriggerAIMove();
@@ -986,6 +1042,7 @@ function setupEventListeners() {
     hintButton.addEventListener('click', handleHint);
     switchColorsButton.addEventListener('click', handleSwitchColors);
     muteButton.addEventListener('click', toggleMute);
+    battleModeSelect.addEventListener('change', handleBattleModeChange);
     resumeButton.addEventListener('click', resumeFromHere);
     liveButton.addEventListener('click', backToLive);
 
@@ -1015,6 +1072,7 @@ function setupEventListeners() {
     gameMode = gameModeSelect.value;
     aiElo = parseInt(aiEloSlider.value, 10);
     aiEloValueSpan.textContent = aiElo;
+    syncBattleModeSelect();
 }
 
 // --- Initialization on Load ---

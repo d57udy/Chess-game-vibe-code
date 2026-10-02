@@ -13,6 +13,25 @@ https://d57udy.github.io/Chess-game-vibe-code/
   While reviewing, the AI waits. Use "Resume from here" to continue from that position (later moves are
   discarded) or "Back to live" to return to the current position. Undo/Redo step back to your own turn.
 - Last move highlight, check highlight, sounds (can be muted).
+- Battle animations for captures (see below).
+
+## Battle animations
+
+Every capture plays a short scene on the board: the attacker strikes in its own style (pawn jab,
+knight leap, bishop beam, rook charge, queen spin with stars, king bonk) and the victim reacts in
+its own way (flattened, launched, toppled, crumbled, swooning). A few pairings and events have their
+own scenes: pawn takes queen, queen takes pawn, knight takes queen, rook takes rook, bishop takes
+bishop, en passant, capture with promotion, and capture that gives check. Checkmate ends with the
+mated king toppling over.
+
+- Settings, "Battle animations": Full (about 1 s per capture), Fast (about half), or Off (a plain
+  fade). The choice is saved in the browser. Off is the default when the system asks for reduced
+  motion. AI vs AI uses Fast unless a mode was picked explicitly.
+- Click the board or press a key to skip a scene (a focused button or menu keeps Space, Enter and the arrow keys). Undo, new game and history navigation end it
+  right away.
+- `battleGallery.html` is a preview page that plays every attacker and victim pairing, the special
+  scenes and the finale, at either speed and from either side of the board. It is not linked from
+  the game.
 
 ## Running locally
 
@@ -28,13 +47,14 @@ then open http://localhost:8000.
 
 ## Running tests
 
-The game itself has no dependencies. The tests need Node 22+ and jsdom (dev dependency):
+The game itself has no dependencies (GSAP loads from a CDN). The tests need Node 22+ and the dev
+dependencies jsdom and gsap (the same GSAP version as the CDN, used to run battle scenes in jsdom):
 
 ```
 npm install
 npm test                  # unit + integration (about 12 s)
 npm run test:unit         # rules, perft, engine, AI client/worker
-npm run test:integration  # UI in jsdom (GSAP and sounds stubbed)
+npm run test:integration  # UI in jsdom (sounds stubbed; GSAP stubbed or real for battle scenes)
 npm run test:slow         # engine self-play and a timing table (about 1 min)
 ```
 
@@ -45,12 +65,18 @@ scripts into a `node:vm` context (`loadEngine.js`) or a jsdom window built from 
 
 | File | Purpose |
 |---|---|
-| `index.html` | Page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `ui.js`. |
+| `index.html` | Page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battleFx.js`, `ui.js`. |
 | `gameLogic.js` | Board state, move generation, game-end detection, history. |
 | `aiPlayer.js` | Move search and evaluation. |
 | `aiWorker.js` / `aiClient.js` | Runs the AI off the main thread; `requestAIMove()` returns a cancellable request. |
+| `battleFx.js` | Capture scenes and the checkmate finale (`window.BattleFX`), the animation setting, skip and cancel. |
 | `ui.js` | Rendering, input, animations, history review, AI orchestration. |
 | `style.css` | Styles. |
+| `battleGallery.html` | Preview page for all battle scenes. |
 
-Capture animations go through `playCaptureAnimation(attackerPiece, victimPiece, squareEl)` in `ui.js`,
-which currently fades out the captured piece.
+Captures go through `playCaptureAnimation(attackerPiece, victimPiece, squareEl, ctx)` in `ui.js`,
+which hands the scene to `BattleFX.play()` or, with animations off, fades out the captured piece.
+Scenes run on copies of the piece glyphs in `.battle-layer`, so the real pieces and the board
+orientation are never touched. A scene always ends: when its timeline completes, on skip, on
+`BattleFX.cancelAll()`, after a timeout, or when the tab is hidden (browsers pause animation frames
+in background tabs).

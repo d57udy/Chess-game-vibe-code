@@ -17,6 +17,7 @@ body {
 
 /* Game Layout */
 .game-container {
+    overflow-x: clip; /* Battle scenes may throw pieces past the board edge */
     display: flex;
     flex-wrap: wrap; /* Allow wrapping on smaller screens */
     justify-content: center;
@@ -52,6 +53,43 @@ body {
     pointer-events: none;
     z-index: 200;
 }
+
+/* Battle scenes (battleFx.js): clones of the pieces and short-lived effects inside .battle-layer */
+.battle-layer .battle-actor { z-index: 1; will-change: transform; }
+.battle-spotlight { position: absolute; inset: 0; }
+.battle-layer .battle-fx {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    line-height: 1;
+    white-space: nowrap;
+}
+.battle-dust { width: 10px; height: 10px; border-radius: 50%; background-color: rgba(140, 125, 110, 0.85); }
+.battle-sparkle { color: #fff3a0; font-size: 14px; text-shadow: 0 0 4px #c9a400; }
+.battle-star { color: #ffd84d; font-size: 18px; text-shadow: 0 0 4px #b8860b; }
+.battle-confetti { width: 6px; height: 10px; border-radius: 1px; }
+.battle-crown { font-size: 18px; color: #ffd84d; text-shadow: 0 0 3px #6b4f00; }
+.battle-bubble {
+    padding: 2px 7px;
+    border: 2px solid #333;
+    border-radius: 10px;
+    background-color: #fff;
+    color: #333;
+    font-weight: bold;
+    font-size: 16px;
+}
+.battle-beam {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), #fff6b0 40%, #ffffff);
+    box-shadow: 0 0 8px #ffe680;
+}
+.battle-beam-enemy {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), #b8d8ff 40%, #ffffff);
+    box-shadow: 0 0 8px #8fb8ff;
+}
+/* The mated king stays on its side after the checkmate finale */
+.piece.toppled { transform: rotate(90deg); transform-origin: 50% 85%; }
 
 /* Waiting for the AI: slightly dimmed, no piece cursor */
 #chess-board.ai-thinking { opacity: 0.85; cursor: progress; }

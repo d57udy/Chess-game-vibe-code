@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battle Gallery</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        /* Dev page only: plays every capture scene of battleFx.js on a minimal board */
+        .gallery-panel { max-width: 340px; }
+        .gallery-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+        .gallery-grid button, .gallery-list button {
+            padding: 4px; font-size: 1.1em; border: 1px solid #ccc; border-radius: 4px;
+            background-color: #fff; cursor: pointer;
+        }
+        .gallery-grid button:hover, .gallery-list button:hover { background-color: #e9f2ec; }
+        .gallery-list { display: flex; flex-wrap: wrap; gap: 4px; }
+        .gallery-list button { font-size: 0.9em; }
+        .gallery-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        #gallery-now { min-height: 1.4em; font-style: italic; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="board-container">
+            <div id="chess-board"></div>
+            <div class="battle-layer"></div>
+        </div>
+
+        <div class="info-panel gallery-panel">
+            <h2>Battle Gallery</h2>
+            <div id="gallery-now">Pick a scene.</div>
+            <div class="gallery-row">
+                <label for="gallery-mode">Speed:</label>
+                <select id="gallery-mode">
+                    <option value="full">Full</option>
+                    <option value="fast">Fast</option>
+                </select>
+                <label><input type="checkbox" id="gallery-flip"> Black at the bottom</label>
+                <label><input type="checkbox" id="gallery-mute"> Mute</label>
+            </div>
+            <div class="controls">
+                <button id="gallery-play-all">Play all</button>
+            </div>
+            <h3>Attacker x victim</h3>
+            <div class="gallery-grid" id="gallery-pairs"></div>
+            <h3>Signatures and special beats</h3>
+            <div class="gallery-list" id="gallery-specials"></div>
+        </div>
+    </div>
+
+    <script src="gameLogic.js"></script>
+    <script src="battleFx.js"></script>
+    <script>
+    // Minimal fake board. Mode is passed per scene, so the game's stored setting is not changed.
+    const sounds = {
+        capture: new Audio('capture.mp3'),
+        gameOver: new Audio('game-over.mp3')
+    };
+    function playSound(audio) {
+        if (document.getElementById('gallery-mute').checked) return;
+        audio.currentTime = 0;
+        const playback = audio.play();
+        if (playback && playback.catch) playback.catch(() => {});
+    }
+
+    const boardEl = document.getElementById('chess-board');
+    const nowEl = document.getElementById('gallery-now');
+    const flipBox = document.getElementById('gallery-flip');
+    const modeSelect = document.getElementById('gallery-mode');
+    let runId = 0;
+
+    const sq = (name) => ({ row: 8 - Number(name[1]), col: name.charCodeAt(0) - 97 });
+    function visual({ row, col }) {
+        return flipBox.checked ? { row: 7 - row, col: 7 - col } : { row, col };
+    }
+
+    function buildSquares() {
+        boardEl.innerHTML = '';
+        for (let vr = 0; vr < 8; vr++) {
+            for (let vc = 0; vc < 8; vc++) {
+                const { row, col } = visual({ row: vr, col: vc }); // the mapping is its own inverse
+                const square = document.createElement('div');
+                square.className = `square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+                square.dataset.row = row;
+                square.dataset.col = col;
+                boardEl.appendChild(square);
+            }
+        }
+    }
+
+    function place(code, name) {
+        const pos = sq(name);
+        const v = visual(pos);
+        const el = document.createElement('div');
+        el.className = 'piece';
+        el.textContent = PIECES[code];
+        el.dataset.piece = code;
+        el.dataset.row = pos.row;
+        el.dataset.col = pos.col;
+        el.style.left = `${v.col * 12.5}%`;
+        el.style.top = `${v.row * 12.5}%`;
+        boardEl.appendChild(el);
+        return el;
+    }
+
+    function squareEl(name) {
+        const { row, col } = sq(name);
+        return boardEl.querySelector(`.square[data-row="${row}"][data-col="${col}"]`);
+    }
+
+    // The same slide ui.js does after a scene
+    function slide(el, name) {
+        const v = visual(sq(name));
+        return new Promise(resolve => gsap.to(el, {
+            left: `${v.col * 12.5}%`, top: `${v.row * 12.5}%`, duration: 0.35, ease: 'power2.out', onComplete: resolve
+        }));
+    }
+
+    async function capture({ title, attacker, from, victim, to, victimAt, ctx = {}, king }) {
+        BattleFX.cancelAll();
+        buildSquares();
+        nowEl.textContent = title;
+        const attackerEl = place(attacker, from);
+        const victimEl = place(victim, victimAt || to);
+        const checkedKingEl = king ? place('k', king) : null;
+        await BattleFX.play({
+            attackerEl, victimEl, attackerPiece: attacker, victimPiece: victim,
+            from: sq(from), to: sq(to), victimSquareEl: squareEl(victimAt || to),
+            checkedKingEl, ctx, mode: modeSelect.value
+        });
+        await slide(attackerEl, to);
+    }
+
+    async function finale() {
+        BattleFX.cancelAll();
+        buildSquares();
+        nowEl.textContent = 'Checkmate finale';
+        const kingEl = place('k', 'g8');
+        place('R', 'a8');
+        playSound(sounds.gameOver);
+        await BattleFX.playFinale({ kingEl, kingPiece: 'k', mode: modeSelect.value });
+    }
+
+    // Typical geometry for each attacker (white, from d4) against a black victim
+    const ATTACK_SQUARES = { P: 'e5', N: 'f5', B: 'g7', R: 'd8', Q: 'd7', K: 'e5' };
+    const pairs = [];
+    for (const attacker of 'PNBRQK') {
+        for (const victim of 'pnbrq') {
+            pairs.push({
+                title: `${PIECES[attacker]} takes ${PIECES[victim]}`,
+                label: `${PIECES[attacker]}x${PIECES[victim]}`,
+                attacker, from: 'd4', victim, to: ATTACK_SQUARES[attacker]
+            });
+        }
+    }
+    const specials = [
+        { title: 'Pawn takes queen (underdog)', attacker: 'P', from: 'e4', victim: 'q', to: 'd5' },
+        { title: 'Queen takes pawn (overkill)', attacker: 'Q', from: 'd1', victim: 'p', to: 'd7' },
+        { title: 'Knight takes queen (joust)', attacker: 'N', from: 'c3', victim: 'q', to: 'd5' },
+        { title: 'Rook takes rook (shove)', attacker: 'R', from: 'a1', victim: 'r', to: 'a8' },
+        { title: 'Bishop takes bishop (beam duel)', attacker: 'B', from: 'c1', victim: 'b', to: 'h6' },
+        { title: 'En passant', attacker: 'P', from: 'e5', victim: 'p', to: 'd6', victimAt: 'd5', ctx: { enPassant: true } },
+        { title: 'Capture with promotion', attacker: 'P', from: 'b7', victim: 'r', to: 'a8', ctx: { promotionTo: 'Q' } },
+        { title: 'Capture that gives check', attacker: 'B', from: 'c4', victim: 'p', to: 'f7', king: 'e8' },
+        { title: 'Checkmate finale', finale: true }
+    ];
+
+    const play = (scene) => (scene.finale ? finale() : capture(scene));
+
+    async function playAll() {
+        const id = ++runId;
+        for (const scene of [...pairs, ...specials]) {
+            if (id !== runId) return;
+            await play(scene);
+            await new Promise(r => setTimeout(r, 250));
+        }
+        if (id === runId) nowEl.textContent = 'Done.';
+    }
+
+    function addButton(parent, text, title, onClick) {
+        const button = document.createElement('button');
+        button.textContent = text;
+        button.title = title;
+        button.addEventListener('click', onClick);
+        parent.appendChild(button);
+    }
+    const pairsEl = document.getElementById('gallery-pairs');
+    pairs.forEach(p => addButton(pairsEl, p.label, p.title, () => { runId++; play(p); }));
+    const specialsEl = document.getElementById('gallery-specials');
+    specials.forEach(p => addButton(specialsEl, p.title, p.title, () => { runId++; play(p); }));
+    document.getElementById('gallery-play-all').addEventListener('click', playAll);
+    flipBox.addEventListener('change', () => { runId++; BattleFX.cancelAll(); buildSquares(); });
+    buildSquares();
+    </script>
+</body>
+</html>
