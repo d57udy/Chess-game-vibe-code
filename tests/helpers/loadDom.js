@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 const { ROOT, square } = require('./loadEngine');
+const { page2d } = require('./pages');
 
 // Minimal gsap: to() + killTweensOf(). Tweens set their end values and call onComplete either on
 // the next macrotask ('auto') or when the test calls tweens.flush() ('manual'). It has no
@@ -62,7 +63,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @param {(w: Window) => void} [options.setup] runs before the game scripts (e.g. seed localStorage).
  */
 async function loadDom(options = {}) {
-    const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+    const html = fs.readFileSync(path.join(ROOT, page2d()), 'utf8')
         .replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
     const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
     const w = dom.window;

@@ -9,6 +9,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 const { ROOT, square } = require('./loadEngine');
+const { page3d } = require('./pages');
 
 const AI_STUB = `
 window.__aiCalls = [];
@@ -120,9 +121,9 @@ function fakeUnits(mode = 'auto') {
  * @param {(w: Window) => void} [options.setup] runs before the controller is created (seed localStorage)
  */
 async function loadBattle3dController(options = {}) {
-    const html = fs.readFileSync(path.join(ROOT, 'battle3d.html'), 'utf8')
+    const html = fs.readFileSync(path.join(ROOT, page3d()), 'utf8')
         .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, (tag) => (tag.includes('importmap') ? tag : ''));
-    const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/battle3d.html' });
+    const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' + page3d() });
     const w = dom.window;
     const errors = [], warnings = [];
     w.console.log = () => {};

@@ -2,112 +2,206 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Chess Game</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- GSAP for piece animations (the game still works without it, just unanimated) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Chess Battle 3D (prototype)</title>
+    <meta name="description" content="Play chess in 3D: heroes against skeletons, every capture is a fight.">
+    <meta name="theme-color" content="#16141d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Chess 3D">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+    <link rel="stylesheet" href="battle3d/hud.css">
+    <link rel="stylesheet" href="battle3d/cast.css">
+    <link rel="stylesheet" href="battle3d/install.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+        }
+    }
+    </script>
+    <!-- Loaded early so it catches Chrome's one-time beforeinstallprompt; main.js imports the same module -->
+    <script type="module" src="battle3d/install.js"></script>
 </head>
 <body>
-    <div class="game-container">
-        <div class="info-panel left-panel">
-            <h2>Game Info</h2>
-            <a id="play-3d-link" href="battle3d.html" title="Heroes against skeletons in 3D, every capture is a fight"
-               style="display: block; margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; background: #2c2433; color: #f4d48c; font-weight: 600; text-align: center; text-decoration: none;">Play in 3D</a>
-            <div id="turn-indicator">Turn: White</div>
-            <div id="status-message">Good luck!</div>
-            <div id="difficulty-label">Mode: AI vs Human</div>
-            <div id="player-color-indicator">Playing as: White</div>
+    <div id="stage" tabindex="0" role="application" aria-roledescription="3D chess board"
+         aria-label="Chess board. Use the arrow keys to move the cursor, Enter to select or move, Escape to cancel."></div>
 
-             <div class="settings">
-                <h3>Settings</h3>
-                <label for="game-mode-select">Game Mode:</label>
-                <select id="game-mode-select">
-                    <option value="ai-ai">AI vs AI</option>
-                    <option value="ai-human" selected>AI vs Human</option>
+    <!-- HUD -->
+    <div id="hud" class="hud">
+        <header class="hud-bar panel">
+            <div class="hud-title">
+                <h1>Chess Battle 3D <span class="tag">prototype</span></h1>
+                <div class="status-line">
+                    <span id="turn-dot" class="turn-dot w" aria-hidden="true"></span>
+                    <span id="status-text">Loading...</span>
+                </div>
+            </div>
+            <button id="mute" class="icon-btn" type="button" aria-pressed="false" title="Sound on (click to mute)">
+                <svg class="icon icon-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <svg class="icon icon-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <span class="sr-only">Mute</span>
+            </button>
+            <button id="hud-toggle" class="icon-btn" type="button" aria-expanded="true" aria-controls="hud-controls" title="Show or hide controls">
+                <span class="burger" aria-hidden="true"></span><span class="sr-only">Controls</span>
+            </button>
+        </header>
+
+        <section id="hud-controls" class="hud-controls panel">
+            <div class="row">
+                <label for="mode-select">Mode</label>
+                <select id="mode-select">
+                    <option value="human-ai" selected>Human vs AI</option>
                     <option value="human-human">Human vs Human</option>
+                    <option value="ai-ai">AI vs AI</option>
                 </select>
-
-                <!-- Shown only when an AI is playing -->
-                <div id="ai-settings" style="margin-top: 10px;">
-                     <label for="ai-elo-slider">AI Strength (ELO): </label>
-                     <input type="range" id="ai-elo-slider" name="ai-elo" min="300" max="2500" step="100" value="1200">
-                     <span id="ai-elo-value">1200</span>
-                </div>
-
-                 <div id="human-player-settings" style="margin-top: 10px;">
-                     <button id="switch-colors-button">Play as Black</button>
-                 </div>
-                 <div style="margin-top: 10px;">
-                     <button id="mute-button">Mute Sounds</button>
-                 </div>
-                 <div style="margin-top: 10px;">
-                     <label for="battle-mode-select">Battle animations:</label>
-                     <select id="battle-mode-select">
-                         <option value="full">Full</option>
-                         <option value="fast">Fast</option>
-                         <option value="off">Off</option>
-                     </select>
-                 </div>
             </div>
-            <div class="instructions">
-                <h3>How to Play</h3>
-                <p>Click a piece to select it, then click a highlighted square to move.</p>
-                <p>Standard chess rules apply.</p>
-                <p>Use the Left/Right arrow keys or click a move to review the game. Escape cancels a selection.</p>
+            <div class="row" id="elo-row">
+                <label for="elo-slider">AI strength (ELO) <output id="elo-value" for="elo-slider">1200</output></label>
+                <input id="elo-slider" type="range" min="300" max="2500" step="100" value="1200">
             </div>
-        </div>
-
-        <div class="board-container">
-            <div id="chess-board">
-                <!-- Squares and pieces are generated by ui.js -->
-            </div>
-            <!-- Overlay for capture ("battle") animations, see battleFx.js -->
-            <div class="battle-layer"></div>
-        </div>
-
-        <div class="info-panel right-panel">
-            <h2>Controls & History</h2>
-            <div class="controls">
-                <button id="new-game-button">New Game</button>
-                <button id="undo-button">Undo Move</button>
-                <button id="redo-button">Redo Move</button>
-                <button id="hint-button">Get Hint</button>
-            </div>
-            <h3>Move History</h3>
-            <div id="review-bar" hidden>
-                <span id="review-label"></span>
-                <div class="review-actions">
-                    <button id="resume-button">Resume from here</button>
-                    <button id="live-button">Back to live</button>
+            <div class="row">
+                <span class="label" id="side-label">Play as</span>
+                <div class="seg" role="group" aria-labelledby="side-label">
+                    <button type="button" id="side-w" class="active" aria-pressed="true">White</button>
+                    <button type="button" id="side-b" aria-pressed="false">Black</button>
                 </div>
             </div>
-            <div id="move-history">
-                <!-- Moves will be added here -->
+            <div class="row">
+                <span class="label" id="speed-label">Battles</span>
+                <div class="seg" role="group" aria-labelledby="speed-label">
+                    <button type="button" id="speed-full" class="active" aria-pressed="true">Full</button>
+                    <button type="button" id="speed-fast" aria-pressed="false">Fast</button>
+                </div>
             </div>
+            <div class="row">
+                <label class="check" for="labels-toggle"><input id="labels-toggle" type="checkbox" checked> Piece labels</label>
+                <button type="button" id="cast-open" class="btn small-btn" title="Choose which character plays each piece">Cast...</button>
+            </div>
+            <div class="row">
+                <span class="label">Camera</span>
+                <button type="button" id="reset-view" class="btn small-btn" title="Back to the default view for your side">Reset view</button>
+            </div>
+            <div class="row buttons">
+                <button type="button" id="new-game" class="btn primary">New game</button>
+                <button type="button" id="undo" class="btn">Undo</button>
+                <button type="button" id="skip" class="btn" title="Skip the current animation (Space)">Skip <kbd>Space</kbd></button>
+            </div>
+            <details id="legend-details" class="moves">
+                <summary>Who's who</summary>
+                <table id="legend" class="legend">
+                    <thead><tr><th scope="col">Piece</th><th scope="col">White</th><th scope="col">Black</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </details>
+            <details id="moves-details" class="moves">
+                <summary>Moves <span id="move-count" class="muted"></span></summary>
+                <ol id="move-list" class="move-list"></ol>
+            </details>
+            <details class="moves help">
+                <summary>Controls</summary>
+                <ul class="help-list">
+                    <li>Click or tap a unit, then a highlighted square.</li>
+                    <li>Touch: 1 finger drag rotates. 2 fingers zoom, move and turn the view. Double-tap zooms to that spot, double-tap again zooms back out.</li>
+                    <li>Mouse: drag rotates, right-drag or Shift+drag moves the view, the wheel zooms.</li>
+                    <li>Reset view brings the camera back to your side.</li>
+                    <li>Keyboard: arrow keys move the cursor, <kbd>Enter</kbd> selects or moves, <kbd>Esc</kbd> cancels, <kbd>Space</kbd> skips a fight.</li>
+                </ul>
+            </details>
+            <section class="menu-section" aria-labelledby="install-heading">
+                <h3 id="install-heading" class="section-title">Install app</h3>
+                <div id="install-mount" class="install-mount"></div>
+            </section>
+            <a class="back-link" href="2d.html">Back to the 2D game</a>
+        </section>
+    </div>
+
+    <!-- Screen reader announcements (moves, results) -->
+    <div id="announce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- First-run hint -->
+    <div id="tip" class="tip panel" role="note" hidden>
+        <span id="tip-text">Click a hero, then a highlighted square.</span>
+        <button type="button" id="tip-close" class="tip-close" aria-label="Dismiss hint">&times;</button>
+    </div>
+
+    <!-- Promotion choice -->
+    <div id="promo" class="modal" hidden>
+        <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="promo-title">
+            <h2 id="promo-title">Promote to</h2>
+            <div class="promo-choices">
+                <button type="button" data-piece="Q"><span class="glyph"></span>Queen</button>
+                <button type="button" data-piece="R"><span class="glyph"></span>Rook</button>
+                <button type="button" data-piece="B"><span class="glyph"></span>Bishop</button>
+                <button type="button" data-piece="N"><span class="glyph"></span>Knight</button>
+            </div>
+            <button type="button" id="promo-cancel" class="btn subtle">Cancel</button>
         </div>
     </div>
 
-    <!-- Promotion Modal -->
-    <div id="promotion-modal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <h3>Promote Pawn</h3>
-            <p>Choose a piece:</p>
-            <div class="promotion-choices">
-                <button data-piece="Q"><span class="promo-symbol"></span>Queen</button>
-                <button data-piece="R"><span class="promo-symbol"></span>Rook</button>
-                <button data-piece="B"><span class="promo-symbol"></span>Bishop</button>
-                <button data-piece="N"><span class="promo-symbol"></span>Knight</button>
+    <!-- Cast editor (content mounted by battle3d/cast-ui.js) -->
+    <div id="cast-modal" class="modal" hidden>
+        <div class="modal-card panel cast-card" role="dialog" aria-modal="true" aria-labelledby="cast-title">
+            <div class="cast-head">
+                <h2 id="cast-title">Cast</h2>
+                <button type="button" id="cast-close" class="icon-btn" aria-label="Close cast editor">&times;</button>
             </div>
-            <button id="promotion-cancel" class="promotion-cancel">Cancel (Esc)</button>
+            <div id="cast-mount" class="cast-mount"><p class="muted">Loading the cast editor...</p></div>
         </div>
     </div>
 
-    <!-- Load order matters: rules and state, AI, AI worker client, capture scenes, then the UI -->
+    <!-- Loading screen -->
+    <div id="loading" class="overlay">
+        <div class="overlay-card">
+            <div class="crest" aria-hidden="true">&#9822;</div>
+            <h1>Chess Battle 3D</h1>
+            <p id="loading-text">Preparing the battlefield...</p>
+            <div class="progress" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="loading-bar" class="progress-bar"></div>
+            </div>
+            <p id="loading-hint" class="muted small">Heroes (White) against skeletons (Black). Every capture is a fight.</p>
+            <p class="muted small">Characters: KayKit by Kay Lousberg (CC0).</p>
+        </div>
+    </div>
+
+    <!-- Fallback when WebGL2 or the 3D modules are unavailable -->
+    <div id="fallback" class="overlay" hidden>
+        <div class="overlay-card">
+            <h1>3D view unavailable</h1>
+            <p id="fallback-text">Your browser or device does not support WebGL2, which the 3D game needs.</p>
+            <p><a class="btn primary" href="2d.html">Play the 2D game instead</a></p>
+        </div>
+    </div>
+
+    <script>
+        // Feature check before anything heavy loads; main.js bails out when this is set.
+        window.__b3dFail = function (message) {
+            window.__b3dFailed = true;
+            document.getElementById('loading').hidden = true;
+            if (message) document.getElementById('fallback-text').textContent = message;
+            document.getElementById('fallback').hidden = false;
+        };
+        (function () {
+            let ok = false;
+            try {
+                const canvas = document.createElement('canvas');
+                ok = !!(window.WebGL2RenderingContext && canvas.getContext('webgl2'));
+            } catch (e) { ok = false; }
+            if (!ok) window.__b3dFail();
+        })();
+    </script>
     <script src="gameLogic.js"></script>
     <script src="aiPlayer.js"></script>
     <script src="aiClient.js"></script>
-    <script src="battleFx.js"></script>
-    <script src="ui.js"></script>
+    <script src="battle3d/rules.js"></script>
+    <script type="module" src="battle3d/main.js"
+        onerror="window.__b3dFail('Could not load the 3D engine. Check your connection (three.js loads from a CDN) and that the page is served over http.')"></script>
 </body>
 </html>

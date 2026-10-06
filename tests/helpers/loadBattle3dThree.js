@@ -83,7 +83,7 @@ function fakeCanvas() {
 // so relative fetches resolve against the repo. Returns a restore function.
 // With dom=false, document and location are left alone (only fetch & friends are installed), and
 // relative fetches resolve against the repo root.
-function installBrowserGlobals(pageUrl = pathToFileURL(path.join(ROOT, 'battle3d.html')).href, { dom = true } = {}) {
+function installBrowserGlobals(pageUrl = pathToFileURL(path.join(ROOT, 'index.html')).href, { dom = true } = {}) {
     const saved = {};
     const set = (k, v) => { saved[k] = Object.getOwnPropertyDescriptor(globalThis, k); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); };
     const realFetch = globalThis.fetch;

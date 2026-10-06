@@ -229,3 +229,59 @@ export function createAudio() -> { play(name, { volume = 1, rate = 1 } = {}), se
 // names: 'step', 'whoosh', 'clang', 'hit', 'thud', 'bone', 'magic', 'zap', 'cheer', 'death', 'promote', 'check', 'gameover', 'move', 'capture'
 // WebAudio; CC0 samples in assets/audio if available, else synthesized; small (< 400 KB total)
 ```
+
+---
+
+# v3: 3D as default, installable app (PWA), two-finger pan
+
+Owner feedback (Android test): works great. (1) Make 3D the default. (2) Make it installable on Android, with a
+message about it in the hamburger menu. (3) Two fingers: zoom (works) AND move the view so pieces at the board
+edge can be brought into focus, and look around.
+
+## File layout after v3 (game agent does the moves with `git mv`)
+
+| Path | Content |
+|---|---|
+| `index.html` | the 3D game (was `battle3d.html`) |
+| `2d.html` | the 2D game (was `index.html`) |
+| `battle3d.html` | tiny redirect to `./` keeping the query string (old links/bookmarks) |
+| `manifest.webmanifest`, `sw.js`, `icons/*` | PWA (pwa agent); sw.js at the repo root so its scope covers both pages |
+
+All links use relative paths (the site lives under `/Chess-game-vibe-code/` on GitHub Pages). 3D page: "Back to the
+2D game" and the WebGL2 fallback point to `2d.html`. 2D page: "Play in 3D" points to `./`. README updated.
+
+## Ownership (v3)
+
+| Agent | Owns |
+|---|---|
+| scene (`b3d-scene`) | `scene.js`, `scene-rig.js`, `cinematic.js` (gestures, pan, view reset) |
+| pwa (`b3d-assets`) | `manifest.webmanifest`, `sw.js`, `icons/**`, new `battle3d/install.js`, `battle3d/tools/make_icons.*` |
+| game (`b3d-game`) | `index.html`, `2d.html`, `battle3d.html` (redirect), `battle3d/main.js`, `controller.js`, `hud.css`, `README.md`, the 2D page's link only |
+| qa (`b3d-qa`) | `tests/**` (including updating helpers for the renamed pages) |
+
+## Interfaces
+
+```js
+// scene (b3d-scene)
+sceneAPI.resetView({ animate = true } = {})   // back to the fitted default for the current side (also undoes pan/zoom)
+sceneAPI.getPan() -> { x, z }                  // debug/tests
+// Gestures: 1 finger drag = orbit (unchanged); 2 fingers = pinch zoom + pan (move the look-at target over the board
+// plane, clamped to the board area plus a small margin) + twist to rotate around the vertical axis; double-tap keeps
+// working. Desktop: right-drag or shift+drag pans, wheel zooms. Pan/zoom are part of the "player's view" that
+// cinematic.end() restores. Respect reduced motion.
+
+// pwa (b3d-assets) battle3d/install.js
+export function registerServiceWorker({ disabled })            // no-op when unsupported or ?nosw=1 / ?debug=1
+export function mountInstallUI(containerEl)                     // hamburger-menu section: "Install app" button via
+// beforeinstallprompt (Android Chrome/Edge), else short instructions ("Chrome menu ⋮ > Add to Home screen" / iOS Share >
+// Add to Home Screen); hidden when already installed (display-mode: standalone); a one-time gentle hint is allowed.
+export function isInstalled() -> boolean
+```
+
+PWA requirements: manifest with name "Chess Battle 3D", short_name "Chess 3D", start_url "./", scope "./",
+display "standalone" (or "fullscreen" with standalone fallback), orientation "any", background/theme colours from the
+HUD palette, icons 192 and 512 PNG (any + maskable), screenshots optional. sw.js: versioned cache, precache the app
+shell (both pages, all battle3d JS/CSS, rules/AI scripts, manifest, icons) plus three.js 0.186.1 modules from jsDelivr
+and the default cast assets; runtime cache for other assets; network-first for HTML so updates arrive, cache-first for
+versioned assets; works offline after the first load; cleans old caches on activate. Must pass Chrome's installability
+criteria.

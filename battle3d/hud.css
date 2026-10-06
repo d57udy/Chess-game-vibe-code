@@ -431,3 +431,16 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 @media (prefers-reduced-motion: reduce) {
     .crest, .tip { animation: none; }
 }
+
+/* --- v3: menu sections (install app) --- */
+.menu-section { border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; }
+.menu-section[hidden] { display: none; }
+.section-title {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--hud-muted);
+}
+.install-mount { font-size: 13px; line-height: 1.45; }

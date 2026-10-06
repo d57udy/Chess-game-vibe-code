@@ -19,6 +19,10 @@ const LOADING_HINTS = [
     'Use Cast to choose which character plays each piece.'
 ];
 
+// Start loading install.js right away: it must be listening before Chrome fires `beforeinstallprompt`,
+// which can happen while the models are still loading. Dynamic so a missing file cannot break the boot.
+const pwaReady = import('./install.js').catch(() => null);
+
 const params = new URLSearchParams(location.search);
 const debug = params.get('debug') === '1';
 const log = (...args) => { if (debug) console.log('[b3d]', ...args); };
@@ -56,7 +60,7 @@ function showBootError(error) {
     if (!loading.querySelector('.back')) {
         const link = document.createElement('a');
         link.className = 'btn primary back';
-        link.href = 'index.html';
+        link.href = '2d.html';
         link.textContent = 'Play the 2D game';
         $('loading-text').after(link);
     }
@@ -239,12 +243,20 @@ async function boot() {
     }
     units.syncBoard(g.battle3dState().board);
 
-    const controller = createController({ sceneAPI, units, audio, debug, log });
+    // One-time install suggestion after the player's first finished move (only when the browser offers install)
+    let hintTried = false;
+    const onMoveEnd = (ev) => {
+        if (hintTried || ev.isAI || !$('tip').hidden) return; // one toast at a time
+        hintTried = true;
+        pwaReady.then(pwa => pwa?.showInstallHint?.());
+    };
+    const controller = createController({ sceneAPI, units, audio, onMoveEnd, debug, log });
     await sceneAPI.setView(controller.viewSide(), { animate: false });
     controller.newGame();
 
     setupCast({ units, manifest, castMod, controller });
     renderLegend(units, manifest);
+    setupResetView(sceneAPI);
 
     if (debug) {
         window.__b3d = {
@@ -256,7 +268,42 @@ async function boot() {
     setProgress(1, 'Ready.');
     hideLoading();
     showFirstRunTip(sceneAPI);
+    setupInstall(); // after the first frame: the service worker and install UI are not needed to play
     log('booted');
+}
+
+function setupResetView(sceneAPI) {
+    const button = $('reset-view');
+    if (typeof sceneAPI.resetView !== 'function') {
+        button.disabled = true;
+        return;
+    }
+    button.addEventListener('click', () => {
+        sceneAPI.resetView({ animate: !matchMedia?.('(prefers-reduced-motion: reduce)').matches });
+        sceneAPI.requestRender?.();
+    });
+}
+
+// PWA: service worker + "Install app" section in the menu (battle3d/install.js)
+async function setupInstall() {
+    const mount = $('install-mount');
+    const pwa = await pwaReady;
+    Promise.resolve()
+        .then(() => pwa?.registerServiceWorker?.({
+            disabled: debug || params.get('nosw') === '1',
+            onUpdate: () => pwa.showUpdateToast?.()
+        }))
+        .catch(e => log('service worker registration failed', e));
+    if (typeof pwa?.mountInstallUI === 'function') {
+        try {
+            // Hides the whole menu section (heading included) while the app runs installed
+            pwa.mountInstallUI(mount, { host: mount.closest('.menu-section') });
+            return;
+        } catch (e) {
+            log('install UI failed', e);
+        }
+    }
+    mount.closest('.menu-section').hidden = true;
 }
 
 boot().catch(showBootError);

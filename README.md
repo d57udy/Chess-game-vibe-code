@@ -3,7 +3,11 @@
 Try the game here:
 https://d57udy.github.io/Chess-game-vibe-code/
 
-## Features
+The site opens the 3D game (`index.html`, see [Chess Battle 3D](#chess-battle-3d)). The classic 2D game is at
+`2d.html` (https://d57udy.github.io/Chess-game-vibe-code/2d.html); each page links to the other. Old links to
+`battle3d.html` redirect to the 3D game.
+
+## 2D game (`2d.html`)
 
 - Play against the AI (adjustable ELO), watch AI vs AI, or play Human vs Human.
 - Play as White or Black. The board is drawn from your side; switching mid-game keeps the position.
@@ -33,9 +37,9 @@ mated king toppling over.
   scenes and the finale, at either speed and from either side of the board. It is not linked from
   the game.
 
-## 3D mode (Chess Battle 3D, prototype)
+## Chess Battle 3D
 
-`battle3d.html` (linked as "Play in 3D" from the 2D page) is the same game on a 3D board: heroes
+`index.html` (the default page; the 2D page links to it as "Play in 3D") is the same game on a 3D board: heroes
 (White) against skeletons (Black). Pieces walk, knights leap, and every capture is a short fight with
 camera shots, sound and effects. Rules, AI and draw detection are the same code as the 2D game.
 
@@ -52,11 +56,20 @@ Controls:
 | Input | Action |
 |---|---|
 | Click or tap a unit, then a highlighted square | Move |
-| Drag, scroll or pinch | Orbit a little and zoom |
+| Touch: 1 finger drag | Rotate the view |
+| Touch: 2 fingers | Zoom (pinch), move the view (drag) and turn it (twist) |
+| Touch: double-tap | Zoom to that spot (double-tap again to zoom back out) |
+| Mouse: drag, right-drag or Shift+drag, wheel | Rotate, move the view, zoom |
+| Reset view (menu) | Back to the default view for your side |
 | Arrow keys, Enter, Esc | Keyboard play: move the square cursor, select or move, cancel |
 | Space (or the Skip button) | Skip the current fight |
 
 Moves and results are announced to screen readers.
+
+**Install as an app (Android).** The 3D game is a Progressive Web App and works offline after the first
+visit. In Chrome on Android, open the game menu (the three-line button at the top) and use the
+"Install app" section, or Chrome's own menu > "Add to Home screen" / "Install app". On iPhone and iPad, use
+Safari's Share button > "Add to Home Screen". The installed app opens full screen without the browser bar.
 
 **Cast customization.** "Cast..." opens the cast editor: choose a preset or pick the character model,
 weapon, scale and tint for each piece, or import your own `.glb` (it must use the KayKit rig bone
@@ -69,15 +82,27 @@ legend follows it.
 |---|---|
 | `rules.js` | Classic script. Applies moves on the `gameLogic.js` globals and returns move events for the 3D view. |
 | `controller.js` | Turn flow, selection, AI, modes, HUD, keyboard play, settings. |
-| `main.js` | Boot, loading screen, cast editor and legend wiring. |
+| `main.js` | Boot, loading screen, cast editor, legend, reset view and install wiring. |
 | `scene*.js`, `cinematic.js` | Renderer, board and environment, camera, picking, highlights, effects. |
 | `units.js`, `fights.js` | Characters, animation, movement and fight choreography. |
 | `cast.js`, `cast-ui.js`, `unit-visuals.js` | Casting presets, cast editor, piece markers and labels. |
 | `audio.js` | Sound effects (synthesized with WebAudio, plus the 2D game's mp3s). |
+| `install.js` | Service worker registration and the "Install app" menu section. |
 | `assets/` | Optimized character, animation and weapon files, `manifest.json`, `CREDITS.md`. |
 | `CONTRACT.md` | Interfaces between the modules. |
 
-Add `?debug=1` to the URL for `window.__b3d` test hooks (`step(n)`, `state()`).
+At the repo root: `manifest.webmanifest` (app name, icons, colours), `sw.js` (service worker) and `icons/`.
+
+Add `?debug=1` to the URL for `window.__b3d` test hooks (`step(n)`, `state()`). See "Releasing" below for
+how `?debug=1` and `?nosw=1` affect the service worker.
+
+**Releasing (offline cache).** `sw.js` keeps the app shell (both pages, scripts, styles, three.js and the
+default characters) in a versioned cache. On every deploy that changes files, bump `VERSION` at the top of
+`sw.js`. The new worker precaches again, takes over open tabs, deletes the old caches and shows a small
+"A new version is ready. Reload" toast; it never reloads by itself. HTML is fetched network first, but scripts,
+styles and assets come from the cache until `VERSION` changes. Both pages register the worker, so the 2D page
+works offline too. While debugging, `?nosw=1` unregisters the worker and bypasses it; `?debug=1` skips
+registration but does not unregister an existing worker (DevTools > Application > Service workers can).
 
 **Credits.** Characters, animations and weapons are from KayKit Character Pack: Adventurers 1.0 and
 Skeletons 1.0 by Kay Lousberg (CC0 1.0), see `battle3d/assets/CREDITS.md`. 3D rendering uses
@@ -85,7 +110,7 @@ three.js (MIT). The fight sound effects are synthesized in code, so no audio fil
 
 ## Running locally
 
-No build step. Opening `index.html` directly works, but browsers may block Web Workers on `file://`
+No build step. Opening `2d.html` directly works, but browsers may block Web Workers on `file://`
 URLs, in which case the AI runs on the main thread and the page can pause while it thinks. Serving
 the folder with any static server keeps the AI in the worker, for example:
 
@@ -93,7 +118,8 @@ the folder with any static server keeps the AI in the worker, for example:
 python3 -m http.server 8000
 ```
 
-then open http://localhost:8000.
+then open http://localhost:8000 (3D) or http://localhost:8000/2d.html (2D). The 3D page needs to be served
+over http(s) (ES modules, service worker); it does not run from `file://`.
 
 ## Running tests
 
@@ -117,13 +143,15 @@ node --test tests/unit/battle3d*.test.js tests/integration/battle3d*.test.js
 ```
 
 Tests live in `tests/` (`unit/`, `integration/`, `slow/`); `tests/helpers/` loads the classic
-scripts into a `node:vm` context (`loadEngine.js`) or a jsdom window built from `index.html` (`loadDom.js`).
+scripts into a `node:vm` context (`loadEngine.js`) or a jsdom window built from `2d.html` (`loadDom.js`).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `index.html` | Page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battleFx.js`, `ui.js`. |
+| `index.html` | 3D game page (HUD, import map); loads `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battle3d/rules.js`, then `battle3d/main.js`. |
+| `battle3d.html` | Redirect to `./` for old links. |
+| `2d.html` | 2D page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battleFx.js`, `ui.js`. |
 | `gameLogic.js` | Board state, move generation, game-end detection, history. |
 | `aiPlayer.js` | Move search and evaluation. |
 | `aiWorker.js` / `aiClient.js` | Runs the AI off the main thread; `requestAIMove()` returns a cancellable request. |
