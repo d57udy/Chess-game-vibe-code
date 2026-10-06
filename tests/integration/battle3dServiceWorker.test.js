@@ -341,7 +341,7 @@ describe('sw.js', { skip: !have && 'no sw.js yet' }, () => {
             }
         });
 
-        test('same-origin JS: stale-while-revalidate (cached answer, background refresh)', { todo: 'sw.js:121-124/150: refresh goes to RUNTIME but caches.match finds the SHELL copy first (reported to b3d-assets)' }, async () => {
+        test('same-origin JS: stale-while-revalidate (cached answer, background refresh)', async () => {
             const W = makeWorker();
             await W.dispatch('install');
             W.net.override.set(scoped('battle3d/controller.js'), async () => new FakeResponse('// v2'));
