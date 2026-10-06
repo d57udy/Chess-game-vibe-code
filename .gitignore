@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+
+# Unoptimized KayKit placeholders (rebuild with battle3d/tools)
+battle3d/assets/raw/

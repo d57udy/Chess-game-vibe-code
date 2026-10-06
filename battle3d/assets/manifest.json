@@ -1,0 +1,2669 @@
+{
+  "version": 2,
+  "source": "KayKit Adventurers 1.0 + Skeletons 1.0 by Kay Lousberg (CC0), see CREDITS.md",
+  "meshopt": true,
+  "forward": [
+    0,
+    0,
+    1
+  ],
+  "up": [
+    0,
+    1,
+    0
+  ],
+  "baseScale": 0.38,
+  "targetHeight": 0.85,
+  "notes": [
+    "roles = cast.js resolveRoles(manifest, PRESETS.classic). Use cast.js to build roles for other casts; units.js consumes the same shape.",
+    "meshopt: true means characters/*.glb and anims/*.glb use EXT_meshopt_compression + KHR_mesh_quantization: call loader.setMeshoptDecoder(MeshoptDecoder). Props are plain glTF.",
+    "Models face local +Z. White units (face -z) need rotation.y = PI, Black units (face +z) need 0.",
+    "Bone and node names are glTF names. three.js GLTFLoader strips . : / [ ] from node names: look up \"handslot.r\" as \"handslotr\".",
+    "roles[c][t].anims holds the per-role clip choices; fight[color+type] holds that role's attacks with impact times; fight[t] is the union; impacts covers every attack clip.",
+    "props: position + rotation (euler XYZ radians) or the equivalent quaternion are the local transform relative to the bone.",
+    "show: accessory nodes to make visible; hide: every other embedded accessory of that model.",
+    "accessories (crown, tiara, cape, aura, plume, banner, glow) and recolor/tint are rendered by unit-visuals.js decorateUnit.",
+    "Clips with \"_Pose\" and T-Pose are single-frame (duration 0). All clips are in place (no root motion)."
+  ],
+  "clips": {
+    "file": "anims/clips.glb",
+    "skeletonFile": "anims/clips_skeleton.glb"
+  },
+  "roles": {
+    "w": {
+      "p": {
+        "model": "characters/Rogue_Hooded.glb",
+        "modelId": "Rogue_Hooded",
+        "name": "Hooded Rogue",
+        "army": "heroes",
+        "scale": 0.342,
+        "show": [
+          "Knife"
+        ],
+        "hide": [
+          "Knife_Offhand",
+          "1H_Crossbow",
+          "2H_Crossbow",
+          "Throwable",
+          "Rogue_Cape"
+        ],
+        "props": [
+          {
+            "file": "props/shield_round.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0.15589
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [],
+        "recolor": {
+          "from": [
+            75,
+            180
+          ],
+          "to": 215,
+          "sat": 1,
+          "light": 1.05
+        },
+        "tint": null,
+        "label": "Pawn",
+        "glyph": "♙",
+        "loadout": "dagger_buckler",
+        "ranged": false,
+        "idle": "Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Stab",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "Unarmed_Melee_Attack_Kick"
+          ]
+        }
+      },
+      "n": {
+        "model": "characters/Knight.glb",
+        "modelId": "Knight",
+        "name": "Knight",
+        "army": "heroes",
+        "scale": 0.38,
+        "show": [
+          "Knight_Helmet",
+          "Knight_Cape",
+          "1H_Sword",
+          "Badge_Shield"
+        ],
+        "hide": [
+          "1H_Sword_Offhand",
+          "Rectangle_Shield",
+          "Round_Shield",
+          "Spike_Shield",
+          "2H_Sword"
+        ],
+        "props": [],
+        "crown": false,
+        "accessories": [
+          "plume"
+        ],
+        "recolor": {
+          "from": [
+            330,
+            14
+          ],
+          "to": 215,
+          "sat": 1,
+          "light": 1
+        },
+        "tint": null,
+        "label": "Knight",
+        "glyph": "♘",
+        "loadout": "sword_badge",
+        "ranged": false,
+        "idle": "Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Diagonal",
+            "Block_Attack"
+          ]
+        }
+      },
+      "b": {
+        "model": "characters/Mage.glb",
+        "modelId": "Mage",
+        "name": "Mage",
+        "army": "heroes",
+        "scale": 0.38,
+        "show": [
+          "Mage_Hat",
+          "Mage_Cape",
+          "2H_Staff"
+        ],
+        "hide": [
+          "Spellbook",
+          "Spellbook_open",
+          "1H_Wand"
+        ],
+        "props": [],
+        "crown": false,
+        "accessories": [
+          "glow"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "Bishop",
+        "glyph": "♗",
+        "loadout": "staff",
+        "ranged": true,
+        "idle": "Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "Spellcast_Shoot",
+            "Spellcast_Long"
+          ]
+        }
+      },
+      "r": {
+        "model": "characters/Barbarian.glb",
+        "modelId": "Barbarian",
+        "name": "Barbarian",
+        "army": "heroes",
+        "scale": 0.475,
+        "show": [
+          "Barbarian_Hat",
+          "Barbarian_Cape",
+          "1H_Axe"
+        ],
+        "hide": [
+          "1H_Axe_Offhand",
+          "Barbarian_Round_Shield",
+          "2H_Axe",
+          "Mug"
+        ],
+        "props": [
+          {
+            "file": "props/shield_square.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0.15589
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [
+          "banner"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "Rook",
+        "glyph": "♖",
+        "loadout": "axe_tower",
+        "ranged": false,
+        "idle": "Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "Block_Attack"
+          ]
+        }
+      },
+      "q": {
+        "model": "characters/Rogue.glb",
+        "modelId": "Rogue",
+        "name": "Rogue",
+        "army": "heroes",
+        "scale": 0.399,
+        "show": [
+          "Rogue_Cape",
+          "Knife",
+          "Knife_Offhand"
+        ],
+        "hide": [
+          "1H_Crossbow",
+          "2H_Crossbow",
+          "Throwable"
+        ],
+        "props": [],
+        "crown": false,
+        "accessories": [
+          "tiara",
+          "aura"
+        ],
+        "recolor": {
+          "from": [
+            75,
+            180
+          ],
+          "to": 280,
+          "sat": 1,
+          "light": 1
+        },
+        "tint": null,
+        "label": "Queen",
+        "glyph": "♕",
+        "loadout": "dual_daggers",
+        "ranged": false,
+        "idle": "Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "Dualwield_Melee_Attack_Chop",
+            "Dualwield_Melee_Attack_Slice",
+            "Dualwield_Melee_Attack_Stab"
+          ]
+        }
+      },
+      "k": {
+        "model": "characters/Knight.glb",
+        "modelId": "Knight",
+        "name": "Knight",
+        "army": "heroes",
+        "scale": 0.418,
+        "show": [
+          "Knight_Cape",
+          "2H_Sword"
+        ],
+        "hide": [
+          "1H_Sword_Offhand",
+          "Badge_Shield",
+          "Rectangle_Shield",
+          "Round_Shield",
+          "Spike_Shield",
+          "1H_Sword",
+          "Knight_Helmet"
+        ],
+        "props": [],
+        "crown": true,
+        "accessories": [
+          "crown",
+          "cape",
+          "aura"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "King",
+        "glyph": "♔",
+        "loadout": "greatsword",
+        "ranged": false,
+        "idle": "2H_Melee_Idle",
+        "walk": "Walking_A",
+        "forward": "+z",
+        "skeleton": false,
+        "static": false,
+        "anims": {
+          "idle": "2H_Melee_Idle",
+          "walk": "Walking_A",
+          "death": [
+            "Death_A",
+            "Death_B"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Cheer",
+          "spawn": "Spawn_Air",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "2H_Melee_Attack_Slice",
+            "2H_Melee_Attack_Chop",
+            "2H_Melee_Attack_Stab"
+          ]
+        }
+      }
+    },
+    "b": {
+      "p": {
+        "model": "characters/Skeleton_Minion.glb",
+        "modelId": "Skeleton_Minion",
+        "name": "Skeleton Minion",
+        "army": "skeletons",
+        "scale": 0.342,
+        "show": [],
+        "hide": [],
+        "props": [
+          {
+            "file": "props/Skeleton_Blade.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0.03331,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [],
+        "recolor": null,
+        "tint": null,
+        "label": "Pawn",
+        "glyph": "♟",
+        "loadout": "bone_blade",
+        "ranged": false,
+        "idle": "Idle_B",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_B",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Stab",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "Unarmed_Melee_Attack_Punch_A"
+          ]
+        }
+      },
+      "n": {
+        "model": "characters/Skeleton_Warrior.glb",
+        "modelId": "Skeleton_Warrior",
+        "name": "Skeleton Warrior",
+        "army": "skeletons",
+        "scale": 0.38,
+        "show": [
+          "Skeleton_Warrior_Helmet"
+        ],
+        "hide": [],
+        "props": [
+          {
+            "file": "props/Skeleton_Blade.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0.03331,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          },
+          {
+            "file": "props/Skeleton_Shield_Small_A.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0.15589
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [
+          "plume"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "Knight",
+        "glyph": "♞",
+        "loadout": "bone_blade_shield",
+        "ranged": false,
+        "idle": "Idle_Combat",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_Combat",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Jump_Chop",
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Diagonal"
+          ]
+        }
+      },
+      "b": {
+        "model": "characters/Skeleton_Mage.glb",
+        "modelId": "Skeleton_Mage",
+        "name": "Skeleton Mage",
+        "army": "skeletons",
+        "scale": 0.38,
+        "show": [
+          "Skeleton_Mage_Hat"
+        ],
+        "hide": [],
+        "props": [
+          {
+            "file": "props/Skeleton_Staff.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [
+          "glow"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "Bishop",
+        "glyph": "♝",
+        "loadout": "bone_staff",
+        "ranged": true,
+        "idle": "Idle_B",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_B",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "Spellcast_Shoot",
+            "Spellcast_Long"
+          ]
+        }
+      },
+      "r": {
+        "model": "characters/Skeleton_Warrior.glb",
+        "modelId": "Skeleton_Warrior",
+        "name": "Skeleton Warrior",
+        "army": "skeletons",
+        "scale": 0.475,
+        "show": [
+          "Skeleton_Warrior_Helmet"
+        ],
+        "hide": [],
+        "props": [
+          {
+            "file": "props/Skeleton_Axe.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0.03331,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          },
+          {
+            "file": "props/Skeleton_Shield_Large_A.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0.15589
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [
+          "banner"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "Rook",
+        "glyph": "♜",
+        "loadout": "bone_axe_tower",
+        "ranged": false,
+        "idle": "Idle_Combat",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_Combat",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Jump_Chop",
+            "Block_Attack"
+          ]
+        }
+      },
+      "q": {
+        "model": "characters/Skeleton_Rogue.glb",
+        "modelId": "Skeleton_Rogue",
+        "name": "Skeleton Rogue",
+        "army": "skeletons",
+        "scale": 0.399,
+        "show": [
+          "Skeleton_Rogue_Hood",
+          "Skeleton_Rogue_Cape"
+        ],
+        "hide": [],
+        "props": [
+          {
+            "file": "props/Skeleton_Blade.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0.03331,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          },
+          {
+            "file": "props/Skeleton_Blade.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": false,
+        "accessories": [
+          "tiara",
+          "aura"
+        ],
+        "recolor": {
+          "from": [
+            240,
+            14
+          ],
+          "to": 280,
+          "sat": 1,
+          "light": 1
+        },
+        "tint": null,
+        "label": "Queen",
+        "glyph": "♛",
+        "loadout": "dual_bone_blades",
+        "ranged": false,
+        "idle": "Idle_B",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_B",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "Dualwield_Melee_Attack_Chop",
+            "Dualwield_Melee_Attack_Slice",
+            "Dualwield_Melee_Attack_Stab"
+          ]
+        }
+      },
+      "k": {
+        "model": "characters/Skeleton_Mage.glb",
+        "modelId": "Skeleton_Mage",
+        "name": "Skeleton Mage",
+        "army": "skeletons",
+        "scale": 0.418,
+        "show": [],
+        "hide": [
+          "Skeleton_Mage_Hat"
+        ],
+        "props": [
+          {
+            "file": "props/Skeleton_Blade.gltf",
+            "bone": "handslot.r",
+            "position": [
+              0,
+              0.03331,
+              0
+            ],
+            "quaternion": [
+              0,
+              -1,
+              0,
+              0
+            ],
+            "rotation": [
+              3.14159,
+              0,
+              -3.14159
+            ]
+          },
+          {
+            "file": "props/Skeleton_Shield_Large_B.gltf",
+            "bone": "handslot.l",
+            "position": [
+              0,
+              0.01701,
+              0.15589
+            ],
+            "quaternion": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          }
+        ],
+        "crown": true,
+        "accessories": [
+          "crown",
+          "cape",
+          "aura"
+        ],
+        "recolor": null,
+        "tint": null,
+        "label": "King",
+        "glyph": "♚",
+        "loadout": "bone_king",
+        "ranged": false,
+        "idle": "Idle_B",
+        "walk": "Walking_D_Skeletons",
+        "forward": "+z",
+        "skeleton": true,
+        "static": false,
+        "anims": {
+          "idle": "Idle_B",
+          "walk": "Walking_D_Skeletons",
+          "death": [
+            "Death_C_Skeletons",
+            "Death_A"
+          ],
+          "hit": [
+            "Hit_A",
+            "Hit_B"
+          ],
+          "block": "Block_Hit",
+          "cheer": "Taunt",
+          "spawn": "Spawn_Ground_Skeletons",
+          "jump": "Jump_Full_Long",
+          "attack": [
+            "1H_Melee_Attack_Chop",
+            "1H_Melee_Attack_Slice_Horizontal",
+            "Block_Attack"
+          ]
+        }
+      }
+    }
+  },
+  "fight": {
+    "wp": {
+      "attack": [
+        "1H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Unarmed_Melee_Attack_Kick"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Stab": 0.402,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Unarmed_Melee_Attack_Kick": 0.335
+      },
+      "ranged": false
+    },
+    "p": {
+      "attack": [
+        "1H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Unarmed_Melee_Attack_Kick",
+        "Unarmed_Melee_Attack_Punch_A"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Stab": 0.402,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Unarmed_Melee_Attack_Kick": 0.335,
+        "Unarmed_Melee_Attack_Punch_A": 0.448
+      },
+      "ranged": false
+    },
+    "wn": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal",
+        "Block_Attack"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Diagonal": 0.427,
+        "Block_Attack": 0.427
+      },
+      "ranged": false
+    },
+    "n": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal",
+        "Block_Attack",
+        "1H_Melee_Attack_Jump_Chop"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Diagonal": 0.427,
+        "Block_Attack": 0.427,
+        "1H_Melee_Attack_Jump_Chop": 0.748
+      },
+      "ranged": false
+    },
+    "wb": {
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Long"
+      ],
+      "impact": {
+        "Spellcast_Shoot": 0.233,
+        "Spellcast_Long": 1.3
+      },
+      "ranged": true
+    },
+    "b": {
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Long"
+      ],
+      "impact": {
+        "Spellcast_Shoot": 0.233,
+        "Spellcast_Long": 1.3
+      },
+      "ranged": true
+    },
+    "wr": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Block_Attack": 0.427
+      },
+      "ranged": false
+    },
+    "r": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack",
+        "1H_Melee_Attack_Jump_Chop"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Block_Attack": 0.427,
+        "1H_Melee_Attack_Jump_Chop": 0.748
+      },
+      "ranged": false
+    },
+    "wq": {
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "impact": {
+        "Dualwield_Melee_Attack_Chop": 0.527,
+        "Dualwield_Melee_Attack_Slice": 0.765,
+        "Dualwield_Melee_Attack_Stab": 0.402
+      },
+      "ranged": false
+    },
+    "q": {
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "impact": {
+        "Dualwield_Melee_Attack_Chop": 0.527,
+        "Dualwield_Melee_Attack_Slice": 0.765,
+        "Dualwield_Melee_Attack_Stab": 0.402
+      },
+      "ranged": false
+    },
+    "wk": {
+      "attack": [
+        "2H_Melee_Attack_Slice",
+        "2H_Melee_Attack_Chop",
+        "2H_Melee_Attack_Stab"
+      ],
+      "impact": {
+        "2H_Melee_Attack_Slice": 0.402,
+        "2H_Melee_Attack_Chop": 0.848,
+        "2H_Melee_Attack_Stab": 0.402
+      },
+      "ranged": false
+    },
+    "k": {
+      "attack": [
+        "2H_Melee_Attack_Slice",
+        "2H_Melee_Attack_Chop",
+        "2H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack"
+      ],
+      "impact": {
+        "2H_Melee_Attack_Slice": 0.402,
+        "2H_Melee_Attack_Chop": 0.848,
+        "2H_Melee_Attack_Stab": 0.402,
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Block_Attack": 0.427
+      },
+      "ranged": false
+    },
+    "bp": {
+      "attack": [
+        "1H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Unarmed_Melee_Attack_Punch_A"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Stab": 0.402,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Unarmed_Melee_Attack_Punch_A": 0.448
+      },
+      "ranged": false
+    },
+    "bn": {
+      "attack": [
+        "1H_Melee_Attack_Jump_Chop",
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Jump_Chop": 0.748,
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Diagonal": 0.427
+      },
+      "ranged": false
+    },
+    "bb": {
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Long"
+      ],
+      "impact": {
+        "Spellcast_Shoot": 0.233,
+        "Spellcast_Long": 1.3
+      },
+      "ranged": true
+    },
+    "br": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Jump_Chop",
+        "Block_Attack"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Jump_Chop": 0.748,
+        "Block_Attack": 0.427
+      },
+      "ranged": false
+    },
+    "bq": {
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "impact": {
+        "Dualwield_Melee_Attack_Chop": 0.527,
+        "Dualwield_Melee_Attack_Slice": 0.765,
+        "Dualwield_Melee_Attack_Stab": 0.402
+      },
+      "ranged": false
+    },
+    "bk": {
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack"
+      ],
+      "impact": {
+        "1H_Melee_Attack_Chop": 0.594,
+        "1H_Melee_Attack_Slice_Horizontal": 0.298,
+        "Block_Attack": 0.427
+      },
+      "ranged": false
+    }
+  },
+  "impacts": {
+    "1H_Melee_Attack_Chop": 0.594,
+    "1H_Melee_Attack_Slice_Diagonal": 0.427,
+    "1H_Melee_Attack_Slice_Horizontal": 0.298,
+    "1H_Melee_Attack_Stab": 0.402,
+    "2H_Melee_Attack_Chop": 0.848,
+    "2H_Melee_Attack_Slice": 0.402,
+    "2H_Melee_Attack_Spin": 0.756,
+    "2H_Melee_Attack_Stab": 0.402,
+    "Dualwield_Melee_Attack_Chop": 0.527,
+    "Dualwield_Melee_Attack_Slice": 0.765,
+    "Dualwield_Melee_Attack_Stab": 0.402,
+    "Unarmed_Melee_Attack_Kick": 0.335,
+    "Unarmed_Melee_Attack_Punch_A": 0.448,
+    "Unarmed_Melee_Attack_Punch_B": 0.502,
+    "Spellcast_Long": 1.3,
+    "Spellcast_Raise": 0.667,
+    "Spellcast_Shoot": 0.233,
+    "Spellcasting": 0.2,
+    "Throw": 0.748,
+    "Block_Attack": 0.427,
+    "1H_Melee_Attack_Jump_Chop": 0.748,
+    "Spellcast_Summon": 3.633
+  },
+  "clipDurations": {
+    "Idle": 1.067,
+    "2H_Melee_Idle": 1.067,
+    "Unarmed_Idle": 1.067,
+    "Walking_A": 1.067,
+    "Walking_B": 1.067,
+    "Walking_C": 1.6,
+    "Walking_Backwards": 1.067,
+    "Running_A": 0.8,
+    "Running_B": 1.067,
+    "Jump_Full_Long": 2.333,
+    "Jump_Full_Short": 1.167,
+    "Jump_Start": 0.6,
+    "Jump_Idle": 1.067,
+    "Jump_Land": 0.667,
+    "1H_Melee_Attack_Chop": 1.067,
+    "1H_Melee_Attack_Slice_Diagonal": 1,
+    "1H_Melee_Attack_Slice_Horizontal": 1.067,
+    "1H_Melee_Attack_Stab": 1.6,
+    "2H_Melee_Attack_Chop": 1.633,
+    "2H_Melee_Attack_Slice": 1.1,
+    "2H_Melee_Attack_Spin": 2.4,
+    "2H_Melee_Attack_Spinning": 0.667,
+    "2H_Melee_Attack_Stab": 1.6,
+    "Dualwield_Melee_Attack_Chop": 1.267,
+    "Dualwield_Melee_Attack_Slice": 1.167,
+    "Dualwield_Melee_Attack_Stab": 1.6,
+    "Unarmed_Melee_Attack_Kick": 0.933,
+    "Unarmed_Melee_Attack_Punch_A": 1.467,
+    "Unarmed_Melee_Attack_Punch_B": 1.667,
+    "Spellcast_Long": 2.533,
+    "Spellcast_Raise": 2.1,
+    "Spellcast_Shoot": 0.933,
+    "Spellcasting": 0.667,
+    "Throw": 1.367,
+    "Block": 1.067,
+    "Block_Attack": 1.067,
+    "Block_Hit": 1.067,
+    "Blocking": 1.067,
+    "Hit_A": 0.667,
+    "Hit_B": 0.867,
+    "Dodge_Backward": 0.4,
+    "Dodge_Forward": 0.4,
+    "Dodge_Left": 0.4,
+    "Dodge_Right": 0.4,
+    "Death_A": 0.8,
+    "Death_A_Pose": 0,
+    "Death_B": 2.633,
+    "Death_B_Pose": 0,
+    "Cheer": 1.667,
+    "Interact": 1.3,
+    "PickUp": 1.3,
+    "Use_Item": 1.6,
+    "T-Pose": 0,
+    "Spawn_Air": 1.3,
+    "Spawn_Ground": 1.3,
+    "Death_C_Skeletons": 2,
+    "Spawn_Ground_Skeletons": 3.567,
+    "Skeletons_Awaken_Standing": 1,
+    "Walking_D_Skeletons": 1.6,
+    "Idle_B": 2.133,
+    "Idle_Combat": 4.267,
+    "Taunt": 1.033,
+    "Taunt_Longer": 3,
+    "1H_Melee_Attack_Jump_Chop": 1.333,
+    "Spellcast_Summon": 4.3
+  },
+  "models": {
+    "Knight": {
+      "file": "characters/Knight.glb",
+      "label": "Knight",
+      "army": "heroes",
+      "cloth": [
+        330,
+        14
+      ],
+      "gear": [
+        "Knight_Helmet",
+        "Knight_Cape"
+      ],
+      "defaultGear": [
+        "Knight_Helmet",
+        "Knight_Cape"
+      ],
+      "defaultLoadout": "sword_badge",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.485
+        ],
+        "max": [
+          0.971,
+          2.315,
+          0.532
+        ],
+        "height": 2.315
+      },
+      "accessories": [
+        {
+          "name": "1H_Sword_Offhand",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Badge_Shield",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Rectangle_Shield",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Round_Shield",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Spike_Shield",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "1H_Sword",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "2H_Sword",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Knight_Helmet",
+          "bone": "head"
+        },
+        {
+          "name": "Knight_Cape",
+          "bone": "chest"
+        }
+      ]
+    },
+    "Barbarian": {
+      "file": "characters/Barbarian.glb",
+      "label": "Barbarian",
+      "army": "heroes",
+      "cloth": [
+        190,
+        230
+      ],
+      "gear": [
+        "Barbarian_Hat",
+        "Barbarian_Cape"
+      ],
+      "defaultGear": [
+        "Barbarian_Hat",
+        "Barbarian_Cape"
+      ],
+      "defaultLoadout": "greataxe",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.46
+        ],
+        "max": [
+          0.971,
+          2.186,
+          0.526
+        ],
+        "height": 2.186
+      },
+      "accessories": [
+        {
+          "name": "1H_Axe_Offhand",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Barbarian_Round_Shield",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "1H_Axe",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "2H_Axe",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Mug",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Barbarian_Hat",
+          "bone": "head"
+        },
+        {
+          "name": "Barbarian_Cape",
+          "bone": "chest"
+        }
+      ]
+    },
+    "Mage": {
+      "file": "characters/Mage.glb",
+      "label": "Mage",
+      "army": "heroes",
+      "cloth": [
+        235,
+        345
+      ],
+      "gear": [
+        "Mage_Hat",
+        "Mage_Cape"
+      ],
+      "defaultGear": [
+        "Mage_Hat",
+        "Mage_Cape"
+      ],
+      "defaultLoadout": "staff",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.748
+        ],
+        "max": [
+          0.971,
+          2.203,
+          0.519
+        ],
+        "height": 2.203
+      },
+      "accessories": [
+        {
+          "name": "Spellbook",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "Spellbook_open",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "1H_Wand",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "2H_Staff",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Mage_Hat",
+          "bone": "head"
+        },
+        {
+          "name": "Mage_Cape",
+          "bone": "chest"
+        }
+      ]
+    },
+    "Rogue": {
+      "file": "characters/Rogue.glb",
+      "label": "Rogue",
+      "army": "heroes",
+      "cloth": [
+        75,
+        180
+      ],
+      "gear": [
+        "Rogue_Cape"
+      ],
+      "defaultGear": [
+        "Rogue_Cape"
+      ],
+      "defaultLoadout": "dual_daggers",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.496
+        ],
+        "max": [
+          0.971,
+          2.187,
+          0.519
+        ],
+        "height": 2.187
+      },
+      "accessories": [
+        {
+          "name": "Knife_Offhand",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "1H_Crossbow",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "2H_Crossbow",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Knife",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Throwable",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Rogue_Cape",
+          "bone": "chest"
+        }
+      ]
+    },
+    "Rogue_Hooded": {
+      "file": "characters/Rogue_Hooded.glb",
+      "label": "Hooded Rogue",
+      "army": "heroes",
+      "cloth": [
+        75,
+        180
+      ],
+      "gear": [
+        "Rogue_Cape"
+      ],
+      "defaultGear": [],
+      "defaultLoadout": "dagger_buckler",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.567
+        ],
+        "max": [
+          0.971,
+          2.251,
+          0.589
+        ],
+        "height": 2.251
+      },
+      "accessories": [
+        {
+          "name": "Knife_Offhand",
+          "bone": "handslot.l"
+        },
+        {
+          "name": "1H_Crossbow",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "2H_Crossbow",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Knife",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Throwable",
+          "bone": "handslot.r"
+        },
+        {
+          "name": "Rogue_Cape",
+          "bone": "chest"
+        }
+      ]
+    },
+    "Skeleton_Minion": {
+      "file": "characters/Skeleton_Minion.glb",
+      "label": "Skeleton Minion",
+      "army": "skeletons",
+      "cloth": [
+        240,
+        14
+      ],
+      "gear": [],
+      "defaultGear": [],
+      "defaultLoadout": "bone_blade",
+      "bind": {
+        "min": [
+          -0.969,
+          0,
+          -0.458
+        ],
+        "max": [
+          0.969,
+          2.166,
+          0.454
+        ],
+        "height": 2.166
+      },
+      "accessories": []
+    },
+    "Skeleton_Warrior": {
+      "file": "characters/Skeleton_Warrior.glb",
+      "label": "Skeleton Warrior",
+      "army": "skeletons",
+      "cloth": [
+        240,
+        14
+      ],
+      "gear": [
+        "Skeleton_Warrior_Helmet"
+      ],
+      "defaultGear": [
+        "Skeleton_Warrior_Helmet"
+      ],
+      "defaultLoadout": "bone_blade_shield",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.458
+        ],
+        "max": [
+          0.971,
+          2.166,
+          0.454
+        ],
+        "height": 2.166
+      },
+      "accessories": [
+        {
+          "name": "Skeleton_Warrior_Helmet",
+          "bone": "head"
+        }
+      ]
+    },
+    "Skeleton_Mage": {
+      "file": "characters/Skeleton_Mage.glb",
+      "label": "Skeleton Mage",
+      "army": "skeletons",
+      "cloth": [
+        240,
+        14
+      ],
+      "gear": [
+        "Skeleton_Mage_Hat"
+      ],
+      "defaultGear": [
+        "Skeleton_Mage_Hat"
+      ],
+      "defaultLoadout": "bone_staff",
+      "bind": {
+        "min": [
+          -0.969,
+          0,
+          -0.458
+        ],
+        "max": [
+          0.969,
+          2.166,
+          0.454
+        ],
+        "height": 2.166
+      },
+      "accessories": [
+        {
+          "name": "Skeleton_Mage_Hat",
+          "bone": "head"
+        }
+      ]
+    },
+    "Skeleton_Rogue": {
+      "file": "characters/Skeleton_Rogue.glb",
+      "label": "Skeleton Rogue",
+      "army": "skeletons",
+      "cloth": [
+        240,
+        14
+      ],
+      "gear": [
+        "Skeleton_Rogue_Hood",
+        "Skeleton_Rogue_Cape"
+      ],
+      "defaultGear": [
+        "Skeleton_Rogue_Hood",
+        "Skeleton_Rogue_Cape"
+      ],
+      "defaultLoadout": "dual_bone_blades",
+      "bind": {
+        "min": [
+          -0.971,
+          0,
+          -0.458
+        ],
+        "max": [
+          0.971,
+          2.166,
+          0.454
+        ],
+        "height": 2.166
+      },
+      "accessories": [
+        {
+          "name": "Skeleton_Rogue_Hood",
+          "bone": "head"
+        },
+        {
+          "name": "Skeleton_Rogue_Cape",
+          "bone": "chest"
+        }
+      ]
+    }
+  },
+  "loadouts": {
+    "dagger_buckler": {
+      "label": "Dagger + buckler",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/dagger.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            -0.00002,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "Knife"
+          ]
+        },
+        {
+          "file": "props/shield_round.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "Round_Shield"
+          ]
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Unarmed_Melee_Attack_Kick"
+      ],
+      "ranged": false
+    },
+    "sword_badge": {
+      "label": "Sword + crest shield",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/sword_1handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Sword"
+          ]
+        },
+        {
+          "file": "props/shield_badge.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "Badge_Shield"
+          ]
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal",
+        "Block_Attack"
+      ],
+      "ranged": false
+    },
+    "sword_spikes": {
+      "label": "Sword + spiked shield",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/sword_1handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Sword"
+          ]
+        },
+        {
+          "file": "props/shield_spikes.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "Spike_Shield"
+          ]
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Slice_Horizontal",
+        "1H_Melee_Attack_Chop",
+        "Block_Attack"
+      ],
+      "ranged": false
+    },
+    "greatsword": {
+      "label": "Greatsword",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/sword_2handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "2H_Sword"
+          ]
+        }
+      ],
+      "attack": [
+        "2H_Melee_Attack_Slice",
+        "2H_Melee_Attack_Chop",
+        "2H_Melee_Attack_Stab"
+      ],
+      "idle": "2H_Melee_Idle",
+      "ranged": false
+    },
+    "dual_swords": {
+      "label": "Two swords",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/sword_1handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Sword"
+          ]
+        },
+        {
+          "file": "props/sword_1handed.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "1H_Sword_Offhand"
+          ]
+        }
+      ],
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "ranged": false
+    },
+    "axe_tower": {
+      "label": "Axe + tower shield",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/axe_1handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Axe"
+          ]
+        },
+        {
+          "file": "props/shield_square.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "Rectangle_Shield"
+          ]
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack"
+      ],
+      "ranged": false
+    },
+    "greataxe": {
+      "label": "Great axe",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/axe_2handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "2H_Axe"
+          ]
+        }
+      ],
+      "attack": [
+        "2H_Melee_Attack_Chop",
+        "2H_Melee_Attack_Spin",
+        "2H_Melee_Attack_Slice"
+      ],
+      "idle": "2H_Melee_Idle",
+      "ranged": false
+    },
+    "dual_axes": {
+      "label": "Two axes",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/axe_1handed.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Axe"
+          ]
+        },
+        {
+          "file": "props/axe_1handed.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "1H_Axe_Offhand"
+          ]
+        }
+      ],
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice"
+      ],
+      "ranged": false
+    },
+    "dual_daggers": {
+      "label": "Two daggers",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/dagger.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            -0.00002,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "Knife"
+          ]
+        },
+        {
+          "file": "props/dagger.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            -0.00002,
+            0
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": [
+            "Knife_Offhand"
+          ]
+        }
+      ],
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "ranged": false
+    },
+    "staff": {
+      "label": "Staff (ranged magic)",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/staff.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "2H_Staff"
+          ]
+        }
+      ],
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Long"
+      ],
+      "ranged": true
+    },
+    "wand_book": {
+      "label": "Wand + spellbook (ranged)",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/wand.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "1H_Wand"
+          ]
+        },
+        {
+          "file": "props/spellbook_open.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.14539,
+            0
+          ],
+          "quaternion": [
+            0,
+            -0.70711,
+            -0.70711,
+            0
+          ],
+          "rotation": [
+            -1.5708,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "Spellbook_open"
+          ]
+        }
+      ],
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Raise"
+      ],
+      "ranged": true
+    },
+    "mug": {
+      "label": "Tavern mug (brawler)",
+      "army": "heroes",
+      "props": [
+        {
+          "file": "props/mug_full.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0.30057,
+            -0.01564,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": [
+            "Mug"
+          ]
+        }
+      ],
+      "attack": [
+        "Unarmed_Melee_Attack_Punch_A",
+        "Unarmed_Melee_Attack_Kick"
+      ],
+      "ranged": false
+    },
+    "bone_blade": {
+      "label": "Bone blade",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Blade.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Stab",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Unarmed_Melee_Attack_Punch_A"
+      ],
+      "ranged": false
+    },
+    "bone_blade_shield": {
+      "label": "Blade + small shield",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Blade.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        },
+        {
+          "file": "props/Skeleton_Shield_Small_A.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Jump_Chop",
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal"
+      ],
+      "idle": "Idle_Combat",
+      "ranged": false
+    },
+    "bone_axe_tower": {
+      "label": "Axe + tower shield",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Axe.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        },
+        {
+          "file": "props/Skeleton_Shield_Large_A.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Jump_Chop",
+        "Block_Attack"
+      ],
+      "idle": "Idle_Combat",
+      "ranged": false
+    },
+    "bone_staff": {
+      "label": "Bone staff (ranged magic)",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Staff.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "Spellcast_Shoot",
+        "Spellcast_Long"
+      ],
+      "ranged": true
+    },
+    "dual_bone_blades": {
+      "label": "Two bone blades",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Blade.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        },
+        {
+          "file": "props/Skeleton_Blade.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "Dualwield_Melee_Attack_Chop",
+        "Dualwield_Melee_Attack_Slice",
+        "Dualwield_Melee_Attack_Stab"
+      ],
+      "ranged": false
+    },
+    "bone_king": {
+      "label": "Blade + great shield",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Blade.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        },
+        {
+          "file": "props/Skeleton_Shield_Large_B.gltf",
+          "bone": "handslot.l",
+          "position": [
+            0,
+            0.01701,
+            0.15589
+          ],
+          "quaternion": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Horizontal",
+        "Block_Attack"
+      ],
+      "ranged": false
+    },
+    "bone_axe": {
+      "label": "Bone axe",
+      "army": "skeletons",
+      "props": [
+        {
+          "file": "props/Skeleton_Axe.gltf",
+          "bone": "handslot.r",
+          "position": [
+            0,
+            0.03331,
+            0
+          ],
+          "quaternion": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "rotation": [
+            3.14159,
+            0,
+            -3.14159
+          ],
+          "embedded": []
+        }
+      ],
+      "attack": [
+        "1H_Melee_Attack_Chop",
+        "1H_Melee_Attack_Slice_Diagonal",
+        "1H_Melee_Attack_Slice_Horizontal"
+      ],
+      "ranged": false
+    },
+    "none": {
+      "label": "Unarmed",
+      "army": "any",
+      "props": [],
+      "attack": [
+        "Unarmed_Melee_Attack_Punch_A",
+        "Unarmed_Melee_Attack_Punch_B",
+        "Unarmed_Melee_Attack_Kick"
+      ],
+      "idle": "Unarmed_Idle",
+      "ranged": false
+    }
+  },
+  "armyAnims": {
+    "heroes": {
+      "idle": "Idle",
+      "walk": "Walking_A",
+      "death": [
+        "Death_A",
+        "Death_B"
+      ],
+      "hit": [
+        "Hit_A",
+        "Hit_B"
+      ],
+      "block": "Block_Hit",
+      "cheer": "Cheer",
+      "spawn": "Spawn_Air",
+      "jump": "Jump_Full_Long"
+    },
+    "skeletons": {
+      "idle": "Idle_B",
+      "walk": "Walking_D_Skeletons",
+      "death": [
+        "Death_C_Skeletons",
+        "Death_A"
+      ],
+      "hit": [
+        "Hit_A",
+        "Hit_B"
+      ],
+      "block": "Block_Hit",
+      "cheer": "Taunt",
+      "spawn": "Spawn_Ground_Skeletons",
+      "jump": "Jump_Full_Long"
+    }
+  }
+}
