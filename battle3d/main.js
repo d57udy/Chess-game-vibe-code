@@ -228,6 +228,7 @@ async function boot() {
     setProgress(0.15, 'Summoning the armies...');
 
     const audio = createAudio();
+    audio.setListener?.(sceneAPI.camera); // stereo pan and distance follow the camera; units drive setSlowMo
     const manifestUrl = await pickManifest();
     log('manifest', manifestUrl);
     const [manifest, castMod] = await Promise.all([fetchJson(manifestUrl), optionalImport('./cast.js')]);

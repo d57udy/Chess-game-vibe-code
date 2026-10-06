@@ -89,6 +89,11 @@ export function createFights(k) {
         return d.lengthSq() > 1e-6 ? d.normalize() : v3().set(0, 0, 1);
     };
     const between = (A, V, t = 0.5) => k.chestPos(A).lerp(k.chestPos(V), t);
+    // Swing weight for the whoosh variant: spells, two-handed/heavy weapons, or light blades.
+    const swingWeight = (A, clip = '') => (A.type === 'b' || /Spell/.test(clip) ? 'magic'
+        : /^2H|Spin|Jump_Chop/.test(clip) || A.type === 'r' ? 'heavy' : 'light');
+    // Body hit: bony crack on skeletons, cloth/leather thump on heroes.
+    const hitCue = (V, volume = 0.8) => k.sfxAt(V.isSkeleton ? 'bone' : 'hit', V, { volume, rate: k.rand(0.92, 1.08) });
     const aspeed = () => (k.full ? 1 : 1.8);
 
     // Attack clip from the attacker's own list, preferring `wanted` names.
@@ -108,9 +113,11 @@ export function createFights(k) {
             trails.push(k.fx.trail(A, WEAPON[A.type].trail));
             if (A.type === 'q') trails.push(k.fx.trail(A, WEAPON.q.trail, 'L'));
         }
-        yield k.untilClip(A, a, name ? k.impactOf(A, name) : 0.3);
+        // The whoosh peaks just before contact.
+        const impact = name ? k.impactOf(A, name) : 0.3;
+        k.later(Math.max(0, impact / speed - 0.18), () => k.sfxAt('whoosh', A, { variant: swingWeight(A, name || ''), volume: 0.55, rate: k.rand(0.92, 1.1) }));
+        yield k.untilClip(A, a, impact);
         k.later(0.15, () => trails.forEach(t => t && t.stop()));
-        k.sfx('whoosh', { volume: 0.5, rate: k.rand(0.9, 1.15) });
         return a;
     }
 
@@ -139,7 +146,7 @@ export function createFights(k) {
 
     function clang(A, V, kind = 'slash', strength = 0.3) {
         k.fx.impact(between(A, V, 0.55), dirOf(A, V), kind === 'magic' ? 'magic' : 'slash');
-        k.sfx(kind === 'magic' ? 'zap' : 'clang', { volume: 0.8, rate: k.rand(0.9, 1.1) });
+        if (kind !== 'magic') k.sfxAt('clang', between(A, V, 0.55), { volume: 0.8, rate: k.rand(0.9, 1.1) });   // bolts play their own magicHit
         k.fx.shake(strength);
     }
 
@@ -167,7 +174,7 @@ export function createFights(k) {
             const d = dirOf(A, V);
             const perp = v3().set(-d.z * side, 0, d.x * side);
             k.play(V, side > 0 ? ['Dodge_Left', 'Dodge_Right', 'Block'] : ['Dodge_Right', 'Dodge_Left', 'Block'], { speed: 1.2, fade: 0.06 });
-            k.sfx('whoosh', { volume: 0.7, rate: 1.2 });
+            k.sfxAt('whoosh', A, { variant: swingWeight(A, name || ''), volume: 0.7, rate: 1.15 });
             yield [nudge(V, perp, 0.22, 0.5, { back: true }), (function* () {
                 yield k.untilClip(A, a, impact + 0.2);
                 if (tr) tr.stop();
@@ -189,6 +196,7 @@ export function createFights(k) {
         },
         *boltBlock(A, V) {
             const a = k.play(A, ['Spellcast_Shoot', 'Spellcasting'], { speed: 1.2, fade: 0.1 });
+            k.sfxAt('zap', A, { volume: 0.5 });
             yield k.untilClip(A, a, k.impactOf(A, 'Spellcast_Shoot'));
             k.play(V, ['Block', 'Blocking', 'Block_Hit'], { speed: 1.4, fade: 0.06 });
             yield* k.fx.bolt(k.handPos(A), between(A, V, 0.85), A.color, 0.25, 0.8);
@@ -205,8 +213,8 @@ export function createFights(k) {
             k.play(V, ['Block', 'Blocking'], { speed: 1.3, fade: 0.08 });
             yield [nudge(A, d, 0.14, 0.18), nudge(V, d.clone().negate(), 0.14, 0.18)];
             k.fx.impact(between(A, V), d, 'blunt');
-            k.sfx('clang', { volume: 1, rate: 0.8 });
-            k.sfx('thud', { volume: 0.8 });
+            k.sfxAt('clang', between(A, V), { volume: 1, rate: 0.8 });
+            k.sfxAt('slam', between(A, V), { volume: 0.5 });
             k.fx.shake(0.7);
             k.fx.burst(k.sqPos(V.square).lerp(k.sqPos(A.square), 0.5), 'dust', { count: 14 });
             yield* k.hitStop([A, V], 0.08);
@@ -238,12 +246,14 @@ export function createFights(k) {
         *boltCollide(A, V) {
             const a = k.play(A, ['Spellcast_Shoot', 'Spellcasting'], { speed: 1.1, fade: 0.1 });
             const b = k.play(V, ['Spellcast_Shoot', 'Spellcasting'], { speed: 1.1, fade: 0.1 });
+            k.sfxAt('zap', A, { volume: 0.5 });
+            k.sfxAt('zap', V, { volume: 0.5, rate: 0.9 });
             yield k.untilClip(A, a, k.impactOf(A, 'Spellcast_Shoot'));
             const mid = between(A, V);
             yield [k.fx.bolt(k.handPos(A), mid, A.color, 0.3, 0.9), k.fx.bolt(k.handPos(V), mid, V.color, 0.3, 0.9)];
             k.fx.impact(mid, dirOf(A, V), 'magic');
             k.fx.burst(mid, 'magic', { count: 30 });
-            k.sfx('magic', { volume: 1 });
+            k.sfxAt('magicHit', mid, { volume: 1 });
             k.fx.shake(0.5);
             yield k.untilClip(A, a, a ? a.getClip().duration * 0.9 : 0.3);
             k.play(A, ['Idle'], { loop: true, fade: 0.15 });
@@ -259,7 +269,7 @@ export function createFights(k) {
         const d = dirOf(A, V);
         k.fx.impact(k.chestPos(V), d, V.isSkeleton && kind !== 'magic' ? 'bone' : kind);
         if (!k.fx.hasImpact) k.fx.burst(k.chestPos(V), kind === 'magic' ? 'magic' : 'spark', { count: heavy ? 22 : 14 });
-        k.sfx(kind === 'magic' ? 'magic' : 'hit', { volume: heavy ? 1 : 0.85, rate: k.rand(0.9, 1.05) });
+        if (kind !== 'magic') hitCue(V, heavy ? 1 : 0.85);   // magic arrival already played magicHit
         k.fx.shake(heavy ? 0.9 : 0.6);
         if (k.full) k.cam.slowMo(heavy ? 0.22 : 0.3, heavy ? 0.4 : 0.3);
     }
@@ -281,7 +291,7 @@ export function createFights(k) {
             const kick = k.hasClip('Unarmed_Melee_Attack_Kick') ? 'Unarmed_Melee_Attack_Kick' : attackClip(A, [], { quick: true });
             yield* swing(A, kick, { speed: 1.3, trail: false });
             k.play(V, k.anim(V, 'hit', ['Hit_A']), { speed: 1.5, fade: 0.05 });
-            k.sfx('thud', { volume: 0.7 });
+            hitCue(V, 0.6);
             k.fx.burst(k.chestPos(V), 'dust', { count: 8 });
             yield* nudge(V, dirOf(A, V), 0.12, 0.15);
             yield 0.12;
@@ -300,7 +310,7 @@ export function createFights(k) {
             yield* swing(A, first, { speed: 1.3 });
             k.play(V, k.anim(V, 'hit', ['Hit_A']), { speed: 1.5, fade: 0.05 });
             k.fx.impact(k.chestPos(V), dirOf(A, V), 'slash');
-            k.sfx('hit', { volume: 0.6 });
+            hitCue(V, 0.6);
             yield 0.12;
             yield* swing(A, attackClip(A, ['1H_Melee_Attack_Chop']), { speed: 1.2 });
             blowFx(A, V, 'slash', true);
@@ -313,9 +323,9 @@ export function createFights(k) {
                 yield* k.fx.bolt(k.handPos(A), k.chestPos(V), A.color, 0.2, 0.7);
                 k.play(V, k.anim(V, 'hit', ['Hit_A', 'Hit_B']), { speed: 1.6, fade: 0.05 });
                 k.fx.impact(k.chestPos(V), dirOf(A, V), 'magic');
-                k.sfx('zap', { volume: 0.6, rate: 1 + i * 0.15 });
             }
             const s = k.play(A, ['Spellcast_Shoot'], { speed: 1.1, fade: 0.08 }) || a;
+            k.sfxAt('zap', A, { volume: 0.7, rate: 0.85 });
             yield k.untilClip(A, s, k.impactOf(A, 'Spellcast_Shoot'));
             yield* k.fx.bolt(k.handPos(A), k.chestPos(V), A.color, 0.25, 1.4);
             k.fx.decal(k.sqPos(V.square), 'scorch');
@@ -324,6 +334,7 @@ export function createFights(k) {
         },
         *skyBolt(A, V) {
             const a = k.play(A, ['Spellcast_Raise', 'Spellcast_Shoot'], { speed: 1.3 * aspeed(), fade: 0.1 });
+            k.sfxAt('zap', A, { volume: 0.7, rate: 0.8 });
             yield k.untilClip(A, a, k.impactOf(A, 'Spellcast_Raise'));
             const top = k.chestPos(V).add(v3().set(0, 2.2, 0));
             yield* k.fx.bolt(top, k.chestPos(V), A.color, k.full ? 0.3 : 0.12, 1.5);
@@ -338,7 +349,7 @@ export function createFights(k) {
             k.fx.decal(ground, 'crack');
             k.fx.debris(ground, { kind: 'wood', count: 8, direction: dirOf(A, V) });
             k.fx.burst(ground, 'dust', { count: 20 });
-            k.sfx('thud', { volume: 1 });
+            k.sfxAt('slam', ground, { volume: 1 });
             blowFx(A, V, 'blunt', true);
             return { heavy: true };
         },
@@ -352,7 +363,7 @@ export function createFights(k) {
             yield* swing(A, attackClip(A, ['Dualwield_Melee_Attack_Slice', 'Dualwield_Melee_Attack_Chop'], { quick: true }), { speed: 1.5 });
             k.play(V, k.anim(V, 'hit', ['Hit_A']), { speed: 1.5, fade: 0.05 });
             k.fx.impact(k.chestPos(V), dirOf(A, V), 'slash');
-            k.sfx('hit', { volume: 0.6 });
+            hitCue(V, 0.6);
             const spin = k.hasClip('2H_Melee_Attack_Spin') ? '2H_Melee_Attack_Spin' : attackClip(A);
             yield* swing(A, spin, { speed: 1.25 });
             blowFx(A, V, 'slash', true);
@@ -362,7 +373,7 @@ export function createFights(k) {
             yield* swing(A, attackClip(A, ['Dualwield_Melee_Attack_Chop'], { quick: true }), { speed: 1.35 });
             k.play(V, k.anim(V, 'hit', ['Hit_B']), { speed: 1.5, fade: 0.05 });
             k.fx.impact(k.chestPos(V), dirOf(A, V), 'slash');
-            k.sfx('hit', { volume: 0.6 });
+            hitCue(V, 0.6);
             yield* swing(A, attackClip(A, ['Dualwield_Melee_Attack_Stab']), { speed: 1.25 });
             blowFx(A, V, 'pierce', true);
             return { heavy: true };
@@ -378,7 +389,7 @@ export function createFights(k) {
             const name = attackClip(A, ['1H_Melee_Attack_Stab']);
             yield* swing(A, name, { speed: 0.85 });
             k.fx.impact(k.chestPos(V), dirOf(A, V), 'pierce');
-            k.sfx('hit', { volume: 0.4, rate: 1.4 });
+            k.sfxAt(V.isSkeleton ? 'bone' : 'hit', V, { volume: 0.35, rate: 1.4 });
             k.fx.shake(0.2);
             k.cam.slowMo(0.2, 0.5);
             return { dramatic: true };
@@ -389,6 +400,7 @@ export function createFights(k) {
     function* fastBlow(A, V) {
         if (A.type === 'b') {
             const a = k.play(A, ['Spellcast_Shoot'], { speed: 1.8, fade: 0.08 });
+            k.sfxAt('zap', A, { volume: 0.4 });
             yield k.untilClip(A, a, k.impactOf(A, 'Spellcast_Shoot'));
             yield* k.fx.bolt(k.handPos(A), k.chestPos(V), A.color, 0.1, 0.9);
         } else {
@@ -411,7 +423,6 @@ export function createFights(k) {
                 A.root.position.x = p0.x;
             })();
             const laugh = k.playOnce(V, V.isSkeleton ? ['Taunt', 'Cheer'] : ['Cheer', 'Taunt'], { speed: 1.3, until: 0.75 });
-            k.sfx('cheer', { volume: 0.4, rate: 1.3 });
             yield [tremble, laugh];
             k.guard(V);
         },
@@ -427,6 +438,7 @@ export function createFights(k) {
     function* death(A, V, info) {
         const full = k.full;
         const d = dirOf(A, V);
+        const size = k.sizeOf(V);
         k.startDeath(V);
         k.play(V, info.dramatic ? ['Hit_B', 'Hit_A'] : k.anim(V, 'hit', ['Hit_A', 'Hit_B']), { speed: 1.4, fade: 0.05 });
         yield* nudge(V, d, full ? (info.heavy ? 0.3 : 0.2) : 0.12, full ? 0.2 : 0.1);
@@ -434,18 +446,27 @@ export function createFights(k) {
         const names = V.isSkeleton ? ['Death_C_Skeletons', 'Death_A']
             : info.dramatic ? ['Death_B', 'Death_A']
                 : k.anim(V, 'death', ['Death_A', 'Death_B']);
-        k.fall(V, names, { speed: full ? (info.dramatic ? 0.85 : 1) : 1.8 });
+        const speed = full ? (info.dramatic ? 0.85 : 1) : 1.8;
+        k.fall(V, names, { speed });
         k.shrinkBase(V, full ? 0.6 : 0.25);
+        // The body reaches the board about 0.45 s into the death clips (0.8 s for the long Death_B).
+        const landing = (info.dramatic ? 0.8 : V.isSkeleton ? 0.4 : 0.45) / speed;
         if (V.isSkeleton) {
             // Skeletons collapse and shatter into bones.
-            yield full ? 0.45 : 0.12;
+            yield Math.min(landing, full ? 0.45 : 0.12);
+            k.sfxAt('fall', V, { volume: 0.6 * size, rate: 1.1 });
             k.fx.debris(k.chestPos(V).setY(0.35), { kind: 'bones', count: full ? 12 : 7, direction: d });
-            k.sfx('bone', { volume: 0.9 });
+            k.sfxAt('shatter', V, { volume: full ? 0.9 : 0.6 });
+            if (full) k.later(0.3, () => k.sfxAt('death', V, { volume: 0.45, rate: 1.1 }));
             yield* k.fadeOut(V, { dur: full ? 0.45 : 0.2, sink: 0.15 });
         } else {
-            k.sfx('death', { volume: 0.7 });
-            yield full ? (info.dramatic ? 1.0 : 0.65) : 0.2;
+            const hold = full ? (info.dramatic ? 1.0 : 0.65) : 0.2;
+            yield Math.min(landing, hold);
+            k.sfxAt('fall', V, { volume: 0.85 * size, rate: 1 / size });
+            yield Math.max(0, hold - landing);
             // Heroes dissolve into light.
+            k.sfxAt('death', V, { volume: full ? 0.55 : 0.3 });
+            if (full) k.sfxAt('dissolve', V, { volume: 0.6 });
             yield* k.fadeOut(V, { dur: full ? 0.6 : 0.2, sink: 0.35, sparkle: true });
         }
     }
