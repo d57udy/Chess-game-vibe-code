@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Battle3D scene test</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1a1412; color: #f3e6cc; font: 14px system-ui, sans-serif; }
+    #stage { position: fixed; inset: 0; }
+    #bar { position: fixed; left: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; max-width: calc(100% - 16px); }
+    #bar button { background: rgba(30,20,14,0.85); color: inherit; border: 1px solid #8a6a3a; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+    #info { position: fixed; left: 8px; bottom: 8px; z-index: 2; background: rgba(30,20,14,0.7); padding: 4px 8px; border-radius: 6px; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="bar">
+    <button data-a="w">White view</button>
+    <button data-a="b">Black view</button>
+    <button data-a="focus">Focus e4/d5</button>
+    <button data-a="restore">Restore</button>
+    <button data-a="dust">Dust</button>
+    <button data-a="spark">Spark</button>
+    <button data-a="magic">Magic</button>
+    <button data-a="poof">Poof</button>
+    <button data-a="bolt">Projectile</button>
+    <button data-a="shake">Shake</button>
+    <button data-a="slow">Time x0.25 / x1</button>
+    <button data-a="fight">Cinematic fight</button>
+    <button data-a="impact">Impacts</button>
+    <button data-a="debris">Debris</button>
+    <button data-a="decal">Decals</button>
+    <button data-a="stats">Stats</button>
+  </div>
+  <div id="info">click a square</div>
+  <script type="module">
+    import { createScene } from './scene.js';
+
+    // ?w=390&h=780 sizes the stage to emulate a phone viewport
+    const qs = new URLSearchParams(location.search);
+    if (qs.get('w')) Object.assign(document.getElementById('stage').style, { right: 'auto', bottom: 'auto', width: qs.get('w') + 'px', height: qs.get('h') + 'px' });
+    const api = await createScene(document.getElementById('stage'), { debug: true });
+    const { THREE, scene } = api;
+    window.__scene = api;
+
+    // Placeholder capsules on the starting squares (row 0-1 Black, row 6-7 White).
+    const wMat = new THREE.MeshStandardMaterial({ color: '#e9e1cf', roughness: 0.5 });
+    const bMat = new THREE.MeshStandardMaterial({ color: '#3a3340', roughness: 0.6 });
+    const capGeo = new THREE.CapsuleGeometry(0.22, 0.4, 4, 10);
+    const proxyGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.9, 8);
+    const proxyMat = new THREE.MeshBasicMaterial({ visible: false });
+    const units = [];
+    for (const row of [0, 1, 6, 7]) {
+      for (let col = 0; col < 8; col++) {
+        const m = new THREE.Mesh(capGeo, row < 2 ? bMat : wMat);
+        m.position.copy(api.squareToWorld(row, col)).setY(0.42);
+        m.castShadow = true;
+        scene.add(m);
+        const proxy = new THREE.Mesh(proxyGeo, proxyMat);
+        proxy.position.y = 0;
+        m.add(proxy);
+        const sq = { row, col };
+        api.registerPickProxy(proxy, () => sq);
+        units.push(m);
+      }
+    }
+    // gentle bob so updaters are visibly running
+    api.addUpdater((dt, t) => units.forEach((u, i) => { u.position.y = 0.42 + Math.sin(t * 2 + i) * 0.02; }));
+
+    let selected = null;
+    const info = document.getElementById('info');
+    api.setHighlights({
+      lastMove: { from: { row: 6, col: 4 }, to: { row: 4, col: 4 } },
+      check: { row: 0, col: 4 },
+    });
+    api.onSquareHover((row, col) => api.setHighlights({ hover: row === null ? null : { row, col } }));
+    api.onSquareClick((row, col) => {
+      info.textContent = `clicked ${'abcdefgh'[col]}${8 - row} (row ${row}, col ${col})`;
+      selected = { row, col };
+      const moves = [];
+      for (let r = 0; r < 8; r++) {
+        if (r !== row) moves.push({ row: r, col, capture: r < 2 || r > 5 });
+      }
+      api.setHighlights({ selected, moves });
+      api.burst(api.squareToWorld(row, col), 'dust');
+    });
+
+    const e4 = api.squareToWorld(4, 4);
+    const d5 = api.squareToWorld(3, 3);
+
+    // ?auto=b|focus|fx scripted states driven by stepFrames (for headless screenshots)
+    const auto = new URLSearchParams(location.search).get('auto');
+    if (auto) {
+      api.setPaused(true);
+      api.setHighlights({ selected: { row: 6, col: 3 }, moves: [{ row: 5, col: 3 }, { row: 4, col: 3 }, { row: 1, col: 4, capture: true }], hover: { row: 5, col: 5 } });
+      if (auto === 'b') { api.setView('b'); api.stepFrames(90); }
+      if (auto === 'focus') { api.focusOn([e4, d5]); api.stepFrames(50); api.burst(e4.clone().setY(0.5), 'spark'); api.stepFrames(6); }
+      if (auto === 'fx') {
+        api.burst(api.squareToWorld(5, 1), 'dust'); api.burst(api.squareToWorld(5, 6).setY(0.4), 'poof');
+        api.burst(e4.clone().setY(0.5), 'magic'); api.projectile(d5.clone().setY(0.6), api.squareToWorld(2, 6).setY(0.5), { duration: 1 });
+        api.stepFrames(18);
+      }
+      if (auto === 'restore') { api.focusOn([e4, d5]); api.stepFrames(50); api.restoreView(); api.stepFrames(50); }
+      if (auto === 'promise') {
+        // camera promises must resolve under stepFrames alone
+        const done = [];
+        api.focusOn([e4, d5]).then(() => done.push('focus'));
+        api.stepFrames(40);
+        await Promise.resolve();
+        api.restoreView().then(() => done.push('restore'));
+        api.stepFrames(40);
+        await Promise.resolve();
+        api.setView('b').then(() => done.push('view'));
+        api.stepFrames(70);
+        api.projectile(d5, e4, { duration: 0.3 }).then(() => done.push('bolt'));
+        api.stepFrames(20);
+        await new Promise((r) => setTimeout(r, 0));
+        document.title = `PROMISE ${done.join(',')} side=${api.getViewSide()} busy=${api.isCameraBusy()}`;
+      }
+      if (auto === 'duel') { api.focusOn([api.squareToWorld(2, 5), api.squareToWorld(1, 6)]); api.stepFrames(50); }
+      if (auto === 'duelfile') { api.focusOn([api.squareToWorld(3, 4), api.squareToWorld(1, 4)]); api.stepFrames(50); }
+      if (auto === 'duelocc') { api.focusOn([api.squareToWorld(5, 4), api.squareToWorld(5, 5)], { distance: 3.4 }); api.stepFrames(50); }
+      if (auto === 'bolt') { api.projectile(api.squareToWorld(5, 2).setY(0.6), api.squareToWorld(1, 6).setY(0.5), { duration: 0.6 }); api.stepFrames(20); }
+      if (auto === 'boltend') { api.projectile(api.squareToWorld(5, 2).setY(0.6), api.squareToWorld(1, 6).setY(0.5), { duration: 0.6, burst: 'magic' }); api.stepFrames(39); }
+      // v2: cinematic shots for a long-range pair (c1 caster -> g7 victim) and the new FX
+      const c1 = api.squareToWorld(7, 2);
+      const g7 = api.squareToWorld(1, 6);
+      if (auto === 'os') { api.cinematic.letterbox(true); api.cinematic.shot('over-shoulder', [c1, g7], { cut: true, duration: 0.6 }); api.stepFrames(40); }
+      if (auto === 'cu') { api.cinematic.letterbox(true); api.cinematic.shot('closeup', [g7], { cut: true, duration: 0.5 }); api.stepFrames(40); }
+      if (auto === 'two') { api.cinematic.shot('two-shot', [c1, g7], { duration: 0.6 }); api.stepFrames(45); }
+      if (auto === 'orbit') { api.cinematic.shot('orbit', [e4, d5], { duration: 1.2 }); api.stepFrames(45); }
+      if (auto === 'fx2') {
+        const f5 = api.squareToWorld(3, 5);
+        api.focusOn([e4, f5], { duration: 0 });
+        api.fx.decal(e4, 'scorch');
+        api.fx.decal(f5, 'crack');
+        api.fx.impact(e4.clone().setY(0.5), new THREE.Vector3(-1, 0.3, 0), 'slash');
+        api.fx.debris(f5, { kind: 'bones', count: 14, direction: new THREE.Vector3(1, 0, 0) });
+        const blade = new THREE.Object3D();
+        scene.add(blade);
+        const tr = api.fx.trail(blade, { color: '#ffe9a8', width: 0.14 });
+        for (let i = 0; i < 14; i++) {
+          const a = -1.2 + i * 0.16;
+          blade.position.set(e4.x + Math.cos(a) * 0.5, 0.55 + Math.sin(a) * 0.35, e4.z + 0.2);
+          api.stepFrames(1);
+        }
+        api.stepFrames(4);
+      }
+      // Rxd5 smash from d1 (fen 4k3/8/8/3p4/8/8/8/3RK3 w): rook at its duel spot 0.65 in front of d5
+      if (auto && auto.startsWith('rook')) {
+        units.forEach((u) => { u.visible = false; api.unregisterPickProxy(u.children[0]); });
+        const put = (row, col, mat, dz = 0) => {
+          const m = new THREE.Mesh(capGeo, mat);
+          m.position.copy(api.squareToWorld(row, col)).setY(0.42);
+          m.position.z += dz;
+          m.castShadow = true;
+          scene.add(m);
+          const proxy = new THREE.Mesh(proxyGeo, proxyMat);
+          m.add(proxy);
+          api.registerPickProxy(proxy, () => ({ row, col }));
+          return m;
+        };
+        put(0, 4, bMat); put(3, 3, bMat); put(7, 4, wMat);
+        const rook = put(3, 3, wMat, 0.65);
+        const victim = api.squareToWorld(3, 3);
+        const spot = rook.position.clone().setY(0);
+        if (auto === 'rook2') api.cinematic.shot('two-shot', [spot, victim], { duration: 0.7 });
+        else api.cinematic.shot('closeup', [victim], { cut: true, duration: 0.45 });
+        api.stepFrames(50);
+        const eye = api.camera.position;
+        document.title = `ROOK dRook=${eye.distanceTo(rook.position).toFixed(2)} dVictim=${eye.distanceTo(victim.clone().setY(0.42)).toFixed(2)}`;
+      }
+      if (auto === 'pick') {
+        // project square centers (and a unit's head) to screen and pick them back
+        const rect = api.renderer.domElement.getBoundingClientRect();
+        const toScreen = (v) => { const p = v.clone().project(api.camera); return [rect.left + (p.x + 1) / 2 * rect.width, rect.top + (1 - p.y) / 2 * rect.height]; };
+        let bad = 0;
+        for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+          if (r < 2 || r > 4) continue; // rank 3 is partly covered by the rank 2 unit proxies (by design)
+          const s = api.pickAt(...toScreen(api.squareToWorld(r, c)));
+          if (!s || s.row !== r || s.col !== c) bad++;
+        }
+        const head = api.pickAt(...toScreen(api.squareToWorld(1, 4).setY(0.8)));
+        document.title = `PICK bad=${bad} head=${JSON.stringify(head)}`;
+      }
+      info.textContent = `auto ${auto}: particles ${api.particleCount()}, cameraBusy ${api.isCameraBusy()}`;
+    }
+    let slow = false;
+    document.getElementById('bar').addEventListener('click', async (ev) => {
+      const a = ev.target.dataset.a;
+      if (!a) return;
+      if (a === 'w' || a === 'b') await api.setView(a);
+      if (a === 'focus') await api.focusOn([e4, d5]);
+      if (a === 'restore') await api.restoreView();
+      if (['dust', 'spark', 'magic', 'poof'].includes(a)) api.burst(e4.clone().setY(a === 'dust' ? 0 : 0.5), a);
+      if (a === 'bolt') {
+        await api.projectile(d5.clone().setY(0.6), e4.clone().setY(0.5), { duration: 0.5, color: '#8fd8ff' });
+        api.burst(e4.clone().setY(0.5), 'magic');
+        api.shake(1);
+      }
+      if (a === 'shake') api.shake(2);
+      if (a === 'fight') {
+        // long-range bishop capture: over-shoulder on the caster, closeup on the victim as the bolt lands
+        const caster = api.squareToWorld(7, 2);
+        const victim = api.squareToWorld(1, 6);
+        api.keepAlive('fight', true);
+        api.cinematic.letterbox(true);
+        await api.cinematic.shot('over-shoulder', [caster, victim], { cut: true, duration: 0.7 });
+        const bolt = api.projectile(caster.clone().setY(0.7), victim.clone().setY(0.5), { duration: 0.7 });
+        await api.cinematic.shot('closeup', [victim], { cut: true, duration: 0.4 });
+        await bolt;
+        api.fx.impact(victim.clone().setY(0.5), victim.clone().sub(caster).setY(0), 'magic');
+        api.cinematic.slowMo(0.25, 0.4);
+        api.shake(1.5);
+        api.fx.debris(victim, { kind: 'bones', count: 14 });
+        api.fx.decal(victim, 'scorch');
+        await api.cinematic.shot('orbit', [victim], { duration: 1.2 });
+        await api.cinematic.end();
+        api.keepAlive('fight', false);
+      }
+      if (a === 'impact') ['slash', 'blunt', 'pierce', 'magic', 'bone'].forEach((k, i) => api.fx.impact(api.squareToWorld(4, i + 1).setY(0.5), new THREE.Vector3(0, 0.3, 1), k));
+      if (a === 'debris') ['bones', 'armor', 'wood'].forEach((k, i) => api.fx.debris(api.squareToWorld(4, 2 + i * 2), { kind: k }));
+      if (a === 'decal') { api.fx.decal(api.squareToWorld(3, 2), 'scorch'); api.fx.decal(api.squareToWorld(3, 5), 'crack'); }
+      if (a === 'stats') { info.textContent = JSON.stringify(api.stats()); return; }
+      if (a === 'slow') { slow = !slow; api.setTimeScale(slow ? 0.25 : 1); }
+      info.textContent = `${a} done`;
+    });
+  </script>
+</body>
+</html>

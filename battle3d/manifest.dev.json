@@ -1,0 +1,30 @@
+{
+  "_note": "Temporary dev manifest for units.js using the unoptimized raw KayKit GLBs (clips embedded). Superseded by assets/manifest.json.",
+  "clips": {},
+  "roles": {
+    "w": {
+      "p": { "model": "assets/raw/Rogue_Hooded.glb", "show": ["Knife"], "label": "Pawn" },
+      "n": { "model": "assets/raw/Knight.glb", "show": ["1H_Sword", "Round_Shield"], "hide": ["Knight_Cape"], "label": "Knight" },
+      "b": { "model": "assets/raw/Mage.glb", "show": ["2H_Staff"], "label": "Bishop" },
+      "r": { "model": "assets/raw/Barbarian.glb", "show": ["2H_Axe"], "label": "Rook" },
+      "q": { "model": "assets/raw/Rogue.glb", "show": ["Knife", "Knife_Offhand"], "label": "Queen", "heightScale": 1.05 },
+      "k": { "model": "assets/raw/Knight.glb", "show": ["1H_Sword", "Badge_Shield"], "hide": ["Knight_Helmet"], "crown": true, "label": "King", "heightScale": 1.08 }
+    },
+    "b": {
+      "p": { "model": "assets/raw/Skeleton_Minion.glb", "props": [{ "file": "assets/raw/props/Skeleton_Blade.gltf", "bone": "handslot.r" }], "label": "Pawn" },
+      "n": { "model": "assets/raw/Skeleton_Rogue.glb", "props": [{ "file": "assets/raw/props/Skeleton_Blade.gltf", "bone": "handslot.r" }, { "file": "assets/raw/props/Skeleton_Shield_Small_A.gltf", "bone": "handslot.l" }], "label": "Knight" },
+      "b": { "model": "assets/raw/Skeleton_Mage.glb", "props": [{ "file": "assets/raw/props/Skeleton_Staff.gltf", "bone": "handslot.r" }], "label": "Bishop" },
+      "r": { "model": "assets/raw/Skeleton_Warrior.glb", "props": [{ "file": "assets/raw/props/Skeleton_Axe.gltf", "bone": "handslot.r" }, { "file": "assets/raw/props/Skeleton_Shield_Large_A.gltf", "bone": "handslot.l" }], "label": "Rook" },
+      "q": { "model": "assets/raw/Skeleton_Rogue.glb", "props": [{ "file": "assets/raw/props/Skeleton_Blade.gltf", "bone": "handslot.r" }, { "file": "assets/raw/props/Skeleton_Blade.gltf", "bone": "handslot.l" }], "label": "Queen", "heightScale": 1.05 },
+      "k": { "model": "assets/raw/Skeleton_Warrior.glb", "hide": ["Skeleton_Warrior_Helmet"], "props": [{ "file": "assets/raw/props/Skeleton_Blade.gltf", "bone": "handslot.r" }, { "file": "assets/raw/props/Skeleton_Shield_Small_A.gltf", "bone": "handslot.l" }], "crown": true, "label": "King", "heightScale": 1.08 }
+    }
+  },
+  "fight": {
+    "p": { "attack": ["1H_Melee_Attack_Stab", "1H_Melee_Attack_Chop", "1H_Melee_Attack_Slice_Diagonal"] },
+    "n": { "attack": ["1H_Melee_Attack_Chop", "1H_Melee_Attack_Slice_Diagonal", "1H_Melee_Attack_Slice_Horizontal"] },
+    "b": { "attack": ["Spellcast_Shoot"] },
+    "r": { "attack": ["2H_Melee_Attack_Chop", "2H_Melee_Attack_Slice", "2H_Melee_Attack_Stab"] },
+    "q": { "attack": ["Dualwield_Melee_Attack_Chop", "Dualwield_Melee_Attack_Slice", "Dualwield_Melee_Attack_Stab"] },
+    "k": { "attack": ["1H_Melee_Attack_Chop", "1H_Melee_Attack_Slice_Horizontal"] }
+  }
+}

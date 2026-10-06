@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Units Preview</title>
+    <!-- Dev page for battle3d/units.js choreography. Serve the repo root with python3 -m http.server,
+         open /battle3d/units-test.html. Params: ?raw=1 (raw placeholder GLBs), ?stub=1 (stub scene), ?debug=1 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        html, body { margin: 0; height: 100%; background: #15161a; color: #e8e2d4; font: 13px/1.3 system-ui, sans-serif; overflow: hidden; }
+        #stage { position: absolute; inset: 0; }
+        #panel { position: absolute; top: 8px; left: 8px; width: 250px; max-height: calc(100% - 16px); overflow: auto;
+            background: rgba(20, 21, 26, 0.85); border: 1px solid #333; border-radius: 8px; padding: 8px; box-sizing: border-box; }
+        #panel h3 { margin: 8px 0 4px; font-size: 12px; color: #c9a85a; text-transform: uppercase; letter-spacing: 0.05em; }
+        button, select { background: #2a2c33; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px 6px; margin: 2px 1px; font: inherit; cursor: pointer; }
+        button:hover { background: #383b44; }
+        button.on { background: #2f6fd6; }
+        #status { margin-top: 6px; color: #9ab; min-height: 2.6em; white-space: pre-wrap; }
+        .row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+    </style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="panel">
+    <div class="row">
+        <button id="full" class="on">Full</button><button id="fast">Fast</button>
+        <button id="labels" class="on">Labels</button><button id="skip">Skip</button><button id="step">Step 10 s</button>
+    </div>
+    <h3>Moves</h3>
+    <div class="row">
+        <button data-s="start">Reset start</button><button data-s="walk">e2-e4</button><button data-s="slide">Rook slide</button>
+        <button data-s="knight">Knight jump</button><button data-s="castleW">Castle O-O</button><button data-s="castleB">Castle ...O-O-O</button>
+    </div>
+    <h3>Capture</h3>
+    <div class="row">
+        <select id="atkColor"><option value="w">White attacks</option><option value="b">Black attacks</option></select>
+        <select id="atkType"><option value="p">Pawn</option><option value="n">Knight</option><option value="b">Bishop</option><option value="r">Rook</option><option value="q">Queen</option><option value="k">King</option></select>
+        <select id="vicType"><option value="p">Pawn</option><option value="n">Knight</option><option value="b">Bishop</option><option value="r">Rook</option><option value="q">Queen</option></select>
+        <button id="capture">Capture</button>
+    </div>
+    <div class="row">
+        <button data-s="pxq">Pawn takes queen</button><button data-s="ep">En passant</button>
+        <button data-s="promo">Promotion</button><button data-s="promoCap">Capture + promote</button><button data-s="promoB">Black promotes</button>
+    </div>
+    <h3>Signature pairings</h3>
+    <div class="row">
+        <button data-pair="w,p,q">Pawn x queen</button><button data-pair="w,q,q">Queen duel</button><button data-pair="b,r,r">Shield clash</button>
+        <button data-pair="w,n,n">Knight duel</button><button data-pair="b,b,b">Spell duel</button><button data-pair="w,k,r">King captures</button>
+    </div>
+    <h3>Events</h3>
+    <div class="row">
+        <button data-s="check">Check</button><button data-s="mate">Checkmate</button><button data-s="mateB">White mated</button><button data-s="stalemate">Stalemate</button>
+    </div>
+    <h3>Batch</h3>
+    <div class="row"><button id="all">Run all captures</button></div>
+    <div id="status">loading...</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createUnits } from './units.js';
+
+const params = new URLSearchParams(location.search);
+const statusEl = document.getElementById('status');
+const status = t => { statusEl.textContent = t; };
+
+// --- minimal stand-in for scene.js (used with ?stub=1 or when scene.js fails to load) ----------
+async function createStubScene(container) {
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x202228);
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    const home = { pos: new THREE.Vector3(0, 7.2, 9), target: new THREE.Vector3(0, 0, 0.6) };
+    camera.position.copy(home.pos);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.copy(home.target);
+    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a2d22, 1.4));
+    const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
+    sun.position.set(4, 9, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
+    scene.add(sun);
+    const sq = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const light = new THREE.MeshStandardMaterial({ color: 0xd9c9a3 }), dark = new THREE.MeshStandardMaterial({ color: 0x6b4f37 });
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+        const m = new THREE.Mesh(sq, (r + c) % 2 ? dark : light);
+        m.position.set(c - 3.5, 0, r - 3.5);
+        m.receiveShadow = true;
+        scene.add(m);
+    }
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.5, 8.8), new THREE.MeshStandardMaterial({ color: 0x3b2a1e }));
+    frame.position.y = -0.26;
+    scene.add(frame);
+
+    const updaters = new Set();
+    let timeScale = 1, paused = false, t = 0, shakeAmt = 0;
+    const cam = { from: null, to: null, k: 1, dur: 0.6, res: null };
+    const particles = [];
+    function tweenCam(pos, target, duration) {
+        return new Promise(res => {
+            if (cam.res) cam.res();
+            cam.from = { pos: camera.position.clone(), target: controls.target.clone() };
+            cam.to = { pos, target };
+            cam.k = 0; cam.dur = Math.max(1e-3, duration); cam.res = res;
+        });
+    }
+    function update(dt) {
+        t += dt;
+        for (const fn of [...updaters]) fn(dt, t);
+        if (cam.k < 1) {
+            cam.k = Math.min(1, cam.k + dt / cam.dur);
+            const e = cam.k * cam.k * (3 - 2 * cam.k);
+            camera.position.lerpVectors(cam.from.pos, cam.to.pos, e);
+            controls.target.lerpVectors(cam.from.target, cam.to.target, e);
+            if (cam.k >= 1 && cam.res) { cam.res(); cam.res = null; }
+        }
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.life -= dt;
+            const pos = p.pts.geometry.attributes.position;
+            for (let j = 0; j < p.v.length; j++) {
+                p.v[j].y -= p.g * dt;
+                pos.setXYZ(j, pos.getX(j) + p.v[j].x * dt, pos.getY(j) + p.v[j].y * dt, pos.getZ(j) + p.v[j].z * dt);
+            }
+            pos.needsUpdate = true;
+            p.pts.material.opacity = Math.max(0, p.life / p.max);
+            if (p.life <= 0) { p.pts.removeFromParent(); p.pts.geometry.dispose(); p.pts.material.dispose(); particles.splice(i, 1); }
+        }
+        controls.update();
+        const off = shakeAmt > 0 ? new THREE.Vector3((Math.random() - 0.5) * shakeAmt, (Math.random() - 0.5) * shakeAmt, 0) : null;
+        shakeAmt = Math.max(0, shakeAmt - dt * 0.5);
+        if (off) camera.position.add(off);
+        renderer.render(scene, camera);
+        if (off) camera.position.sub(off);
+    }
+    function resize() {
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+    }
+    addEventListener('resize', resize);
+    resize();
+    let last = performance.now();
+    (function loop(now) {
+        requestAnimationFrame(loop);
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (!paused) update(dt * timeScale);
+    })(last);
+    const colors = { spark: 0xffd27a, dust: 0xb9a88f, magic: 0x9fd8ff, poof: 0xeeeeee };
+    return {
+        THREE, scene, camera, renderer,
+        squareToWorld: (row, col) => new THREE.Vector3(col - 3.5, 0, row - 3.5),
+        onSquareClick() {}, onSquareHover() {}, registerPickProxy() {}, unregisterPickProxy() {}, setHighlights() {},
+        setView: async () => {},
+        focusOn(points, { duration = 0.6 } = {}) {
+            const c = points.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / points.length);
+            return tweenCam(c.clone().add(new THREE.Vector3(0, 2.6, 3.6)), c, duration);
+        },
+        restoreView({ duration = 0.6 } = {}) { return tweenCam(home.pos.clone(), home.target.clone(), duration); },
+        addUpdater: fn => updaters.add(fn), removeUpdater: fn => updaters.delete(fn),
+        setTimeScale: s => { timeScale = s; }, getTimeScale: () => timeScale,
+        shake: (s = 1) => { shakeAmt = Math.max(shakeAmt, 0.08 * s); },
+        burst(position, kind = 'spark', { color, count = 12 } = {}) {
+            const geo = new THREE.BufferGeometry();
+            const arr = new Float32Array(count * 3), v = [];
+            for (let i = 0; i < count; i++) {
+                arr.set([position.x, position.y, position.z], i * 3);
+                v.push(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.8, (Math.random() - 0.5) * 2).multiplyScalar(kind === 'poof' ? 0.6 : 1.2));
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+            const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: color ?? colors[kind] ?? 0xffffff, size: kind === 'poof' ? 0.12 : 0.06, transparent: true, depthWrite: false }));
+            scene.add(pts);
+            particles.push({ pts, v, life: 0.6, max: 0.6, g: kind === 'poof' || kind === 'magic' ? 0.5 : 4 });
+        },
+        stepFrames(n, dt = 1 / 60) { for (let i = 0; i < n; i++) update(dt * timeScale); },
+        setPaused(p) { paused = p; }
+    };
+}
+
+let sceneAPI;
+if (!params.has('stub')) {
+    try {
+        const mod = await import('./scene.js');
+        sceneAPI = await mod.createScene(document.getElementById('stage'), { debug: params.get('debug') === '1' });
+    } catch (e) {
+        console.warn('scene.js unavailable, using stub', e);
+    }
+}
+if (!sceneAPI) sceneAPI = await createStubScene(document.getElementById('stage'));
+
+const manifestUrl = params.has('raw') ? './manifest.dev.json' : './assets/manifest.json';
+// Audio stand-in: tries battle3d/audio.js, else records cue names so the choreography can be checked.
+const cues = [];
+let audio = { play: name => { cues.push(name); } };
+try {
+    const mod = await import('./audio.js');
+    const real = mod.createAudio();
+    audio = { play: (name, opts) => { cues.push(name); real.play(name, opts); } };
+    addEventListener('pointerdown', () => real.unlock?.(), { once: true });
+} catch (e) { /* no audio module yet */ }
+const units = await createUnits(sceneAPI, manifestUrl, { audio });
+window.__units = { units, sceneAPI, cues };
+
+// --- boards ---------------------------------------------------------------------------------
+function fenBoard(fen) {
+    return fen.split('/').map(row => {
+        const out = [];
+        for (const ch of row) {
+            if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) out.push(null);
+            else out.push(ch);
+        }
+        return out;
+    });
+}
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+const sq = (row, col) => ({ row, col });
+const mv = (color, piece, from, to, extra = {}) => ({
+    color, piece, from, to, captured: null, castling: null, promotion: null, givesCheck: false, isMate: false, isAI: false, ...extra
+});
+const GLYPH = { p: 'p', n: 'n', b: 'b', r: 'r', q: 'q', k: 'k' };
+
+function boardWith(pieces) {
+    const b = Array.from({ length: 8 }, () => Array(8).fill(null));
+    for (const [r, c, p] of pieces) b[r][c] = p;
+    return b;
+}
+
+// Victim squares relative to an attacker on e4 (row 4, col 4) for White; mirrored for Black.
+const VICTIM_AT = { p: [3, 3], n: [2, 5], b: [1, 1], r: [0, 4], q: [1, 7], k: [3, 4] };
+const ATTACK_FROM = { p: [4, 4], n: [4, 4], b: [4, 4], r: [4, 4], q: [4, 4], k: [4, 4] };
+const LEGAL_TARGET = { p: [3, 3], n: [2, 5], b: [1, 1], r: [0, 4], q: [1, 7], k: [3, 4] };
+
+function captureScenario(color, atk, vic) {
+    const mirror = ([r, c]) => (color === 'w' ? [r, c] : [7 - r, c]);
+    const [fr, fc] = mirror(ATTACK_FROM[atk]);
+    const [tr, tc] = mirror(LEGAL_TARGET[atk]);
+    const ac = color === 'w' ? atk.toUpperCase() : atk;
+    const vc = color === 'w' ? vic : vic.toUpperCase();
+    const pieces = [[fr, fc, ac], [tr, tc, vc]];
+    // decoration: kings and a few pawns far away
+    pieces.push([7, 0, 'K'], [0, 7, 'k'], [6, 6, 'P'], [1, 6, 'p'], [6, 1, 'P'], [1, 0, 'p']);
+    const board = boardWith(pieces.filter(([r, c], i) => i < 2 || !pieces.slice(0, 2).some(([r2, c2]) => r2 === r && c2 === c)));
+    const ev = mv(color, ac, sq(fr, fc), sq(tr, tc), { captured: { piece: vc, square: sq(tr, tc) } });
+    return { board, ev };
+}
+
+const scenarios = {
+    start: () => ({ board: fenBoard(START) }),
+    walk: () => ({ board: fenBoard(START), ev: mv('w', 'P', sq(6, 4), sq(4, 4)) }),
+    slide: () => ({ board: fenBoard('4k3/8/8/8/8/8/8/R3K3'), ev: mv('w', 'R', sq(7, 0), sq(1, 0)) }),
+    knight: () => ({ board: fenBoard(START), ev: mv('w', 'N', sq(7, 6), sq(5, 5)) }),
+    castleW: () => ({ board: fenBoard('r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R'), ev: mv('w', 'K', sq(7, 4), sq(7, 6), { castling: { rookFrom: sq(7, 7), rookTo: sq(7, 5) } }) }),
+    castleB: () => ({ board: fenBoard('r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R'), ev: mv('b', 'k', sq(0, 4), sq(0, 2), { castling: { rookFrom: sq(0, 0), rookTo: sq(0, 3) } }) }),
+    pxq: () => ({ board: fenBoard('4k3/8/8/3q4/4P3/8/8/4K3'), ev: mv('w', 'P', sq(4, 4), sq(3, 3), { captured: { piece: 'q', square: sq(3, 3) } }) }),
+    ep: () => ({ board: fenBoard('4k3/8/8/3pP3/8/8/8/4K3'), ev: mv('w', 'P', sq(3, 4), sq(2, 3), { captured: { piece: 'p', square: sq(3, 3) } }) }),
+    promo: () => ({ board: fenBoard('7k/4P3/8/8/8/8/8/K7'), ev: mv('w', 'P', sq(1, 4), sq(0, 4), { promotion: 'Q' }) }),
+    promoCap: () => ({ board: fenBoard('3r3k/4P3/8/8/8/8/8/K7'), ev: mv('w', 'P', sq(1, 4), sq(0, 3), { promotion: 'Q', captured: { piece: 'r', square: sq(0, 3) } }) }),
+    promoB: () => ({ board: fenBoard('7k/8/8/8/8/8/3p4/K7'), ev: mv('b', 'p', sq(6, 3), sq(7, 3), { promotion: 'N' }) }),
+    check: () => ({ board: fenBoard('4k3/8/8/8/8/8/8/R3K3'), ev: mv('w', 'R', sq(7, 0), sq(0, 0), { givesCheck: true }), after: () => units.playCheck(sq(0, 4)) }),
+    mate: () => ({ board: fenBoard('6k1/5ppp/8/8/8/8/5PPP/R5K1'), ev: mv('w', 'R', sq(7, 0), sq(0, 0), { givesCheck: true, isMate: true }),
+        after: () => units.playGameOver({ result: 'checkmate', loser: 'b', kingSquare: sq(0, 6) }) }),
+    mateB: () => ({ board: fenBoard('r5k1/5ppp/8/8/8/8/5PPP/6K1'), ev: mv('b', 'r', sq(0, 0), sq(7, 0), { givesCheck: true, isMate: true }),
+        after: () => units.playGameOver({ result: 'checkmate', loser: 'w', kingSquare: sq(7, 6) }) }),
+    stalemate: () => ({ board: fenBoard('7k/4Q3/6K1/8/8/8/8/8'), ev: mv('w', 'Q', sq(1, 4), sq(1, 5)),
+        after: () => units.playGameOver({ result: 'stalemate', loser: null, kingSquare: null }) })
+};
+
+window.__units.scenarios = scenarios;
+window.__units.captureScenario = captureScenario;
+
+let running = false;
+async function runScenario(s) {
+    if (running) { units.skip(); return; }
+    running = true;
+    const t0 = performance.now();
+    let simT = 0;
+    const tick = dt => { simT += dt; };
+    sceneAPI.addUpdater(tick);
+    try {
+        units.syncBoard(s.board);
+        if (s.ev) await units.playMove(s.ev);
+        if (s.after) await s.after();
+    } finally {
+        sceneAPI.removeUpdater(tick);
+        running = false;
+    }
+    status(`done: ${simT.toFixed(2)} s sim (${((performance.now() - t0) / 1000).toFixed(2)} s wall), plan=${units.lastFightPlan?.() ?? '-'}\ncues: ${cues.splice(0).join(' ')}`);
+    return simT;
+}
+
+document.querySelectorAll('[data-pair]').forEach(b => b.addEventListener('click', () => {
+    const [c, a, v] = b.dataset.pair.split(',');
+    status(b.textContent + '...');
+    runScenario(captureScenario(c, a, v));
+}));
+document.querySelectorAll('[data-s]').forEach(b => b.addEventListener('click', () => {
+    status(b.textContent + '...');
+    runScenario(scenarios[b.dataset.s]());
+}));
+document.getElementById('capture').addEventListener('click', () => {
+    const c = document.getElementById('atkColor').value, a = document.getElementById('atkType').value, v = document.getElementById('vicType').value;
+    status(`${c}${a} takes ${v}...`);
+    runScenario(captureScenario(c, a, v));
+});
+document.getElementById('all').addEventListener('click', async () => {
+    const rows = [];
+    for (const c of ['w', 'b']) for (const a of 'pnbrqk') {
+        const t = await runScenario(captureScenario(c, a, a === 'k' ? 'p' : 'n'));
+        rows.push(`${c}${a}: ${t.toFixed(2)}s`);
+        status(rows.join('  '));
+    }
+});
+const modeBtns = { full: document.getElementById('full'), fast: document.getElementById('fast') };
+for (const [m, b] of Object.entries(modeBtns)) b.addEventListener('click', () => {
+    units.setMode(m);
+    for (const x of Object.values(modeBtns)) x.classList.toggle('on', x === b);
+});
+const lb = document.getElementById('labels');
+lb.addEventListener('click', () => { lb.classList.toggle('on'); units.setLabels(lb.classList.contains('on')); });
+document.getElementById('skip').addEventListener('click', () => units.skip());
+document.getElementById('step').addEventListener('click', () => {
+    sceneAPI.setPaused(true);
+    sceneAPI.stepFrames(600, 1 / 60);
+    sceneAPI.setPaused(false);
+});
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); units.skip(); } });
+
+units.syncBoard(fenBoard(START));
+status(`ready (${units._clips.size} clips, manifest ${manifestUrl})`);
+</script>
+</body>
+</html>
