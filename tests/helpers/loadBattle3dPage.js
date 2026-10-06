@@ -10,6 +10,7 @@ const { pathToFileURL } = require('node:url');
 const { JSDOM } = require('jsdom');
 const { findThree, registerThree, installBrowserGlobals, ROOT } = require('./loadBattle3dThree');
 const { fakeRenderer } = require('./battle3dSceneHarness');
+const { page3d } = require('./pages');
 
 const AI_STUB = `
 globalThis.__aiCalls = [];
@@ -44,9 +45,9 @@ function fakeContext2d(canvas) {
 async function bootPage(o = {}) {
     const three = findThree();
     if (!three) return null;
-    const html = fs.readFileSync(path.join(ROOT, 'battle3d.html'), 'utf8')
+    const html = fs.readFileSync(path.join(ROOT, page3d()), 'utf8')
         .replace(/<script\b(?![^>]*importmap)[^>]*>[\s\S]*?<\/script>/g, '');
-    const dom = new JSDOM(html, { pretendToBeVisual: true, url: 'http://localhost/battle3d.html?debug=1' });
+    const dom = new JSDOM(html, { pretendToBeVisual: true, url: 'http://localhost/' + page3d() + '?debug=1' });
     const w = dom.window;
     w.HTMLCanvasElement.prototype.getContext = function (kind) { return kind === '2d' ? fakeContext2d(this) : null; };
     w.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';

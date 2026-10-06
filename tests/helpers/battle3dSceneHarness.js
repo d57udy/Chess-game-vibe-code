@@ -21,7 +21,7 @@ function fakeContext2d(canvas) {
 }
 
 const GLOBALS = ['window', 'document', 'navigator', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame',
-    'performance', 'ResizeObserver', 'HTMLElement', 'HTMLCanvasElement', 'Event', 'KeyboardEvent', 'PointerEvent', 'MouseEvent', 'screen', 'location'];
+    'performance', 'ResizeObserver', 'HTMLElement', 'HTMLCanvasElement', 'Event', 'KeyboardEvent', 'PointerEvent', 'MouseEvent', 'WheelEvent', 'screen', 'location'];
 
 /**
  * Installs the browser globals and loads scene.js. Returns null when three is missing.
@@ -31,7 +31,7 @@ async function loadSceneModule() {
     const three = findThree();
     if (!three) return null;
     registerThree(three.dir);
-    const dom = new JSDOM('<!doctype html><html><body><div id="stage" style="width:800px;height:600px"></div></body></html>', { pretendToBeVisual: true, url: 'http://localhost/battle3d.html' });
+    const dom = new JSDOM('<!doctype html><html><body><div id="stage" style="width:800px;height:600px"></div></body></html>', { pretendToBeVisual: true, url: 'http://localhost/index.html' });
     const w = dom.window;
     w.HTMLCanvasElement.prototype.getContext = function (kind) { return kind === '2d' ? fakeContext2d(this) : null; };
     w.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';
@@ -64,8 +64,8 @@ async function loadSceneModule() {
     set('HTMLElement', w.HTMLElement);
     set('HTMLCanvasElement', w.HTMLCanvasElement);
     set('screen', { width: 1920, height: 1080 });
-    set('location', new URL('http://localhost/battle3d.html'));
-    for (const k of ['Event', 'KeyboardEvent', 'MouseEvent']) set(k, w[k]);
+    set('location', new URL('http://localhost/index.html'));
+    for (const k of ['Event', 'KeyboardEvent', 'MouseEvent', 'WheelEvent']) set(k, w[k]);
     set('PointerEvent', w.PointerEvent || class PointerEvent extends w.MouseEvent {
         constructor(type, init = {}) { super(type, init); this.pointerId = init.pointerId ?? 1; this.pointerType = init.pointerType || 'mouse'; this.isPrimary = true; }
     });

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs><radialGradient id="bg" cx="0.5" cy="0.42" r="0.7">
+        <stop offset="0" stop-color="#2a2433"/><stop offset="1" stop-color="#0d0c12"/></radialGradient></defs><rect x="16" y="16" width="480" height="480" rx="104" fill="url(#bg)"/>
+           <rect x="16" y="16" width="480" height="480" rx="104" fill="none" stroke="#e8c478" stroke-opacity="0.35" stroke-width="6"/><g transform="translate(256 256) scale(0.92) translate(-256 -256)">
+      <g transform="translate(106 104)">
+  <defs>
+    <clipPath id="sh"><path d="M0 0 H300 V170 C300 270 220 330 150 360 C80 330 0 270 0 170 Z"/></clipPath>
+    <linearGradient id="lb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6fd6"/><stop offset="1" stop-color="#1d3f80"/></linearGradient>
+    <linearGradient id="rb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8792b"/><stop offset="1" stop-color="#8a3a12"/></linearGradient>
+  </defs>
+  <g clip-path="url(#sh)">
+    <rect x="0" y="0" width="150" height="360" fill="url(#lb)"/>
+    <rect x="150" y="0" width="150" height="360" fill="url(#rb)"/>
+    <path d="M0 0 H300 V40 H0 Z" fill="#000" opacity="0.12"/>
+  </g>
+  <path d="M0 0 H300 V170 C300 270 220 330 150 360 C80 330 0 270 0 170 Z" fill="none" stroke="#e8c478" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M0 0 H300 V170 C300 270 220 330 150 360 C80 330 0 270 0 170 Z" fill="none" stroke="#16141d" stroke-width="4" stroke-linejoin="round" transform="translate(9 9) scale(0.94)" opacity="0.5"/></g>
+      <g transform="translate(128 152) scale(1.25)">
+  <path d="M58 168 C60 148 76 134 86 122 C70 121 54 124 43 118 C31 112 25 100 30 89 C36 77 52 64 66 54
+           L69 33 L82 47 L94 29 C99 38 101 44 101 50 C131 58 153 84 155 120 C157 142 152 158 148 168 Z"
+        fill="#f4eee0" stroke="#16141d" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M108 64 C126 76 138 96 140 122 M118 58 C138 72 150 96 150 124" fill="none" stroke="#9c7a34" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="68" cy="78" r="7" fill="#16141d"/>
+  <circle cx="37" cy="98" r="3.5" fill="#16141d"/>
+  <rect x="46" y="160" width="112" height="14" rx="5" fill="#e8c478" stroke="#16141d" stroke-width="6"/>
+  <rect x="36" y="172" width="132" height="22" rx="7" fill="#f4eee0" stroke="#16141d" stroke-width="7"/></g>
+      <g transform="translate(190 150) rotate(-12 40 30) scale(1.05)">
+  <path d="M8 46 L4 10 L26 28 L40 2 L54 28 L76 10 L72 46 Z" fill="#e8c478" stroke="#16141d" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="6" y="42" width="68" height="12" rx="4" fill="#f8e3a8" stroke="#16141d" stroke-width="5"/>
+  <circle cx="40" cy="30" r="5" fill="#d8203a"/></g>
+    </g></svg>

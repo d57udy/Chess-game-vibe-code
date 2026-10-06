@@ -20,7 +20,7 @@ function saveSettings(settings) {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* private mode etc. */ }
 }
 
-export function createController({ sceneAPI, units, audio = null, debug = false, log = () => {} }) {
+export function createController({ sceneAPI, units, audio = null, onMoveEnd = null, debug = false, log = () => {} }) {
     const $ = (id) => document.getElementById(id);
     const el = {
         hud: $('hud'), hudToggle: $('hud-toggle'),
@@ -355,6 +355,7 @@ export function createController({ sceneAPI, units, audio = null, debug = false,
         refreshHighlights();
         renderMoveList();
         updateHud();
+        try { onMoveEnd?.(ev); } catch (e) { log('onMoveEnd failed', e); }
         maybeStartAI();
         return true;
     }

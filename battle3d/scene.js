@@ -131,7 +131,8 @@ export async function createScene(container, { debug = false, renderer: injected
   }
 
   // ---- camera rig + director ----
-  const rig = createRig(camera, canvas, { minPhi: MIN_PHI, maxPhi: MAX_PHI, onInput: () => noteActivity() });
+  // pan clamp: board half-width (4) plus about one square
+  const rig = createRig(camera, canvas, { minPhi: MIN_PHI, maxPhi: MAX_PHI, panLimit: 5, onInput: () => noteActivity() });
   let viewSide = 'w';
   let fitDist = 14;
   let camTween = null; // { segs: [{ to, duration, ease }], i, from, to, t, resolve }
@@ -340,6 +341,23 @@ export async function createScene(container, { debug = false, renderer: injected
     closeView = null;
     log('setView', viewSide);
     return tweenCamera(defaultView(viewSide), animate ? 1.1 : 0);
+  }
+
+  // Back to the fitted default for the current side (undoes pan, zoom, orbit and the double-tap zoom).
+  // During a fight shot it replaces the stored player view instead, so end() lands on the default.
+  function resetView({ animate = true } = {}) {
+    closeView = null;
+    if (scripted) {
+      savedView = defaultView();
+      return Promise.resolve();
+    }
+    return tweenCamera(defaultView(), animate ? 0.6 : 0);
+  }
+  // Pan offset of the player's view target from the side's default target (debug/tests).
+  function getPan() {
+    const t = (scripted && savedView ? savedView : getView()).target;
+    const d = defaultView().target;
+    return { x: t.x - d.x, z: t.z - d.z };
   }
 
   // ---- picking registry (used by cinematics for occlusion too) ----
@@ -805,6 +823,8 @@ export async function createScene(container, { debug = false, renderer: injected
     clearHighlights, // extension
     setView,
     getViewSide: () => viewSide, // extension
+    resetView,
+    getPan,
     focusOn,
     restoreView,
     cinematic: { shot: cine.shot, slowMo: cine.slowMo, letterbox: cine.letterbox, end: cine.end },
