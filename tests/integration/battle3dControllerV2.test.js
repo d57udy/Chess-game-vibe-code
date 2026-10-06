@@ -30,7 +30,7 @@ describe('battle3d controller v2: settings', () => {
         C.controller.setMode('human-ai');
         C.button('side-b').click();
         await C.flush();
-        assert.deepEqual(C.settings(), { mode: 'human-ai', humanColor: 'b', elo: 1800, speed: 'fast', labels: false, muted: true });
+        assert.deepEqual(C.settings(), { mode: 'human-ai', humanColor: 'b', elo: 1800, speed: 'fast', labels: false, muted: true, ambience: true });
     }));
 
     test('saved settings are restored on start and pushed to units/audio', withCtl({ setup: seed({ mode: 'human-human', humanColor: 'b', elo: 2100, speed: 'fast', labels: false, muted: true }) }, async (C) => {
@@ -180,23 +180,50 @@ describe('battle3d controller v2: keyboard play', () => {
 });
 
 describe('battle3d controller v2: audio, keepAlive, announcements', () => {
-    test('move, check and game-over sounds; captures leave sound to the fight', withCtl(async (C) => {
+    test('v4 game-state cues: none for quiet moves or captures, check, checkmate, draw; UI cues on input', withCtl(async (C) => {
         C.controller.setMode('human-human');
+        const ui = new Set(['select', 'deselect', 'invalid']);
+        const state = () => C.audio.played.filter((n) => !ui.has(n));
         await C.play('e2e4');
-        assert.deepEqual(C.audio.played, ['move']);
+        assert.deepEqual(state(), [], 'arrival sounds come from units, not the controller');
+        assert.ok(C.audio.played.includes('select'), 'select on picking a unit');
         await C.play('f7f6');
         await C.play('d1h5');
-        assert.equal(C.audio.played.slice(-1)[0], 'check');
+        assert.deepEqual(state(), ['check']);
         C.audio.played.length = 0;
         C.controller.newGame();
-        for (const mv of ['e2e4', 'd7d5']) await C.play(mv);
+        for (const mv of ['e2e4', 'd7d5', 'e4d5']) await C.play(mv);
+        assert.deepEqual(state(), [], 'capture: the fight makes the sound');
         C.audio.played.length = 0;
-        await C.play('e4d5');
-        assert.deepEqual(C.audio.played, [], 'capture: no move sound');
         C.controller.newGame();
         for (const mv of ['f2f3', 'e7e5', 'g2g4', 'd8h4']) await C.play(mv);
-        assert.equal(C.audio.played.slice(-1)[0], 'gameover');
+        assert.deepEqual(state(), ['checkmate'], 'victory belongs to units, not the controller');
         assert.match(C.announced(), /checkmate/i);
+        C.audio.played.length = 0;
+        C.controller.loadFen('7k/8/6K1/5Q2/8/8/8/8 w - - 0 1');
+        await C.play('f5f7');
+        assert.deepEqual(state(), ['draw']);
+        C.audio.played.length = 0;
+        await C.click('h8'); // game over: no knock
+        C.controller.newGame();
+        await C.click('e2'); await C.click('e2');
+        assert.deepEqual(C.audio.played, ['select', 'deselect']);
+        await C.click('e2'); await C.click('e5');
+        assert.deepEqual(C.audio.played.slice(2), ['select', 'invalid']);
+        C.audio.played.length = 0;
+        C.controller.loadFen('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+        await C.play('e1g1');
+        assert.deepEqual(state(), [], 'castle belongs to units, not the controller');
+    }));
+
+    test('cues carry a board position (stereo follows the square)', withCtl(async (C) => {
+        C.controller.setMode('human-human');
+        const seen = [];
+        const orig = C.audio.play;
+        C.audio.play = (name, opts) => { seen.push({ name, pos: opts?.pos }); return orig(name, opts); };
+        await C.click('a2');
+        assert.equal(seen[0].name, 'select');
+        assert.deepEqual(seen[0].pos, { x: -3.5, y: 0, z: 2.5 }, 'select at a2');
     }));
 
     test('mute button toggles audio and its pressed state', withCtl(async (C) => {

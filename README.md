@@ -47,7 +47,7 @@ camera shots, sound and effects. Rules, AI and draw detection are the same code 
 - Play as White or Black (the camera moves to your side). New game, Undo (back to your own turn vs the AI).
 - Battles: Full (cinematic fights, about 3 to 5 s) or Fast (about 1 s, no camera moves). Skip ends the
   current fight right away.
-- Piece labels on or off, sound on or off, a "Who's who" legend and the move list.
+- Piece labels on or off, sound on or off, torch ambience on or off, a "Who's who" legend and the move list.
 - Settings are saved in the browser (localStorage).
 - Needs WebGL2. Without it the page offers the 2D game instead.
 
@@ -71,6 +71,19 @@ visit. In Chrome on Android, open the game menu (the three-line button at the to
 "Install app" section, or Chrome's own menu > "Add to Home screen" / "Install app". On iPhone and iPad, use
 Safari's Share button > "Add to Home Screen". The installed app opens full screen without the browser bar.
 
+**Sound.** Every 3D sound is synthesized in the browser with WebAudio, so there are no audio files to license
+or download (the 2D page keeps its own mp3s). Each sound is a small recipe (filtered noise bursts, modal
+resonators for metal, wood and bone, low pitch-dropping "bodies" for thuds, envelopes) rendered into 2 to 4
+variations on first use; every play picks a variation and adds a little pitch jitter. Footsteps follow the
+walk animation (light, armored, heavy and bony steps), pieces settle on their square with a wooden thunk,
+fights layer swings, clangs, hits, bone cracks, shatters and spell sounds, and check, checkmate, victory and
+draw get their own cues. Sounds are panned by where they happen on screen and quieter further from the
+camera, cinematic slow motion lowers their pitch, and a compressor and limiter keep busy fights clean. A very
+quiet torch and room ambience can be switched off in the menu. Mute stops everything, and the game is silent
+while the tab is hidden. `battle3d/sound-test.html` (served like the game, e.g.
+http://localhost:8000/battle3d/sound-test.html) plays every sound and variation, walk cycles and fight
+sequences with level meters.
+
 **Cast customization.** "Cast..." opens the cast editor: choose a preset or pick the character model,
 weapon, scale and tint for each piece, or import your own `.glb` (it must use the KayKit rig bone
 names so the shared animations play on it). The cast is saved in the browser and the "Who's who"
@@ -86,7 +99,8 @@ legend follows it.
 | `scene*.js`, `cinematic.js` | Renderer, board and environment, camera, picking, highlights, effects. |
 | `units.js`, `fights.js` | Characters, animation, movement and fight choreography. |
 | `cast.js`, `cast-ui.js`, `unit-visuals.js` | Casting presets, cast editor, piece markers and labels. |
-| `audio.js` | Sound effects (synthesized with WebAudio, plus the 2D game's mp3s). |
+| `audio.js` | Sound bank, mixing, stereo positioning and ambience (all synthesized with WebAudio). |
+| `sound-test.html` | Audition page: every sound and variation, walk cycles, fight sequences, level meters. |
 | `install.js` | Service worker registration and the "Install app" menu section. |
 | `assets/` | Optimized character, animation and weapon files, `manifest.json`, `CREDITS.md`. |
 | `CONTRACT.md` | Interfaces between the modules. |
@@ -106,7 +120,7 @@ registration but does not unregister an existing worker (DevTools > Application 
 
 **Credits.** Characters, animations and weapons are from KayKit Character Pack: Adventurers 1.0 and
 Skeletons 1.0 by Kay Lousberg (CC0 1.0), see `battle3d/assets/CREDITS.md`. 3D rendering uses
-three.js (MIT). The fight sound effects are synthesized in code, so no audio files need licensing.
+three.js (MIT). All 3D sound is synthesized in code, so no audio files need licensing.
 
 ## Running locally
 

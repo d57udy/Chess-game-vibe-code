@@ -54,6 +54,7 @@ function makeScene(THREE, { v2 = true, coarse = false } = {}) {
         shake(s) { check(Number.isFinite(s), 'shake NaN'); },
         burst(p, kind) { check(finiteVec(p), `burst ${kind} NaN position`); },
         stepFrames(n, dt = 1 / 60) { for (let i = 0; i < n; i++) { t += dt; for (const fn of [...updaters]) fn(dt, t); } },
+        now: () => t,
         setPaused() {},
         requestRender() { rec.renders++; },
         keepAlive(token, on) { if (on) rec.tokens.add(token); else rec.tokens.delete(token); },
@@ -92,17 +93,27 @@ function makeScene(THREE, { v2 = true, coarse = false } = {}) {
     return S;
 }
 
-function makeAudio(validNames) {
+/**
+ * Recording fake audio. With `v4: true` it exposes has() for the given names (the v4 bank), so
+ * units.js plays its v4 cue names; `clock` (e.g. S.now) stamps each cue with scene time.
+ */
+function makeAudio(validNames, { v4 = false, clock = null } = {}) {
     const played = [];
-    return {
-        played,
+    const cues = []; // { name, opts, t }
+    const slowMo = [];
+    const a = {
+        played, cues, slowMo,
         play(name, opts = {}) {
             if (validNames && !validNames.includes(name)) played.push('INVALID:' + name);
             else played.push(name);
             if (opts && opts.rate !== undefined && !(opts.rate > 0)) played.push('BADRATE:' + name);
+            cues.push({ name, opts: opts || {}, t: clock ? clock() : 0 });
         },
-        setMuted() {}, isMuted: () => false, unlock() {},
+        setSlowMo(f) { slowMo.push(f); },
+        setMuted() {}, isMuted: () => false, unlock() {}, setListener() {}, setAmbience() {},
     };
+    if (v4) a.has = (name) => !validNames || validNames.includes(name);
+    return a;
 }
 
 // Steps the scene clock until `promise` settles; returns elapsed scene seconds.

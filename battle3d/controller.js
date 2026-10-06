@@ -31,7 +31,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         newGame: $('new-game'), undo: $('undo'), skip: $('skip'),
         moveList: $('move-list'), moveCount: $('move-count'),
         promo: $('promo'), promoCancel: $('promo-cancel'),
-        mute: $('mute'), announce: $('announce'), stage: $('stage')
+        mute: $('mute'), ambience: $('ambience-toggle'), announce: $('announce'), stage: $('stage')
     };
 
     const st = {
@@ -41,6 +41,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         speed: 'full',
         labels: true,
         muted: false,
+        ambience: true,
         cursor: null,            // keyboard cursor { row, col }
         selected: null,          // { row, col }
         moves: [],               // legal moves of the selected unit
@@ -208,10 +209,14 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             el.mute.setAttribute('aria-pressed', String(st.muted));
             el.mute.title = st.muted ? 'Sound off (click to unmute)' : 'Sound on (click to mute)';
         }
+        if (el.ambience) {
+            el.ambience.checked = st.ambience;
+            el.ambience.disabled = st.muted;
+        }
     }
 
     function persist() {
-        saveSettings({ mode: st.mode, humanColor: st.humanColor, elo: st.elo, speed: st.speed, labels: st.labels, muted: st.muted });
+        saveSettings({ mode: st.mode, humanColor: st.humanColor, elo: st.elo, speed: st.speed, labels: st.labels, muted: st.muted, ambience: st.ambience });
     }
 
     function setSeg(a, b, aActive) {
@@ -336,18 +341,21 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         renderMoveList();
         updateHud();
         announce(describeMove(ev, s));
-        if (s.over) audio?.play('gameover');
-        else if (s.inCheck) audio?.play('check');
-        else if (!ev.captured) audio?.play('move', { volume: 0.6 });
+        // units.js plays every motion and fight sound, including castle and the victory cheer at mate;
+        // the controller adds only the game-state cues: check, checkmate, draw
         if (s.over) {
             const king = g.findKing(gs().currentPlayer);
+            const mate = s.result === 'checkmate';
+            sfx(mate ? 'checkmate' : 'draw', king);
             await runAnimation(() => units.playGameOver({
-                result: s.result === 'checkmate' ? 'checkmate' : s.result === 'stalemate' ? 'stalemate' : 'draw',
-                loser: s.result === 'checkmate' ? gs().currentPlayer : null,
+                result: mate ? 'checkmate' : s.result === 'stalemate' ? 'stalemate' : 'draw',
+                loser: mate ? gs().currentPlayer : null,
                 kingSquare: king
             }), 'playGameOver');
         } else if (s.inCheck) {
-            await runAnimation(() => units.playCheck(g.findKing(gs().currentPlayer)), 'playCheck');
+            const king = g.findKing(gs().currentPlayer);
+            await runAnimation(() => units.playCheck(king), 'playCheck');
+            if (version === st.version) sfx('check', king);
         }
         if (version !== st.version) return true;
 
@@ -405,8 +413,21 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     // --- Input ---
+    // Plays a sound at a board square (stereo position follows the camera)
+    function sfx(name, square = null, opts = {}) {
+        if (!audio) return;
+        let pos = null;
+        try { if (square) pos = sceneAPI.squareToWorld?.(square.row, square.col) || null; } catch (e) { pos = null; }
+        audio.play(name, { ...opts, pos });
+    }
+
     function onSquareClick(row, col) {
-        if (row === null || row === undefined || inputLocked()) return;
+        if (row === null || row === undefined) return;
+        if (inputLocked()) {
+            // Not your turn (AI thinking, opponent's move): a dull knock says "not now"
+            if (!st.moving && !gs().isGameOver && !st.pendingPromotion) sfx('invalid', { row, col });
+            return;
+        }
         const piece = g.getPieceAt(row, col);
         if (st.selected) {
             const move = st.moves.find(m => m.row === row && m.col === col);
@@ -420,11 +441,16 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
                 return;
             }
         }
-        if (piece && g.getPlayerForPiece(piece) === gs().currentPlayer &&
-            !(st.selected && st.selected.row === row && st.selected.col === col)) {
+        const own = piece && g.getPlayerForPiece(piece) === gs().currentPlayer;
+        const sameSquare = st.selected && st.selected.row === row && st.selected.col === col;
+        if (own && !sameSquare) {
             st.selected = { row, col };
             st.moves = g.generateLegalMoves(row, col);
+            sfx(st.moves.length ? 'select' : 'invalid', { row, col });
         } else {
+            // Re-clicking the selected unit cancels; any other square is not a legal target
+            if (st.selected) sfx(sameSquare ? 'deselect' : 'invalid', { row, col });
+            else if (piece) sfx('invalid', { row, col });
             clearSelection();
         }
         refreshHighlights();
@@ -575,6 +601,13 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         updateHud();
     }
 
+    function setAmbience(on) {
+        st.ambience = !!on;
+        audio?.setAmbience?.(st.ambience);
+        persist();
+        updateHud();
+    }
+
     function setMuted(on) {
         st.muted = !!on;
         audio?.setMuted(st.muted);
@@ -616,7 +649,10 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         const modalOpen = !!document.querySelector('.modal:not([hidden])');
         if (event.key === 'Escape') {
             if (st.pendingPromotion) cancelPromotion();
-            else if (!modalOpen) { clearSelection(); st.cursor = null; refreshHighlights(); }
+            else if (!modalOpen) {
+                if (st.selected) sfx('deselect', st.selected);
+                clearSelection(); st.cursor = null; refreshHighlights();
+            }
             return;
         }
         if (modalOpen || typing) return;
@@ -654,6 +690,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     el.promoCancel.addEventListener('click', cancelPromotion);
     el.hudToggle.addEventListener('click', () => setHudCollapsed(!el.hud.classList.contains('collapsed')));
     el.mute?.addEventListener('click', () => setMuted(!st.muted));
+    el.ambience?.addEventListener('change', () => setAmbience(el.ambience.checked));
     document.addEventListener('keydown', onKeyDown);
 
     function setHudCollapsed(collapsed) {
@@ -671,10 +708,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     else if (st.mode === 'ai-ai') st.speed = 'fast';
     if (typeof saved.labels === 'boolean') st.labels = saved.labels;
     if (typeof saved.muted === 'boolean') st.muted = saved.muted;
+    if (typeof saved.ambience === 'boolean') st.ambience = saved.ambience;
     el.elo.value = st.elo;
     units.setMode(st.speed);
     units.setLabels(st.labels);
     audio?.setMuted(st.muted);
+    audio?.setAmbience?.(st.ambience);
 
     function state() {
         const s = status();
@@ -693,6 +732,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             speed: st.speed,
             labels: st.labels,
             muted: st.muted,
+            ambience: st.ambience,
             elo: st.elo,
             cursor: st.cursor,
             selected: st.selected,
@@ -701,7 +741,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     return {
-        newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, skip,
+        newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
         viewSide,
         clickSquare: onSquareClick,
         // Cast changes rebuild every unit: drop rings before setCast, refresh() reapplies them after

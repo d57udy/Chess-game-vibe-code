@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Test</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="hud.css">
+    <style>
+        html, body { overflow: auto; height: auto; }
+        body { padding: 16px; max-width: 1100px; margin: 0 auto; }
+        h1 { font-family: var(--hud-title-font); color: var(--hud-gold-strong); font-size: 24px; margin: 4px 0 4px; }
+        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hud-muted); margin: 22px 0 8px; }
+        p { color: var(--hud-muted); margin: 4px 0; line-height: 1.45; font-size: 14px; }
+        .bar { position: sticky; top: 0; z-index: 5; padding: 12px; margin: 12px 0; display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; }
+        .bar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--hud-text); }
+        .bar input[type="range"] { width: 140px; }
+        .meters { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; min-width: 220px; flex: 1; font-size: 12px; color: var(--hud-muted); }
+        .meter { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+        .meter > div { height: 100%; width: 0; background: linear-gradient(90deg, #6fbf73, #e8c478 70%, #ff7a6b); transition: width 0.05s linear; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+        .card { padding: 10px 12px; }
+        .card .name { font-weight: 600; color: var(--hud-text); font-size: 14px; }
+        .card .bus { font-size: 11px; color: var(--hud-muted); margin-left: 6px; }
+        .card .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .card .btn { flex: none; padding: 5px 10px; font-size: 13px; }
+        .demo { display: flex; flex-wrap: wrap; gap: 8px; }
+        .demo .btn { flex: none; }
+        #status { font-size: 12px; color: var(--hud-muted); }
+        .btn.playing { border-color: var(--hud-gold); color: var(--hud-gold-strong); }
+    </style>
+</head>
+<body>
+    <h1>Chess Battle 3D: sound test</h1>
+    <p>Every sound is synthesized in the browser (no sample files). Each sound has a few variations; the game picks one at
+        random and adds a little pitch jitter. Click any button to start audio.</p>
+
+    <div class="bar panel">
+        <label><input type="checkbox" id="mute"> Mute</label>
+        <label><input type="checkbox" id="ambience"> Ambience</label>
+        <label>Pan <input type="range" id="pan" min="-1" max="1" step="0.1" value="0"> <output id="pan-value">0</output></label>
+        <label>Volume <input type="range" id="volume" min="0" max="1.5" step="0.05" value="1"></label>
+        <button type="button" class="btn small-btn" id="slowmo" title="Hold: fight sounds drop in pitch like the cinematic slow motion">Hold for slow-mo</button>
+        <span id="status">Audio locked until the first click.</span>
+        <div class="meters" aria-label="Output levels">
+            <span>master</span><div class="meter"><div data-meter="master"></div></div>
+            <span>steps</span><div class="meter"><div data-meter="steps"></div></div>
+            <span>fight</span><div class="meter"><div data-meter="fight"></div></div>
+            <span>ui</span><div class="meter"><div data-meter="ui"></div></div>
+            <span>ambience</span><div class="meter"><div data-meter="ambience"></div></div>
+        </div>
+    </div>
+
+    <h2>Walk cycles</h2>
+    <p>Eight steps at the walk tempo (alternating feet slightly left and right), then the base disc settles on its square.</p>
+    <div class="demo" id="walks"></div>
+
+    <h2>Sequences</h2>
+    <p>Approximate fight timelines as the game plays them in Full mode.</p>
+    <div class="demo" id="sequences"></div>
+
+    <h2>All sounds and variations</h2>
+    <div class="grid" id="bank"></div>
+
+    <script type="module">
+        import { createAudio, SOUND_BANK } from './audio.js';
+
+        const audio = createAudio({ ambience: false });
+        const $ = (id) => document.getElementById(id);
+        let pan = 0, volume = 1;
+        const play = (name, opts = {}) => {
+            audio.unlock();
+            audio.play(name, { volume: volume * (opts.volume ?? 1), pan: Math.max(-1, Math.min(1, pan + (opts.pan ?? 0))), rate: opts.rate ?? 1, variant: opts.variant, index: opts.index });
+        };
+
+        // Bank: one card per sound, a button per variation plus "random"
+        const bank = $('bank');
+        for (const entry of SOUND_BANK) {
+            const [name, variant] = entry.key.split(':');
+            const card = document.createElement('div');
+            card.className = 'card panel';
+            card.innerHTML = `<span class="name"></span><span class="bus"></span><div class="btns"></div>`;
+            card.querySelector('.name').textContent = entry.key;
+            card.querySelector('.bus').textContent = `${entry.bus} bus, ${entry.count} variation${entry.count > 1 ? 's' : ''}`;
+            const btns = card.querySelector('.btns');
+            for (let i = 0; i < entry.count; i++) addButton(btns, `${i + 1}`, () => play(name, { variant, index: i }));
+            addButton(btns, 'random', () => play(name, { variant }));
+            bank.append(card);
+        }
+
+        function addButton(parent, label, onClick) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn';
+            b.textContent = label;
+            b.addEventListener('click', onClick);
+            parent.append(b);
+            return b;
+        }
+
+        // Timeline helper: [[seconds, name, opts], ...]
+        function sequence(button, steps) {
+            button.classList.add('playing');
+            let last = 0;
+            for (const [at, name, opts] of steps) {
+                last = Math.max(last, at);
+                setTimeout(() => play(name, opts || {}), at * 1000);
+            }
+            setTimeout(() => button.classList.remove('playing'), (last + 0.8) * 1000);
+        }
+
+        const walk = (variant, interval, count = 8) => {
+            const steps = [];
+            for (let i = 0; i < count; i++) steps.push([i * interval, 'step', { variant, pan: i % 2 ? 0.12 : -0.12 }]);
+            steps.push([count * interval + 0.08, 'settle', { rate: variant === 'heavy' ? 0.85 : 1 }]);
+            return steps;
+        };
+        const walks = $('walks');
+        for (const [label, variant, interval] of [['Hero (light)', 'light', 0.36], ['Knight/king (armor)', 'armor', 0.4], ['Rook (heavy)', 'heavy', 0.5], ['Skeleton (bone)', 'bone', 0.34]]) {
+            const b = addButton(walks, label, () => sequence(b, walk(variant, interval)));
+        }
+        const knight = addButton(walks, 'Knight jump', () => sequence(knight, [[0, 'jump'], [0.62, 'land', { variant: 'armor' }], [0.9, 'settle']]));
+
+        const sequences = $('sequences');
+        const demos = [
+            ['Sword vs skeleton', [
+                [0, 'step', { variant: 'armor', pan: -0.1 }], [0.38, 'step', { variant: 'armor', pan: 0.1 }], [0.76, 'step', { variant: 'armor', pan: -0.1 }],
+                [1.1, 'whoosh', { variant: 'light' }], [1.32, 'clang'], [1.7, 'whoosh', { variant: 'heavy' }], [1.98, 'bone'],
+                [2.25, 'shatter'], [3.1, 'step', { variant: 'armor' }], [3.45, 'settle']]],
+            ['Skeleton vs hero', [
+                [0, 'step', { variant: 'bone', pan: 0.1 }], [0.34, 'step', { variant: 'bone', pan: -0.1 }],
+                [0.7, 'whoosh', { variant: 'heavy' }], [0.98, 'hit'], [1.15, 'death'], [1.55, 'fall'], [2.1, 'dissolve'], [2.9, 'settle']]],
+            ['Bishop spell', [[0, 'zap'], [0.35, 'whoosh', { variant: 'magic' }], [0.4, 'bolt'], [0.95, 'magicHit'], [1.3, 'fall'], [2.2, 'settle']]],
+            ['Rook smash', [[0, 'step', { variant: 'heavy' }], [0.5, 'step', { variant: 'heavy' }], [0.9, 'whoosh', { variant: 'heavy' }], [1.2, 'slam'], [1.45, 'shatter'], [2.4, 'settle', { rate: 0.85 }]]],
+            ['Castling', [[0, 'castle'], [0.3, 'step', { variant: 'armor' }], [0.7, 'step', { variant: 'armor' }], [0.5, 'step', { variant: 'heavy', pan: 0.3 }], [1.0, 'step', { variant: 'heavy', pan: 0.3 }], [1.3, 'settle'], [1.5, 'settle', { pan: 0.3, rate: 0.85 }]]],
+            ['Promotion', [[0, 'settle'], [0.4, 'promote']]],
+            ['Select, deselect, invalid', [[0, 'select'], [0.6, 'deselect'], [1.2, 'select'], [1.8, 'invalid']]],
+            ['Check', [[0, 'check']]],
+            ['Checkmate and victory', [[0, 'checkmate'], [3.0, 'victory']]],
+            ['Draw', [[0, 'draw']]]
+        ];
+        for (const [label, steps] of demos) {
+            const b = addButton(sequences, label, () => sequence(b, steps));
+        }
+
+        // Controls
+        $('mute').addEventListener('change', (e) => audio.setMuted(e.target.checked));
+        $('ambience').addEventListener('change', (e) => { audio.unlock(); audio.setAmbience(e.target.checked); });
+        $('pan').addEventListener('input', (e) => { pan = Number(e.target.value); $('pan-value').textContent = pan.toFixed(1); });
+        $('volume').addEventListener('input', (e) => { volume = Number(e.target.value); });
+        const slow = $('slowmo');
+        const slowOn = () => audio.setSlowMo(0.25), slowOff = () => audio.setSlowMo(1);
+        slow.addEventListener('pointerdown', slowOn);
+        for (const type of ['pointerup', 'pointerleave', 'pointercancel']) slow.addEventListener(type, slowOff);
+
+        // Meters and status
+        const bars = [...document.querySelectorAll('[data-meter]')];
+        function frame() {
+            const levels = audio.levels();
+            for (const bar of bars) bar.style.width = `${Math.round((levels[bar.dataset.meter] || 0) * 100)}%`;
+            $('status').textContent = audio.isReady() ? 'All variations rendered.' : 'Click to start audio (variations render on first use).';
+            requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+    </script>
+</body>
+</html>

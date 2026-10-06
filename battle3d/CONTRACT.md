@@ -285,3 +285,58 @@ shell (both pages, all battle3d JS/CSS, rules/AI scripts, manifest, icons) plus 
 and the default cast assets; runtime cache for other assets; network-first for HTML so updates arrive, cache-first for
 versioned assets; works offline after the first load; cleans old caches on activate. Must pass Chrome's installability
 criteria.
+
+---
+
+# v4: 3D sound design (owner: "walking and finishing the move still sound like the 2D game; match all sounds to the 3D motion and effects")
+
+The 3D game must not use the 2D mp3s (move/capture/check/game-over) any more. All 3D sounds are synthesized
+(license-free), positioned in stereo by where they happen on screen, and timed to the animation events.
+The 2D game (2d.html) keeps its mp3s unchanged.
+
+## Ownership (v4)
+
+| Agent | Owns |
+|---|---|
+| audio (`b3d-game`) | `battle3d/audio.js` (sound bank, mixing, spatial, ambience), `controller.js` cues, HUD sound settings, new `battle3d/sound-test.html` (audition page), README |
+| motion (`b3d-units`) | cue timing in `units.js` / `fights.js` (footsteps on foot contacts, jumps, arrivals, deaths, debris, promotions) |
+| qa (`b3d-qa`) | tests |
+
+## audio.js API (v4)
+
+```js
+createAudio() -> {
+  play(name, { volume = 1, rate = 1, pos = null /* THREE.Vector3 or {x,y,z} world position */, variant } = {}),
+  setListener(camera),            // main.js calls once; panning/attenuation use the camera each play
+  setMuted(bool), isMuted(), unlock(),
+  setAmbience(on), setSlowMo(factor) // slowMo pitches active fight sounds down while cinematic.slowMo runs
+}
+```
+
+## Sound bank (names are the contract; each has 2 to 4 random variations, small pitch jitter)
+
+| Name | When | Character |
+|---|---|---|
+| `step` + variant `light` / `armor` / `heavy` / `bone` | every foot contact while walking (motion agent derives contacts from the walk clip phase) | soft leather on stone/wood; armored adds a small metal clink; heavy (rook) low thump; skeleton dry bony clack |
+| `jump` / `land` | knight takeoff / landing | short whoosh and grunt-free effort; landing thud with armor rattle |
+| `settle` | a piece arrives and plants on its square (replaces 2D move.mp3) | wooden base-disc thunk on the board, size dependent |
+| `select` / `deselect` / `invalid` | controller: pick a unit, cancel, click an illegal square | soft wooden tick plus a tiny metal "ready" note / lower tick / muted dull knock |
+| `castle` | castling start | two-note royal horn flourish, quiet |
+| `whoosh` + variant `light` / `heavy` / `magic` | weapon swings by weapon weight | |
+| `clang` | metal on metal (block, parry) | modal metallic ring |
+| `hit` | blade/blunt hit on a hero | cloth/leather thump with a short crunch |
+| `bone` | hit on a skeleton | dry crack |
+| `shatter` | skeleton bursts into bone debris | burst of many small bony clicks spread over ~0.6 s (matching the debris bounces) |
+| `slam` | rook ground smash / crack decal | low boom with stone crackle |
+| `zap` / `bolt` / `magicHit` | spell cast / projectile flight hum / magic impact | |
+| `fall` | a body hits the board | size-dependent thud |
+| `dissolve` | hero fades into light | airy shimmer |
+| `death` | the dying character's final beat | short descending tone, no voice |
+| `promote` | promotion | rising magical arpeggio plus shimmer |
+| `check` | after the check reaction | tense low drum hit with a short brass-like sting (not the 2D mp3) |
+| `checkmate` | mate finale | low gong and descending figure |
+| `victory` / `draw` | winners cheer / stalemate or draw | bright fanfare-ish chord swell / neutral chime |
+| ambience (loop) | while the game is on screen | very quiet torch crackle and room tone; own on/off in the menu; off when muted or hidden |
+
+Mixing: master gain, gentle compressor/limiter, fight bus vs footstep bus vs UI bus, voice cap kept. Stereo pan from the
+source's screen x (-1..1), distance attenuation from the camera, fully muted when the tab is hidden.

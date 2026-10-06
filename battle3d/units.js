@@ -285,7 +285,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     function clipStats(name) {
         if (statsCache.has(name)) return statsCache.get(name);
         const clip = clips.get(name);
-        const st = { speed: 0, impact: null, duration: clip ? clip.duration : 0 };
+        const st = { speed: 0, impact: null, duration: clip ? clip.duration : 0, contacts: [0, 0.5] };
         if (clip && rig && rig.footL && rig.handR) {
             const { model, mixer } = rig;
             mixer.stopAllAction();
@@ -304,6 +304,9 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             }
             a.stop();
             const range = k => { const zs = pts.map(p => p[k].z); return Math.max(...zs) - Math.min(...zs); };
+            // Foot contacts: the phase where each foot is lowest (one per foot per cycle).
+            const lowest = k => pts.reduce((b, p) => (p[k].y < b.y ? { y: p[k].y, t: p.t } : b), { y: Infinity, t: 0 }).t / dur;
+            st.contacts = [lowest('fl'), lowest('fr')];
             st.speed = (range('fl') + range('fr')) / 2 * 2 / dur;
             let best = 0;
             for (let i = 1; i < N; i++) {
@@ -637,15 +640,40 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     function speedMul() { return mode === 'fast' ? FAST : 1; }
 
     // Pick walk or run for a ground speed (world units/s) and the playback rate that keeps feet planted.
-    function startLocomotion(u, v) {
+    function startLocomotion(u, v, { quiet = false } = {}) {
         const walk = anim(u, 'walk', [])[0] || (u.isSkeleton && u.type === 'p' ? 'Walking_D_Skeletons' : 'Walking_A');
         const run = anim(u, 'run', [])[0] || 'Running_A';
         const nat = n => (clipStats(n).speed || 0.9) * u.scale;
         const walkRate = v / nat(walk);
-        if (walkRate <= 1.7 || !clips.has(run)) {
-            play(u, [walk, 'Walking_A'], { loop: true, fade: 0.15, speed: clamp(walkRate, 0.6, 2.2) });
-        } else {
-            play(u, run, { loop: true, fade: 0.15, speed: clamp(v / nat(run), 0.7, 2.0) });
+        const a = walkRate <= 1.7 || !clips.has(run)
+            ? play(u, [walk, 'Walking_A'], { loop: true, fade: 0.15, speed: clamp(walkRate, 0.6, 2.2) })
+            : play(u, run, { loop: true, fade: 0.15, speed: clamp(v / nat(run), 0.7, 2.0) });
+        // Footsteps fire when the clip passes each foot's contact phase (see trackSteps).
+        u.loco = a ? { action: a, contacts: clipStats(a.getClip().name).contacts, prev: a.time, quiet, last: -1 } : null;
+    }
+
+    // Footstep variant by role and army.
+    function stepVariant(u) {
+        if (u.isSkeleton) return u.type === 'r' ? 'heavy' : 'bone';
+        return { n: 'armor', k: 'armor', r: 'heavy' }[u.type] || 'light';
+    }
+    const sizeOf = u => clamp((u.scale || 0.38) / 0.38, 0.7, 1.5);
+
+    function trackSteps(u) {
+        const L = u.loco;
+        const a = L.action;
+        if (u.current !== a || !a.isRunning()) { u.loco = null; return; }
+        const dur = a.getClip().duration;
+        const now = a.time, prev = L.prev;
+        L.prev = now;
+        if (ffwd || L.quiet || !dur) return;
+        for (const c of L.contacts) {
+            const ct = c * dur;
+            const crossed = prev <= now ? ct > prev && ct <= now : ct > prev || ct <= now;
+            if (crossed && R.time - L.last > 0.12) {
+                L.last = R.time;
+                sfxAt('step', u, { variant: stepVariant(u), volume: (mode === 'fast' ? 0.3 : 0.45) * sizeOf(u), rate: rand(0.94, 1.06) });
+            }
         }
     }
 
@@ -660,7 +688,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         const dist = flatDist(start, target);
         if (dist < 0.02) return;
         const v = speed ?? travelSpeed(dist);
-        startLocomotion(u, v);
+        startLocomotion(u, v, { quiet: mode === 'fast' && dist / v < 0.4 });
         const yaw = yawBetween(start, target);
         if (!keepFacing && Math.abs(angleDiff(u.root.rotation.y, yaw)) > 2) yield* turnTo(u, yaw, 14);
         const glide = tween(dist / v, k => { u.root.position.lerpVectors(start, target, k); });
@@ -673,6 +701,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         const m = speedMul() * hurry;
         yield* turnTo(u, yawBetween(start, target), 14);
         const a = play(u, 'Jump_Start', { speed: 1.6 * m, fade: 0.1 });
+        sfxAt('jump', u, { volume: 0.6 * sizeOf(u), variant: stepVariant(u) });
         yield untilClip(u, a, 0.42);
         play(u, ['Jump_Idle', 'Jump_Start'], { loop: true, fade: 0.1 });
         const dur = (0.4 + dist * 0.09) / m;
@@ -682,12 +711,13 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         });
         u.root.position.y = 0;
         burst(target, 'dust', { count: 10 });
-        sfx('step', { volume: 0.7, rate: 0.8 });
+        sfxAt('land', u, { volume: 0.8 * sizeOf(u), variant: stepVariant(u) });
         const land = play(u, 'Jump_Land', { speed: 1.5 * m, fade: 0.08 });
         yield untilClip(u, land, 0.45);
     }
 
     function* settle(u) {
+        sfxAt('settle', u, { volume: 0.55 * sizeOf(u), rate: 1.1 / sizeOf(u) });
         idle(u, 0.2);
         yield* faceHome(u);
     }
@@ -703,9 +733,23 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         try { S.burst(pos.clone(), kind, opts); } catch (e) { log('burst failed', e); }
     }
     function shake(s) { if (!ffwd && S.shake) try { S.shake(s); } catch (e) { /* ignore */ } }
-    function sfx(name, opts) {
+    // v4 cue names; until audio.js knows them (audio.has), fall back to the closest v2 name or stay silent.
+    const LEGACY = { shatter: 'bone', slam: 'thud', fall: 'thud', land: 'thud', jump: 'whoosh', magicHit: 'magic', dissolve: 'magic', victory: 'cheer' };
+    // Without audio.has() the bank is assumed to be the v2 one.
+    const V2_NAMES = new Set(['step', 'whoosh', 'clang', 'hit', 'thud', 'bone', 'magic', 'zap', 'cheer', 'death', 'promote']);
+    const knows = n => (typeof audio?.has === 'function' ? audio.has(n) : V2_NAMES.has(n));
+    function sfx(name, opts = {}) {
         if (ffwd || !audio?.play) return;
+        if (!knows(name)) {
+            name = LEGACY[name];
+            if (!name || !knows(name)) return;
+        }
         try { audio.play(name, opts); } catch (e) { /* ignore */ }
+    }
+    // Positioned cue: `at` is a unit (its root position) or a world position.
+    function sfxAt(name, at, opts = {}) {
+        const pos = at?.root ? at.root.position.clone() : at?.clone ? at.clone() : null;
+        sfx(name, { ...opts, pos });
     }
     function chestPos(u) {
         const p = u.root.position.clone();
@@ -761,11 +805,13 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         if (ffwd) return;
         if (S.projectile) {
             Promise.resolve(S.projectile(from, to, { duration: dur, color: hex, arc: 0.25, size })).catch(() => {});
-            sfx('zap', { volume: 0.5 * size });
+            sfxAt('bolt', from, { volume: 0.5 * size, rate: clamp(0.35 / Math.max(0.1, dur), 0.8, 1.6) });
             yield dur;
         } else {
+            sfxAt('bolt', from, { volume: 0.5 * size });
             yield* projectile(from, to, TEAM[color].bolt, dur);
         }
+        sfxAt('magicHit', to, { volume: 0.6 * size });
     }
 
     // Camera: cinematic shots in Full when allowed, else the plain focusOn/restoreView pair.
@@ -792,9 +838,11 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         },
         slowMo(scale, dur) {
             if (ffwd || mode !== 'full' || !cine?.slowMo) return;
-            Promise.resolve(cine.slowMo(scale, dur)).catch(() => {});
+            setAudioSlowMo(scale);
+            Promise.resolve(cine.slowMo(scale, dur)).catch(() => {}).then(() => setAudioSlowMo(1));
         },
         close(duration = 0.5) {
+            setAudioSlowMo(1);
             if (!focused) return;
             focused = false;
             const d = ffwd ? 0 : duration;
@@ -807,6 +855,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         }
     };
     const camRestore = d => cam.close(d);
+    function setAudioSlowMo(f) { try { audio?.setSlowMo?.(f); } catch (e) { /* ignore */ } }
 
     function* hitStop(list, dur = 0.07) {
         for (const u of list) if (u.mixer) u.mixer.timeScale = 0.05;
@@ -957,7 +1006,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         sqPos, chestPos, handPos,
         impactOf, attackList,
         hitStop, later: (d, fn) => later(d, fn),
-        sfx,
+        sfx, sfxAt, sizeOf,
         fx: {
             burst, shake, impact: impactFx, debris: debrisFx, decal: decalFx, trail: trailFx, bolt,
             get hasImpact() { return !!fxAPI.impact; }
@@ -981,6 +1030,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     }
 
     function* castleSeq(ev, K, Rk) {
+        sfxAt('castle', K, { volume: 0.7 });
         const kingGo = function* () {
             yield* moveTo(K, sqPos(ev.to));
             yield* settle(K);
@@ -1006,7 +1056,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         yield* faceHome(pawn);
         yield* playOnce(pawn, pawn.isSkeleton ? ['Spellcast_Raise', 'Cheer'] : ['Cheer', 'Spellcast_Raise'], { speed: 1.3 * m, until: full ? 1.1 : 0.9 });
         burst(chestPos(pawn), 'magic', { count: 24 });
-        sfx('promote');
+        sfxAt('promote', pawn);
         burst(chestPos(pawn), 'poof', { count: 16 });
         shake(0.3);
         const nu = swap();
@@ -1079,6 +1129,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             const head = u.bones.head;
             if (head && u.lookApplied) { head.quaternion.copy(u.headPre); u.lookApplied = false; }
             u.mixer.update(dt);
+            if (u.loco) trackSteps(u);
             if (u.pin) {
                 // Death_C_Skeletons detaches the right leg and leaves it standing; keep it on the body.
                 if (u.bones.legR) u.bones.legR.position.copy(u.legRest);
@@ -1275,10 +1326,11 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
                     if (!K) return;
                     burst(chestPos(K), 'spark', { count: 16 });
                     shake(0.8);
-                    sfx('death');
                     yield* playOnce(K, 'Hit_B', { speed: 1.2, until: 0.4 });
                     startPin(K);
                     play(K, K.isSkeleton ? ['Death_C_Skeletons', 'Death_A'] : ['Death_A', 'Death_B'], { fade: 0.1 });
+                    later(0.5, () => sfxAt('fall', K, { volume: 0.9 * sizeOf(K) }));
+                    later(0.9, () => sfxAt('death', K, { volume: 0.6 }));
                     K.dead = true;
                     yield 1.2;
                 };
@@ -1290,7 +1342,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
                     for (let i = 0; i < reps; i++) yield* playOnce(u, names, { speed: rand(0.9, 1.1) });
                     idle(u, 0.3);
                 };
-                later(0.5, () => sfx('cheer'));
+                later(0.6, () => sfx('victory', { pos: winners.length ? winners[0].root.position.clone() : null }));
                 yield [dieKing(), ...winners.map((u, i) => cheer(u, 0.5 + i * 0.06 + rand(0, 0.2)))];
             } else {
                 const kings = all.filter(u => u.type === 'k');
