@@ -10,7 +10,9 @@
 //     state:   { board, currentPlayer, castlingRights, enPassantTarget, halfmoveClock,
 //                fullmoveNumber, positionHistory }  (see getCurrentGameStateSnapshot)
 //     elo:     300..2500
-//     options.timeMs: optional search time budget override in ms (e.g. ~1500 for hints).
+//     options.timeMs: optional safety time cap in ms (strength comes from the level's node budget).
+//     options.hint:   true = full strength with the hint node budget (elo is then ignored).
+//     options.seed:   optional integer; the same seed gives the same move on any device.
 //     promise: resolves with a move { from:{row,col}, to:{row,col}, piece, isPromotion,
 //              promotionPiece ('Q'|'R'|'B'|'N'|null), isCastling, isEnPassant } or null when
 //              there is no legal move.
@@ -94,7 +96,7 @@ function dispatchAIRequest(request) {
     }
     aiWorkerRequests.set(request.id, request);
     try {
-        worker.postMessage({ id: request.id, state: request.state, elo: request.elo, timeMs: request.timeMs });
+        worker.postMessage({ id: request.id, state: request.state, elo: request.elo, timeMs: request.timeMs, hint: request.hint, seed: request.seed });
     } catch (error) {
         aiWorkerRequests.delete(request.id);
         runAIOnMainThread(request);
@@ -119,7 +121,7 @@ function runAIOnMainThread(request) {
         let move = null;
         try {
             loadGameStateSnapshot(request.state);
-            move = calculateBestMove(request.elo, request.timeMs, request.state.positionHistory);
+            move = calculateBestMove(request.elo, request.timeMs, request.state.positionHistory, { hint: request.hint, seed: request.seed });
         } catch (error) {
             console.error('AI main-thread calculation failed:', error);
         } finally {
@@ -142,6 +144,8 @@ function requestAIMove(state, elo, options = {}) {
         state: cloneAIState(state),
         elo,
         timeMs: options.timeMs > 0 ? options.timeMs : undefined,
+        hint: !!options.hint,
+        seed: Number.isFinite(options.seed) ? options.seed : undefined,
         settled: false,
         cancelled: false,
         timer: null,

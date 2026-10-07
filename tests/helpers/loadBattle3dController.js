@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Fake SceneAPI: records calls; the updater clock only moves through stepFrames().
 function fakeScene() {
     const updaters = new Set();
-    const calls = { setView: [], setHighlights: [], focusOn: 0, restoreView: 0, skipEffects: 0, renders: 0 };
+    const calls = { setView: [], setHighlights: [], focusOn: 0, restoreView: 0, skipEffects: 0, renders: 0, setHint: [] };
     const tokens = new Set();
     let clickCb = null, hoverCb = null, t = 0;
     return {
@@ -56,6 +56,7 @@ function fakeScene() {
             keepAlive(token, on) { if (on) tokens.add(token); else tokens.delete(token); },
             requestRender() { calls.renders++; },
             skipEffects() { calls.skipEffects++; },
+            setHint(h) { calls.setHint.push(h ? JSON.parse(JSON.stringify(h)) : null); },
             isCoarsePointer: () => false,
         },
     };
@@ -70,7 +71,7 @@ function fakeAudio() {
 // Fake UnitsAPI. mode 'auto': animations resolve on the next microtask. 'manual': they stay
 // pending until finish() / skip(). Keeps its own piece map so unitAt() is meaningful.
 function fakeUnits(mode = 'auto') {
-    const calls = { syncBoard: 0, playMove: [], playCheck: [], playGameOver: [], setMode: [], skip: 0, setLabels: [] };
+    const calls = { syncBoard: 0, playMove: [], playCheck: [], playGameOver: [], setMode: [], skip: 0, setLabels: [], playHint: [] };
     let grid = Array.from({ length: 8 }, () => Array(8).fill(null));
     let pending = [];
     const settle = () => { const p = pending; pending = []; for (const f of p) f(); };
@@ -108,6 +109,7 @@ function fakeUnits(mode = 'auto') {
             skip() { calls.skip++; settle(); },
             isBusy: () => pending.length > 0,
             setLabels(on) { calls.setLabels.push(on); },
+            playHint(sq) { calls.playHint.push(JSON.parse(JSON.stringify(sq))); },
         },
     };
     return fake;

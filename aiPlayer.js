@@ -6,7 +6,7 @@
 //
 // Everything engine-internal lives inside the ChessAI closure so nothing collides with
 // ui.js globals (ui.js has its own makeMove). Public globals defined by this file:
-//   calculateBestMove(elo, timeMs?, positionHistory?)  -> move | null
+//   calculateBestMove(elo, timeMs?, positionHistory?, options?)  -> move | null
 //   getAllLegalMoves(player)                          -> move[] (uses gameLogic.js generator)
 //   evaluateBoard()                                   -> score in pawns, White's perspective
 //   updateCastlingRightsSim(...)                      -> legacy helper, kept for callers/tests
@@ -567,6 +567,38 @@ const ChessAI = (() => {
         return 10 * centerDist + 4 * (14 - kingDist);
     }
 
+    // Mobility of knights, bishops, rooks and queens (squares not occupied by own pieces),
+    // centipawns from White's point of view, relative to a typical count per piece type.
+    const MOB_WEIGHT = [0, 0, 4, 5, 2, 1, 0], MOB_BASE = [0, 0, 4, 6, 6, 12, 0];
+    function mobility() {
+        let score = 0;
+        for (let s = 0; s < 64; s++) {
+            const p = sq[s];
+            if (p === 0) continue;
+            const t = p < 0 ? -p : p;
+            if (t === PAWN || t === KING) continue;
+            const color = p > 0 ? 1 : -1;
+            let n = 0;
+            if (t === KNIGHT) {
+                const kt = KNIGHT_TARGETS[s];
+                for (let i = 0; i < kt.length; i++) if (sq[kt[i]] * color <= 0) n++;
+            } else {
+                const d0 = t === BISHOP ? 4 : 0, d1 = t === ROOK ? 4 : 8;
+                for (let d = d0; d < d1; d++) {
+                    const ray = RAYS[d][s];
+                    for (let i = 0; i < ray.length; i++) {
+                        const q = sq[ray[i]];
+                        if (q * color > 0) break;
+                        n++;
+                        if (q !== 0) break;
+                    }
+                }
+            }
+            score += color * MOB_WEIGHT[t] * (n - MOB_BASE[t]);
+        }
+        return score;
+    }
+
     // Static evaluation from the side to move's point of view.
     function evaluate() {
         let score = 0, wNpm = 0, bNpm = 0, wPawns = 0, bPawns = 0, wBishops = 0, bBishops = 0;
@@ -605,6 +637,7 @@ const ChessAI = (() => {
 
         if (wBishops >= 2) score += 30;
         if (bBishops >= 2) score -= 30;
+        score += mobility();
 
         // Pawn structure and rooks on open files.
         const passedScale = 1 + (1 - phase);
@@ -662,14 +695,29 @@ const ChessAI = (() => {
     }
 
     // --- Search ---
+    const RFP_DEPTH = 4, RFP_MARGIN = 90;
+    const FUTILITY_MARGIN = [0, 150, 300];
+    const LMP_LIMIT = [0, 5, 10, 18];
+    const LMR = new Int8Array(64 * 64); // late move reduction by [depth][move number]
+    for (let d = 1; d < 64; d++) for (let n = 1; n < 64; n++) LMR[d * 64 + n] = Math.floor(0.75 + Math.log(d) * Math.log(n) / 2.25);
     const KILLERS = new Int32Array(MAX_PLY * 2);
     const HISTORY = new Int32Array(2 * 64 * 64);
-    let nodes = 0, stopped = false, canStop = false, deadline = 0;
+    // Strength is set by a node budget (deterministic on every device); the deadline is only a
+    // safety cap. `blind` scores a root move the way a beginner would: no quiescence and no TT.
+    let nodes = 0, nodeLimit = Infinity, stopped = false, stoppedBy = null, canStop = false, deadline = 0;
+    let blind = false, qsLimit = 99;
     const now = (typeof performance !== 'undefined' && performance.now)
         ? () => performance.now() : () => Date.now();
 
     function checkTime() {
-        if (canStop && now() >= deadline) stopped = true;
+        if (canStop && now() >= deadline) { stopped = true; stoppedBy = 'time'; }
+    }
+
+    // Called once per node by search() and quiesce().
+    function countNode() {
+        if (stopped) return;
+        if (++nodes >= nodeLimit && canStop) { stopped = true; stoppedBy = 'nodes'; }
+        else if ((nodes & 1023) === 0) checkTime();
     }
 
     function scoreMoves(start, end, ttMove, ply) {
@@ -679,9 +727,11 @@ const ChessAI = (() => {
             const m = MOVES[i];
             if (m === ttMove) { SCORES[i] = 2000000000; continue; }
             const from = m & 63, to = (m >> 6) & 63, promo = (m >> 12) & 7;
-            const victim = (m >> 15) & FLAG_EP ? PAWN : Math.abs(sq[to]);
+            const t = sq[to];
+            const victim = (m >> 15) & FLAG_EP ? PAWN : (t < 0 ? -t : t);
             if (victim) {
-                SCORES[i] = 1000000 + VALUE[victim] * 10 - Math.abs(sq[from]) + (promo === QUEEN ? 9000 : 0);
+                const a = sq[from];
+                SCORES[i] = 1000000 + VALUE[victim] * 10 - (a < 0 ? -a : a) + (promo === QUEEN ? 9000 : 0);
             } else if (promo) {
                 SCORES[i] = promo === QUEEN ? 950000 : -1000;
             } else if (m === k1) {
@@ -689,7 +739,8 @@ const ChessAI = (() => {
             } else if (m === k2) {
                 SCORES[i] = 890000;
             } else {
-                SCORES[i] = Math.min(HISTORY[hBase + from * 64 + to], 800000);
+                const h = HISTORY[hBase + (from << 6) + to];
+                SCORES[i] = h < 800000 ? h : 800000;
             }
         }
     }
@@ -703,10 +754,11 @@ const ChessAI = (() => {
         }
     }
 
-    function quiesce(alpha, beta, ply) {
-        if ((++nodes & 1023) === 0) checkTime();
+    // qd = capture plies still allowed (params.qsDepth, the tactical horizon of weak levels).
+    function quiesce(alpha, beta, ply, qd) {
+        countNode();
         if (stopped) return 0;
-        if (ply >= MAX_PLY - 1) return evaluate();
+        if (ply >= MAX_PLY - 1 || blind || qd <= 0) return evaluate();
         const us = side;
         const checked = attacked(kingSq[ci(us)], -us);
         let best = -INF, stand = 0;
@@ -725,13 +777,18 @@ const ChessAI = (() => {
             const m = MOVES[i];
             if (!checked && !((m >> 12) & 7)) {
                 // Delta pruning: even winning this piece cannot lift us to alpha.
-                const victim = (m >> 15) & FLAG_EP ? PAWN : Math.abs(sq[(m >> 6) & 63]);
+                const t = sq[(m >> 6) & 63];
+                const victim = (m >> 15) & FLAG_EP ? PAWN : (t < 0 ? -t : t);
                 if (stand + VALUE[victim] + 200 <= alpha) continue;
+                // Losing capture: a bigger piece takes a defended smaller one.
+                const a = sq[m & 63];
+                const attackerV = VALUE[a < 0 ? -a : a];
+                if (attackerV > VALUE[victim] + 50 && attacked((m >> 6) & 63, -us)) continue;
             }
             makeMove(m);
             if (attacked(kingSq[ci(us)], -us)) { unmakeMove(); continue; }
             legal++;
-            const score = -quiesce(-beta, -alpha, ply + 1);
+            const score = -quiesce(-beta, -alpha, ply + 1, qd - 1);
             unmakeMove();
             if (stopped) return 0;
             if (score > best) {
@@ -747,7 +804,7 @@ const ChessAI = (() => {
     }
 
     function search(depth, alpha, beta, ply, allowNull) {
-        if ((++nodes & 1023) === 0) checkTime();
+        countNode();
         if (stopped) return 0;
         const us = side, them = -side;
 
@@ -762,14 +819,14 @@ const ChessAI = (() => {
 
         const checked = attacked(kingSq[ci(us)], them);
         if (checked) depth++;
-        if (depth <= 0) return quiesce(alpha, beta, ply);
+        if (depth <= 0) return quiesce(alpha, beta, ply, qsLimit);
 
         const origAlpha = alpha;
         const idx = hashLo & TT_MASK;
         let ttMove = 0;
         if (TT_FLAG[idx] && TT_LO[idx] === hashLo && TT_HI[idx] === hashHi) {
             ttMove = TT_MOVE[idx];
-            if (ply > 0 && TT_DEPTH[idx] >= depth) {
+            if (ply > 0 && !blind && TT_DEPTH[idx] >= depth) {
                 let s = TT_SCORE[idx];
                 if (s > MATE_BOUND) s -= ply; else if (s < -MATE_BOUND) s += ply;
                 const f = TT_FLAG[idx];
@@ -777,9 +834,17 @@ const ChessAI = (() => {
             }
         }
 
+        // Pruning below needs a static eval; it is skipped in check, at PV nodes and in blind mode.
+        const pv = beta - alpha > 1;
+        const prune = !checked && !pv && ply > 0 && !blind && beta < MATE_BOUND && beta > -MATE_BOUND;
+        const staticEval = checked ? -INF : evaluate();
+
+        // Reverse futility pruning: far above beta near the leaves, assume a cutoff.
+        if (prune && depth <= RFP_DEPTH && staticEval - RFP_MARGIN * depth >= beta) return staticEval;
+
         // Null-move pruning
         if (allowNull && !checked && ply > 0 && depth >= 3 && beta < MATE_BOUND && hasNonPawnMaterial(us) &&
-            evaluate() >= beta) {
+            staticEval >= beta) {
             makeNullMove();
             const s = -search(depth - 1 - (depth >= 6 ? 3 : 2), -beta, -beta + 1, ply + 1, false);
             unmakeNullMove();
@@ -787,27 +852,40 @@ const ChessAI = (() => {
             if (s >= beta) return s >= MATE_BOUND ? beta : s;
         }
 
+        // Futility pruning and late move pruning of quiet moves near the leaves.
+        const futile = prune && depth <= 2 && staticEval + FUTILITY_MARGIN[depth] <= alpha;
+        const lmpLimit = prune && depth <= 3 ? LMP_LIMIT[depth] : 1 << 30;
+
         const start = ply * MOVES_PER_PLY;
         const end = genMoves(start, false);
         scoreMoves(start, end, ttMove, ply);
-        let legal = 0, best = -INF, bestMove = 0;
+        let legal = 0, best = -INF, bestMove = 0, quietsTried = 0;
         for (let i = start; i < end; i++) {
             pickMove(i, end);
             const m = MOVES[i];
+            // Quiet moves come last in the ordering, so once one is futile (or past the late move
+            // limit) the rest are too: stop before even making them. Killers are still searched.
+            const quiet = sq[(m >> 6) & 63] === 0 && !((m >> 15) & FLAG_EP) && ((m >> 12) & 7) === 0;
+            if (quiet && legal > 0 && (futile || quietsTried >= lmpLimit) &&
+                m !== KILLERS[ply * 2] && m !== KILLERS[ply * 2 + 1]) {
+                if (best < -MATE_BOUND) best = alpha; // a fail-low bound, not a proven mate
+                break;
+            }
             makeMove(m);
             if (attacked(kingSq[ci(us)], them)) { unmakeMove(); continue; }
             legal++;
-            const quiet = U_CAP[sp - 1] === 0 && ((m >> 12) & 7) === 0;
+            if (quiet) quietsTried++;
             let score;
             if (legal === 1) {
                 score = -search(depth - 1, -beta, -alpha, ply + 1, true);
             } else {
                 // Late move reductions for quiet moves, then PVS re-searches.
                 let R = 0;
-                if (depth >= 3 && legal > 3 && quiet && !checked &&
+                if (depth >= 3 && legal > 3 && quiet && !checked && !blind &&
                     m !== KILLERS[ply * 2] && m !== KILLERS[ply * 2 + 1] &&
                     !attacked(kingSq[ci(them)], us)) {
-                    R = legal > 10 ? 2 : 1;
+                    R = LMR[Math.min(depth, 63) * 64 + Math.min(legal, 63)] - (pv ? 1 : 0);
+                    R = Math.max(1, Math.min(R, depth - 2));
                 }
                 score = -search(depth - 1 - R, -alpha - 1, -alpha, ply + 1, true);
                 if (score > alpha && R > 0) score = -search(depth - 1, -alpha - 1, -alpha, ply + 1, true);
@@ -832,7 +910,7 @@ const ChessAI = (() => {
         }
         if (legal === 0) return checked ? -MATE + ply : 0;
 
-        if (TT_DEPTH[idx] <= depth || TT_LO[idx] !== hashLo || TT_HI[idx] !== hashHi) {
+        if (!blind && (!TT_FLAG[idx] || TT_DEPTH[idx] <= depth || TT_LO[idx] !== hashLo || TT_HI[idx] !== hashHi)) {
             TT_LO[idx] = hashLo; TT_HI[idx] = hashHi; TT_MOVE[idx] = bestMove;
             TT_SCORE[idx] = best > MATE_BOUND ? best + ply : best < -MATE_BOUND ? best - ply : best;
             TT_DEPTH[idx] = depth;
@@ -841,34 +919,167 @@ const ChessAI = (() => {
         return best;
     }
 
-    // Iterative deepening at the root. Returns { move, score, depth, nodes } where move is the
-    // best move of the last completed iteration. With noise > 0 every root move within
-    // `noise` centipawns of the best gets an exact score and the pick is randomised.
-    function searchRoot(maxDepth, timeMs, noise) {
-        const root = legalMoves().map((m) => ({ m, score: 0 }));
+    // --- Seedable RNG (mulberry32) for every random choice the engine makes ---
+    // setSeed(n) makes a whole game reproducible (the stream continues across moves);
+    // setSeed(null) goes back to a fresh random seed per move. params.seed overrides both.
+    let rngState = 0, fixedSeed = null;
+    function rnd() {
+        rngState = (rngState + 0x6D2B79F5) | 0;
+        let t = rngState;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    function setSeed(s) {
+        fixedSeed = s == null ? null : (Number(s) >>> 0);
+        rngState = fixedSeed === null ? 0 : fixedSeed;
+    }
+    function seedForSearch(params) {
+        if (params.seed != null) rngState = Number(params.seed) >>> 0;
+        else if (fixedSeed === null) rngState = (Math.random() * 4294967296) >>> 0;
+    }
+
+    // --- Human-like weakness helpers (root only) ---
+    const isCapture = (m) => ((m >> 15) & FLAG_EP) !== 0 || sq[(m >> 6) & 63] !== 0;
+
+    // How "natural" a move looks to a human, 0..1: captures, checks, castling, developing a
+    // minor piece early, centralising. Wandering king moves in the middlegame look unnatural.
+    function naturalness(m) {
+        const from = m & 63, to = (m >> 6) & 63, flags = m >> 15;
+        const p = Math.abs(sq[from]);
+        let v = 0;
+        if (isCapture(m)) v += 0.6;
+        if (flags & FLAG_CASTLE) v += 0.6;
+        const homeRow = side === WHITE ? 7 : 0;
+        if ((p === KNIGHT || p === BISHOP) && (from >> 3) === homeRow && fullmove <= 15) v += 0.5;
+        const r = to >> 3, c = to & 7;
+        const centerDist = Math.max(3 - r, r - 4) + Math.max(3 - c, c - 4); // 0 (centre) .. 6 (corner)
+        if (p !== KING) v += 0.25 * (1 - centerDist / 6);
+        if (p === KING && !(flags & FLAG_CASTLE) && hasNonPawnMaterial(-side) && cnt[QUEEN + 6] + cnt[-QUEEN + 6] > 0) v -= 0.5;
+        makeMove(m);
+        if (inCheck()) v += 0.25;
+        unmakeMove();
+        return Math.max(-0.5, Math.min(1, v));
+    }
+
+    // Chance that a beginner never even considers non-forcing move m: quiet moves at `base`,
+    // retreats and long slides more often, checks rarely. Captures use missCaptureChance.
+    function oversightChance(m, base) {
+        if (isCapture(m) || ((m >> 12) & 7) === QUEEN) return 0;
+        makeMove(m);
+        const check = inCheck();
+        unmakeMove();
+        if (check) return base * 0.3;
+        const from = m & 63, to = (m >> 6) & 63;
+        const fwd = side === WHITE ? (from >> 3) - (to >> 3) : (to >> 3) - (from >> 3);
+        const dist = Math.max(Math.abs((from >> 3) - (to >> 3)), Math.abs((from & 7) - (to & 7)));
+        let f = 1;
+        if (fwd < 0) f *= 1.5;
+        if (dist >= 4) f *= 1.3;
+        return Math.min(0.95, base * f);
+    }
+
+    // Score of root move m as seen by a "blind" player: the opponent's next blindDepth plies
+    // without quiescence and without the TT. blindDepth 0 is the static eval after the move, so
+    // even a mate in one or a stalemate goes unnoticed; 1 sees the direct replies (mates, a
+    // piece left hanging) but not the recapture after them. Counts against the node budget;
+    // once it is spent, the remaining moves fall back to the static eval (one node each).
+    function blindScore(m, blindDepth) {
+        makeMove(m);
+        let s = -evaluate();
+        nodes++;
+        if (blindDepth > 0 && !stopped && nodes < nodeLimit) {
+            blind = true;
+            const deeper = -search(blindDepth, -INF, INF, 1, false);
+            blind = false;
+            if (!stopped) s = deeper;
+        }
+        unmakeMove();
+        return s;
+    }
+
+    // Root search. params (see eloParams): nodeBudget, maxDepth, timeCapMs, noiseCp,
+    // blunderChance, blindDepth, missCaptureChance, missQuietChance, naturalCp.
+    // Returns { move, score, depth, nodes, stoppedBy, scores, blunder } or null without legal moves.
+    //
+    // Weakness model (all zero = full strength):
+    //  - missCaptureChance: each capture is independently "not seen" and is not considered
+    //    (not applied when in check), so hanging pieces are sometimes left on the board.
+    //  - missQuietChance: each non-forcing move is not considered with this base chance
+    //    (higher for retreats and long slides, lower for checks; see oversightChance), so
+    //    quiet key moves, defensive retreats and sacrifices are what beginners miss.
+    //  - blunderChance: chance that this is a careless move: every considered move is scored
+    //    "blind" (blindScore), so the pick can hang a piece, grab a defended pawn or ignore a
+    //    one-move threat. Not every careless move is a mistake.
+    //  - noiseCp: misjudgement, uniform-sum noise in [-noiseCp, +noiseCp] added to each score.
+    //  - naturalCp: bonus up to naturalCp for natural-looking moves (naturalness()).
+    // The other moves get a normal iterative-deepening search within the node budget; the pick
+    // is the highest score + bonus + noise.
+    function searchRoot(params) {
+        const root = legalMoves().map((m) => ({ m, score: 0, blind: false, bonus: 0 }));
         if (root.length === 0) return null;
         for (let i = root.length - 1; i > 0; i--) { // shuffle so equal moves vary between games
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(rnd() * (i + 1));
             [root[i], root[j]] = [root[j], root[i]];
         }
-        if (root.length === 1) return { move: root[0].m, score: 0, depth: 0, nodes: 0 };
+        if (root.length === 1) return { move: root[0].m, score: 0, depth: 0, nodes: 0, stoppedBy: 'forced', scores: [], blunder: false };
 
         clearTT();
         KILLERS.fill(0); HISTORY.fill(0);
-        nodes = 0; stopped = false;
+        nodes = 0; stopped = false; stoppedBy = null; canStop = false;
+        nodeLimit = Math.max(1, params.nodeBudget || Infinity);
+        // Fractional qsDepth: 0.4 means horizon 1 on 40% of moves, 0 otherwise.
+        const qs = params.qsDepth >= 0 ? params.qsDepth : 99;
+        qsLimit = Math.floor(qs) + (rnd() < qs - Math.floor(qs) ? 1 : 0);
         const t0 = now();
-        deadline = t0 + timeMs;
+        deadline = t0 + (params.timeCapMs > 0 ? params.timeCapMs : Infinity);
+
+        const noise = Math.max(0, params.noiseCp || 0);
+        const natural = Math.max(0, params.naturalCp || 0);
+        const weak = noise > 0 || natural > 0 || params.blunderChance > 0 || params.missCaptureChance > 0 ||
+            params.missQuietChance > 0;
+        const checked = inCheck();
+
+        let cand = root;
+        if (params.missCaptureChance > 0 && !checked) {
+            cand = root.filter((x) => !(isCapture(x.m) && rnd() < params.missCaptureChance));
+            if (cand.length === 0) cand = root;
+        }
+        if (params.missQuietChance > 0 && !checked) {
+            const kept = cand.filter((x) => rnd() >= oversightChance(x.m, params.missQuietChance));
+            if (kept.length > 0) cand = kept;
+        }
+        if (natural > 0) for (const x of cand) x.bonus = Math.round(naturalness(x.m) * natural);
+        canStop = true; // the budget is a ceiling everywhere, including depth 1 and blind moves
+        if (params.blunderChance > 0 && rnd() < params.blunderChance) {
+            for (const x of cand) { x.blind = true; x.score = blindScore(x.m, params.blindDepth | 0); }
+        }
+        const seen = cand.filter((x) => !x.blind);
+        const margin = 2 * noise + natural + 1;
+
+        // Static score of every move (one node each): orders depth 1 so the plausible moves are
+        // searched first, and is the fallback when the budget runs out before any move is searched.
+        for (const x of seen) {
+            makeMove(x.m);
+            x.score = -evaluate();
+            unmakeMove();
+            nodes++;
+        }
+        seen.sort((a, b) => b.score - a.score);
 
         let result = null;
-        for (let depth = 1; depth <= maxDepth; depth++) {
-            canStop = depth > 1; // depth 1 always completes so there is always a move
-            let alpha = -INF, iterBest = -INF, iterMove = 0;
-            for (let i = 0; i < root.length; i++) {
-                const m = root[i].m;
+        // Fractional maxDepth: 1.3 means depth 2 on 30% of moves, depth 1 otherwise.
+        const md = Math.max(1, params.maxDepth || 1);
+        const maxDepth = Math.floor(md) + (rnd() < md - Math.floor(md) ? 1 : 0);
+        for (let depth = 1; depth <= maxDepth && seen.length > 0; depth++) {
+            let alpha = -INF, iterBest = -INF, iterMove = 0, done = 0;
+            for (let i = 0; i < seen.length && !stopped; i++) {
+                const m = seen[i].m;
                 makeMove(m);
                 let s;
-                if (noise > 0) {
-                    const lower = iterBest === -INF ? -INF : iterBest - noise;
+                if (weak) {
+                    // Exact scores for every move that could still win after noise and bonus.
+                    const lower = iterBest === -INF ? -INF : iterBest - margin;
                     s = -search(depth - 1, -INF, -lower, 1, true);
                 } else if (i === 0) {
                     s = -search(depth - 1, -INF, INF, 1, true);
@@ -878,61 +1089,160 @@ const ChessAI = (() => {
                 }
                 unmakeMove();
                 if (stopped) break;
-                root[i].score = s;
+                seen[i].next = s;
+                done++;
                 if (s > iterBest) { iterBest = s; iterMove = m; }
                 if (s > alpha) alpha = s;
             }
-            if (stopped) break;
-
+            if (stopped) {
+                if (!result) {
+                    // Out of budget during depth 1: only the moves searched so far are considered
+                    // (in static order); if none was, all of them by their static score.
+                    const use = done > 0 ? seen.slice(0, done) : seen;
+                    let best = use[0];
+                    for (const x of use) {
+                        x.ok = true;
+                        if (done > 0) x.score = x.next;
+                        if (x.score > best.score) best = x;
+                    }
+                    result = { move: best.m, score: best.score, depth: done > 0 ? 1 : 0 };
+                } else if (!weak && done > 0 && iterMove !== result.move) {
+                    // A partial iteration still proves its best move at least as good as the old
+                    // PV move (searched first), so full-strength play keeps it.
+                    result.move = iterMove; result.score = iterBest;
+                }
+                break;
+            }
+            // Scores only change once an iteration completes, so all moves share one depth.
+            for (const x of seen) { x.score = x.next; x.ok = true; }
             // Stable sort: best first, keeps previous order among equals.
-            root.sort((a, b) => b.score - a.score);
-            result = { move: iterMove, score: iterBest, depth, nodes, scores: root.map((x) => ({ m: x.m, score: x.score })) };
-
+            seen.sort((a, b) => b.score - a.score);
+            result = { move: iterMove, score: iterBest, depth };
             if (Math.abs(iterBest) > MATE_BOUND && depth >= MATE - Math.abs(iterBest)) break;
-            if (now() - t0 > timeMs * 0.45) break; // next iteration would very likely not finish
         }
         canStop = false;
+        if (!stoppedBy) stoppedBy = 'depth';
 
-        if (result && noise > 0) {
-            let pick = result.move, pickVal = -INF;
-            for (const { m, score } of result.scores) {
-                if (score < result.score - noise) continue;
-                const v = score + Math.random() * noise;
-                if (v > pickVal) { pickVal = v; pick = m; }
+        if (!result) result = { move: 0, score: -INF, depth: 0 }; // every considered move was blind
+        let blunder = false;
+        // A mate the real search found is always played; noise only blurs ordinary scores.
+        if (weak && !(result.depth > 0 && result.score > MATE_BOUND)) {
+            let pickVal = -INF;
+            const searchMove = result.move, searchScore = result.score;
+            for (const x of cand) {
+                if (!x.blind && !x.ok) continue;
+                // Exact ties with the search's own choice keep its tie-break (move ordering
+                // prefers promotions and captures), so a won promotion is not postponed forever.
+                if (!x.blind && result.depth > 0 && x.score === searchScore && x.m !== searchMove) continue;
+                const v = x.score + x.bonus + (noise ? (rnd() + rnd() - 1) * noise : 0);
+                if (v > pickVal) { pickVal = v; result.move = x.m; blunder = x.blind; }
             }
-            result.move = pick;
         }
+        result.nodes = nodes;
+        result.stoppedBy = stoppedBy;
+        result.blunder = blunder;
+        result.scores = cand.map((x) => ({ m: x.m, score: x.score, blind: x.blind, bonus: x.bonus }));
         return result;
     }
 
-    // --- ELO scaling ---
-    // [elo, maxDepth, timeMs, noiseCp, randomMoveChance]; values are interpolated.
-    const ELO_ANCHORS = [
-        [300, 1, 300, 400, 0.45],
-        [700, 1, 300, 220, 0.18],
-        [1000, 2, 300, 120, 0.07],
-        [1300, 3, 400, 70, 0.03],
-        [1600, 4, 500, 40, 0.01],
-        [1900, 5, 700, 20, 0],
-        [2100, 7, 900, 8, 0],
-        [2300, 12, 1300, 0, 0],
-        [2500, 64, 2000, 0, 0],
+    // --- ELO scaling (data-driven) ---
+    // Each row is a parameter set at one ELO; eloParams() interpolates between rows.
+    //   nodeBudget        positions searched per move (the strength knob; device independent)
+    //   maxDepth          iterative-deepening depth cap; fractional values pick the next whole
+    //                     depth on that share of moves
+    //   qsDepth           capture plies searched past the horizon (tactical horizon; 99 = unlimited);
+    //                     fractional values pick the next whole number on that share of moves
+    //   timeCapMs         safety cap only (about 3x the expected time on a slow phone)
+    //   noiseCp           misjudgement noise, +/- centipawns
+    //   blunderChance     chance per move to play carelessly (all moves judged "blind", no quiescence)
+    //   blindDepth        opponent plies a blind move looks ahead (0 = static eval, misses even mate in one)
+    //   missCaptureChance per capture chance that it is not seen at all
+    //   missQuietChance   per quiet move chance that it is not considered (retreats more, checks less)
+    //   naturalCp         max bonus for natural-looking moves (captures, checks, development)
+    // Fitted by tools/calibration (tables/final2.json) on the human scale: slider = Lichess rapid; 2400 = "Max".
+    const SLOW_PHONE_NODES_PER_MS = 60;
+    const capFor = (nodeBudget) => Math.round(Math.min(60000, Math.max(500, 3 * nodeBudget / SLOW_PHONE_NODES_PER_MS)));
+    const DEFAULT_ELO_TABLE = [
+        { elo: 400, nodeBudget: 820, maxDepth: 1, qsDepth: 0, noiseCp: 244, blunderChance: 0.783, blindDepth: 0, missCaptureChance: 0.441, missQuietChance: 0.737, naturalCp: 69 },
+        { elo: 500, nodeBudget: 1000, maxDepth: 1, qsDepth: 0.03, noiseCp: 170, blunderChance: 0.569, blindDepth: 0, missCaptureChance: 0.333, missQuietChance: 0.574, naturalCp: 58 },
+        { elo: 600, nodeBudget: 1200, maxDepth: 1, qsDepth: 0.19, noiseCp: 122, blunderChance: 0.425, blindDepth: 0, missCaptureChance: 0.253, missQuietChance: 0.454, naturalCp: 50 },
+        { elo: 700, nodeBudget: 1400, maxDepth: 1, qsDepth: 0.42, noiseCp: 76, blunderChance: 0.295, blindDepth: 0, missCaptureChance: 0.176, missQuietChance: 0.34, naturalCp: 43 },
+        { elo: 800, nodeBudget: 1800, maxDepth: 1, qsDepth: 0.63, noiseCp: 47, blunderChance: 0.179, blindDepth: 0, missCaptureChance: 0.118, missQuietChance: 0.268, naturalCp: 37 },
+        { elo: 900, nodeBudget: 2200, maxDepth: 1, qsDepth: 0.78, noiseCp: 40, blunderChance: 0.134, blindDepth: 0, missCaptureChance: 0.094, missQuietChance: 0.236, naturalCp: 34 },
+        { elo: 1000, nodeBudget: 2600, maxDepth: 1, qsDepth: 0.9, noiseCp: 40, blunderChance: 0.127, blindDepth: 0, missCaptureChance: 0.087, missQuietChance: 0.217, naturalCp: 32 },
+        { elo: 1100, nodeBudget: 3300, maxDepth: 1.1, qsDepth: 1, noiseCp: 38, blunderChance: 0.114, blindDepth: 0, missCaptureChance: 0.075, missQuietChance: 0.19, naturalCp: 29 },
+        { elo: 1200, nodeBudget: 4600, maxDepth: 1.45, qsDepth: 1, noiseCp: 33, blunderChance: 0.093, blindDepth: 0, missCaptureChance: 0.058, missQuietChance: 0.155, naturalCp: 26 },
+        { elo: 1300, nodeBudget: 5200, maxDepth: 1.55, qsDepth: 1, noiseCp: 32, blunderChance: 0.087, blindDepth: 1, missCaptureChance: 0.052, missQuietChance: 0.145, naturalCp: 24 },
+        { elo: 1400, nodeBudget: 6600, maxDepth: 1.81, qsDepth: 1, noiseCp: 28, blunderChance: 0.071, blindDepth: 1, missCaptureChance: 0.039, missQuietChance: 0.119, naturalCp: 22 },
+        { elo: 1500, nodeBudget: 9000, maxDepth: 2.13, qsDepth: 1.25, noiseCp: 24, blunderChance: 0.056, blindDepth: 1, missCaptureChance: 0.027, missQuietChance: 0.092, naturalCp: 19 },
+        { elo: 1600, nodeBudget: 12000, maxDepth: 2.48, qsDepth: 1.96, noiseCp: 20, blunderChance: 0.046, blindDepth: 1, missCaptureChance: 0.02, missQuietChance: 0.071, naturalCp: 15 },
+        { elo: 1700, nodeBudget: 19000, maxDepth: 2.94, qsDepth: 2.88, noiseCp: 16, blunderChance: 0.032, blindDepth: 1, missCaptureChance: 0.011, missQuietChance: 0.044, naturalCp: 11 },
+        { elo: 1800, nodeBudget: 27000, maxDepth: 3.71, qsDepth: 25.72, noiseCp: 13, blunderChance: 0.025, blindDepth: 1, missCaptureChance: 0.008, missQuietChance: 0.031, naturalCp: 9 },
+        { elo: 1900, nodeBudget: 38000, maxDepth: 4.57, qsDepth: 53.18, noiseCp: 11, blunderChance: 0.02, blindDepth: 2, missCaptureChance: 0.005, missQuietChance: 0.019, naturalCp: 7 },
+        { elo: 2000, nodeBudget: 57000, maxDepth: 5.51, qsDepth: 83.16, noiseCp: 9, blunderChance: 0.013, blindDepth: 2, missCaptureChance: 0.002, missQuietChance: 0.007, naturalCp: 6 },
+        { elo: 2100, nodeBudget: 83000, maxDepth: 6.64, qsDepth: 99, noiseCp: 7, blunderChance: 0.007, blindDepth: 2, missCaptureChance: 0, missQuietChance: 0, naturalCp: 3 },
+        { elo: 2200, nodeBudget: 130000, maxDepth: 8.55, qsDepth: 99, noiseCp: 3, blunderChance: 0, blindDepth: 2, missCaptureChance: 0, missQuietChance: 0, naturalCp: 0 },
+        { elo: 2300, nodeBudget: 290000, maxDepth: 64, qsDepth: 99, noiseCp: 0, blunderChance: 0, blindDepth: 2, missCaptureChance: 0, missQuietChance: 0, naturalCp: 0 },
+        { elo: 2400, nodeBudget: 1200000, maxDepth: 64, qsDepth: 99, noiseCp: 0, blunderChance: 0, blindDepth: 2, missCaptureChance: 0, missQuietChance: 0, naturalCp: 0 },
     ];
+    const HINT_PARAMS = { nodeBudget: 300000, maxDepth: 64, qsDepth: 99, noiseCp: 0, blunderChance: 0, blindDepth: 0, missCaptureChance: 0, missQuietChance: 0, naturalCp: 0 };
+    const PARAM_KEYS = ['nodeBudget', 'maxDepth', 'qsDepth', 'timeCapMs', 'noiseCp', 'blunderChance', 'blindDepth', 'missCaptureChance', 'missQuietChance', 'naturalCp'];
+    const INT_KEYS = { nodeBudget: 1, maxDepth: 1, timeCapMs: 1, blindDepth: 1, noiseCp: 1, naturalCp: 1 };
+    let eloTable = DEFAULT_ELO_TABLE;
+
+    // Fills defaults and clamps one parameter set; never throws.
+    function normalizeParams(p) {
+        const n = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+        const out = {
+            nodeBudget: Math.max(1, Math.round(n(p.nodeBudget, 300000))),
+            maxDepth: Math.max(1, Math.min(64, Math.round(n(p.maxDepth, 64) * 100) / 100)),
+            qsDepth: Math.max(0, Math.min(99, Math.round(n(p.qsDepth, 99) * 100) / 100)),
+            timeCapMs: 0,
+            noiseCp: Math.max(0, Math.round(n(p.noiseCp, 0))),
+            blunderChance: Math.max(0, Math.min(1, n(p.blunderChance, 0))),
+            blindDepth: Math.max(0, Math.min(4, Math.round(n(p.blindDepth, 0)))),
+            missCaptureChance: Math.max(0, Math.min(1, n(p.missCaptureChance, 0))),
+            missQuietChance: Math.max(0, Math.min(1, n(p.missQuietChance, 0))),
+            naturalCp: Math.max(0, Math.round(n(p.naturalCp, 0))),
+        };
+        out.timeCapMs = n(p.timeCapMs, 0) > 0 ? Math.round(n(p.timeCapMs, 0)) : capFor(out.nodeBudget);
+        if (p.seed != null) out.seed = Number(p.seed) >>> 0;
+        return out;
+    }
+
+    // Replaces the ELO table (rows { elo, ...params }, any order). Pass null to restore the
+    // default. Returns false (and keeps the old table) if the table is unusable.
+    function setEloTable(table) {
+        if (table == null) { eloTable = DEFAULT_ELO_TABLE; return true; }
+        if (!Array.isArray(table)) return false;
+        const rows = table.filter((r) => r && Number.isFinite(Number(r.elo)))
+            .map((r) => ({ ...r, elo: Number(r.elo) })).sort((a, b) => a.elo - b.elo);
+        if (rows.length === 0) return false;
+        eloTable = rows;
+        return true;
+    }
 
     function eloParams(elo) {
-        const e = Math.min(2500, Math.max(300, Number(elo) || 1200));
+        const rows = eloTable;
+        const lo = rows[0].elo, hi = rows[rows.length - 1].elo;
+        const e = Math.min(hi, Math.max(lo, Number.isFinite(Number(elo)) && elo !== null ? Number(elo) : 1200));
+        if (rows.length === 1) return normalizeParams(rows[0]);
         let i = 0;
-        while (i < ELO_ANCHORS.length - 2 && e > ELO_ANCHORS[i + 1][0]) i++;
-        const a = ELO_ANCHORS[i], b = ELO_ANCHORS[i + 1];
-        const t = (e - a[0]) / (b[0] - a[0]);
-        const lerp = (k) => a[k] + (b[k] - a[k]) * t;
-        return {
-            maxDepth: Math.max(1, Math.floor(lerp(1))),
-            timeMs: Math.round(lerp(2)),
-            noise: Math.round(lerp(3)),
-            randomChance: lerp(4),
-        };
+        while (i < rows.length - 2 && e > rows[i + 1].elo) i++;
+        const a = rows[i], b = rows[i + 1];
+        const t = b.elo === a.elo ? 0 : (e - a.elo) / (b.elo - a.elo);
+        const out = {};
+        for (const k of PARAM_KEYS) {
+            if (a[k] == null && b[k] == null) continue;
+            const va = Number(a[k] ?? b[k]), vb = Number(b[k] ?? a[k]);
+            // Node budgets grow roughly geometrically between rows.
+            out[k] = k === 'nodeBudget' && va > 0 && vb > 0 ? va * Math.pow(vb / va, t) : va + (vb - va) * t;
+            if (INT_KEYS[k] && k !== 'nodeBudget' && k !== 'maxDepth') out[k] = Math.round(out[k]);
+        }
+        return normalizeParams(out);
     }
+
+    const hintParams = () => normalizeParams(HINT_PARAMS);
 
     // --- Conversion to/from the gameLogic.js move shape ---
     function toGameMove(m) {
@@ -955,21 +1265,34 @@ const ChessAI = (() => {
         return legalMoves().find((m) => (m & 63) === from && ((m >> 6) & 63) === to && ((m >> 12) & 7) === Math.max(0, promo)) || 0;
     }
 
-    // Best move for a state object (see aiClient.js for the shape). Does not touch globals.
-    function findBestMove(state, elo, timeMs, positionHistory) {
+    // Best move for a state object (see aiClient.js for the shape) with an explicit parameter
+    // set (see eloParams). Does not touch globals. Used by findBestMove and the calibration harness.
+    function searchWithParams(state, params, positionHistory) {
+        lastSearchInfo = null;
         if (!loadState(state, positionHistory)) return null;
-        const params = eloParams(elo);
-        if (timeMs > 0) params.timeMs = timeMs;
-        const moves = legalMoves();
-        if (moves.length === 0) return null;
-        if (Math.random() < params.randomChance) {
-            return toGameMove(moves[Math.floor(Math.random() * moves.length)]);
-        }
-        const res = searchRoot(params.maxDepth, params.timeMs, params.noise);
+        const p = normalizeParams(params || {});
+        seedForSearch(p);
+        const res = searchRoot(p);
         if (!res) return null;
-        debugLog(`AI (ELO ${elo}): depth ${res.depth}, score ${res.score}, nodes ${res.nodes}`);
-        lastSearchInfo = { depth: res.depth, score: res.score, nodes: res.nodes, params, scores: res.scores };
+        lastSearchInfo = {
+            depth: res.depth, score: res.score, nodes: res.nodes, stoppedBy: res.stoppedBy,
+            blunder: res.blunder, params: p, scores: res.scores,
+        };
         return toGameMove(res.move);
+    }
+
+    // options: { hint: true } plays at full strength with the hint node budget;
+    // { seed } makes this move reproducible. timeMs > 0 overrides the safety time cap.
+    function findBestMove(state, elo, timeMs, positionHistory, options) {
+        const opts = options || {};
+        const params = opts.hint ? hintParams() : eloParams(elo);
+        if (timeMs > 0) params.timeCapMs = timeMs;
+        if (opts.seed != null) params.seed = opts.seed;
+        const move = searchWithParams(state, params, positionHistory);
+        if (move && lastSearchInfo) {
+            debugLog(`AI (${opts.hint ? 'hint' : 'ELO ' + elo}): depth ${lastSearchInfo.depth}, score ${lastSearchInfo.score}, nodes ${lastSearchInfo.nodes}`);
+        }
+        return move;
     }
     let lastSearchInfo = null;
 
@@ -986,7 +1309,13 @@ const ChessAI = (() => {
 
     return {
         findBestMove,
+        searchWithParams,
         eloParams,
+        setEloTable,
+        getEloTable: () => eloTable.map((r) => ({ ...r })),
+        DEFAULT_ELO_TABLE: DEFAULT_ELO_TABLE.map((r) => Object.freeze({ ...r })),
+        hintParams,
+        setSeed,
         applyMoveToGlobals,
         loadState,
         loadFromGlobals,
@@ -1007,12 +1336,14 @@ const ChessAI = (() => {
  * Calculates the best move for the current player (gameLogic.js globals) at the given ELO.
  * Does not modify any global state and does not use the DOM.
  * @param {number} elo - 300..2500.
- * @param {number} [timeMs] - optional time budget override in milliseconds.
+ * @param {number} [timeMs] - optional safety time cap in milliseconds (strength comes from the node budget).
  * @param {string[]} [positionHistory] - getBoardPositionString() of earlier positions for
  *        repetition detection. Defaults to gameHistory[0..currentMoveIndex] when available.
+ * @param {object} [options] - { hint: true } for full strength with the hint node budget,
+ *        { seed } for a reproducible move.
  * @returns {object|null} move in the getAllLegalMoves shape, or null if there is no legal move.
  */
-function calculateBestMove(elo, timeMs, positionHistory) {
+function calculateBestMove(elo, timeMs, positionHistory, options) {
     let history = positionHistory;
     if (!Array.isArray(history)) {
         history = [];
@@ -1024,7 +1355,7 @@ function calculateBestMove(elo, timeMs, positionHistory) {
     const t0 = Date.now();
     let move = null;
     try {
-        move = ChessAI.findBestMove(state, elo, timeMs, history);
+        move = ChessAI.findBestMove(state, elo, timeMs, history, options);
     } catch (error) {
         console.error(`Error during AI (ELO ${elo}) move calculation:`, error);
         const moves = getAllLegalMoves(currentPlayer);

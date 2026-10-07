@@ -9,7 +9,7 @@ The site opens the 3D game (`index.html`, see [Chess Battle 3D](#chess-battle-3d
 
 ## 2D game (`2d.html`)
 
-- Play against the AI (adjustable ELO), watch AI vs AI, or play Human vs Human.
+- Play against the AI (strength 400 to "Max", calibrated to human ratings), watch AI vs AI, or play Human vs Human.
 - Play as White or Black. The board is drawn from your side; switching mid-game keeps the position.
 - Pawn promotion dialog (Escape or clicking outside cancels the move).
 - Hints (the AI suggests a move for the side to play).
@@ -43,8 +43,14 @@ mated king toppling over.
 (White) against skeletons (Black). Pieces walk, knights leap, and every capture is a short fight with
 camera shots, sound and effects. Rules, AI and draw detection are the same code as the 2D game.
 
-- Modes: Human vs AI (default), Human vs Human, AI vs AI (uses Fast battles). AI strength slider (ELO 300 to 2500).
+- Modes: Human vs AI (default), Human vs Human, AI vs AI (uses Fast battles). AI strength slider from 400 to "Max" (about 2400), in human
+  rating points (Lichess rapid style; see `docs/elo-calibration.md`). "Max" is the engine's real top strength.
 - Play as White or Black (the camera moves to your side). New game, Undo (back to your own turn vs the AI).
+- Hint (button or `H`, on your turn): the AI suggests a move at full strength. An arrow on the board points from
+  the piece to the square, the piece is pre-selected and gives a small "ready" gesture, and the status line says
+  e.g. "Hint: knight to f3." Nothing moves until you click the square. The hint goes away when you move, select
+  another piece, undo or start a new game. Not available while the AI thinks, during fights, after the game
+  ends or in AI vs AI.
 - Battles: Full (cinematic fights, about 3 to 5 s) or Fast (about 1 s, no camera moves). Skip ends the
   current fight right away.
 - Piece labels on or off, sound on or off, torch ambience on or off, a "Who's who" legend and the move list.
@@ -63,6 +69,7 @@ Controls:
 | Reset view (menu) | Back to the default view for your side |
 | Arrow keys, Enter, Esc | Keyboard play: move the square cursor, select or move, cancel |
 | Space (or the Skip button) | Skip the current fight |
+| H (or the Hint button) | Suggest a move on your turn |
 
 Moves and results are announced to screen readers.
 

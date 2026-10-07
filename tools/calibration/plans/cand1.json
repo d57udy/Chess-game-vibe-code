@@ -1,0 +1,11 @@
+{
+  "comment": "Verification of tables/cand1.json (v5b path relabelled to H = 1611 + 0.70 (E - 1573)).",
+  "engines": { "c1": "tools/calibration/out/snap-v5b:tools/calibration/tables/cand1.json" },
+  "out": "tools/calibration/out/cand1",
+  "games": 48,
+  "pairs": [
+    "c1:300,c1:700", "c1:700,c1:900", "c1:900,c1:1100", "c1:1100,c1:1300", "c1:1300,c1:1500", "c1:1500,c1:1700", "c1:1700,c1:1900", "c1:1900,c1:2100", "c1:2100,c1:2500",
+    "c1:1100,sf:1320", "c1:1300,sf:1320", "c1:1500,sf:1320", "c1:1500,sf:1500", "c1:1500,maia:1100", "c1:1700,sf:1700", "c1:1700,maia:1900",
+    "c1:1900,sf:1900", "c1:1900,sf:2100", "c1:2100,sf:2100", "c1:2100,sf:2300", "c1:2500,sf:2500"
+  ]
+}

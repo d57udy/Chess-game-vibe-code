@@ -39,6 +39,7 @@
     <button data-a="debris">Debris</button>
     <button data-a="decal">Decals</button>
     <button data-a="stats">Stats</button>
+    <button data-a="hint">Hint (cycle)</button>
   </div>
   <div id="info">click a square</div>
   <script type="module">
@@ -178,6 +179,14 @@
         const eye = api.camera.position;
         document.title = `ROOK dRook=${eye.distanceTo(rook.position).toFixed(2)} dVictim=${eye.distanceTo(victim.clone().setY(0.42)).toFixed(2)}`;
       }
+      // hints: ?auto=hint (knight arc), hintcap (long capture), hintb (Black view)
+      if (auto && auto.startsWith('hint')) {
+        api.clearHighlights();
+        if (auto === 'hintcap') api.setHint({ from: { row: 7, col: 2 }, to: { row: 1, col: 6 }, capture: true });
+        else api.setHint({ from: { row: 7, col: 6 }, to: { row: 5, col: 5 }, capture: false });
+        if (auto === 'hintb') api.setView('b', { animate: false });
+        api.stepFrames(10);
+      }
       if (auto === 'pick') {
         // project square centers (and a unit's head) to screen and pick them back
         const rect = api.renderer.domElement.getBoundingClientRect();
@@ -194,6 +203,7 @@
       info.textContent = `auto ${auto}: particles ${api.particleCount()}, cameraBusy ${api.isCameraBusy()}`;
     }
     let slow = false;
+    let hintIdx = -1;
     document.getElementById('bar').addEventListener('click', async (ev) => {
       const a = ev.target.dataset.a;
       if (!a) return;
@@ -229,6 +239,18 @@
       if (a === 'impact') ['slash', 'blunt', 'pierce', 'magic', 'bone'].forEach((k, i) => api.fx.impact(api.squareToWorld(4, i + 1).setY(0.5), new THREE.Vector3(0, 0.3, 1), k));
       if (a === 'debris') ['bones', 'armor', 'wood'].forEach((k, i) => api.fx.debris(api.squareToWorld(4, 2 + i * 2), { kind: k }));
       if (a === 'decal') { api.fx.decal(api.squareToWorld(3, 2), 'scorch'); api.fx.decal(api.squareToWorld(3, 5), 'crack'); }
+      if (a === 'hint') {
+        const hints = [
+          { from: { row: 7, col: 6 }, to: { row: 5, col: 5 }, capture: false }, // Ng1-f3 (arc)
+          { from: { row: 6, col: 4 }, to: { row: 4, col: 4 }, capture: false }, // e2-e4
+          { from: { row: 7, col: 2 }, to: { row: 1, col: 6 }, capture: true }, // Bc1xg7 (straight, red tip)
+          null,
+        ];
+        hintIdx = (hintIdx + 1) % hints.length;
+        api.setHint(hints[hintIdx]);
+        info.textContent = `hint ${JSON.stringify(api.getHint())}`;
+        return;
+      }
       if (a === 'stats') { info.textContent = JSON.stringify(api.stats()); return; }
       if (a === 'slow') { slow = !slow; api.setTimeScale(slow ? 0.25 : 1); }
       info.textContent = `${a} done`;

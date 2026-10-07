@@ -1,0 +1,84 @@
+{
+ "generated": "2026-10-06T20:10:42.552Z",
+ "depthRule": "1 + int(skillLevel(UCI_Elo))",
+ "puzzles": 2661,
+ "summary": [
+  {
+   "uciElo": 1320,
+   "depth": 1,
+   "n": 2661,
+   "solved": 0.422,
+   "puzzleRating": 1437,
+   "ci90": [
+    1403,
+    1469
+   ]
+  },
+  {
+   "uciElo": 1500,
+   "depth": 2,
+   "n": 2661,
+   "solved": 0.504,
+   "puzzleRating": 1618,
+   "ci90": [
+    1588,
+    1650
+   ]
+  },
+  {
+   "uciElo": 1700,
+   "depth": 3,
+   "n": 2661,
+   "solved": 0.61,
+   "puzzleRating": 1854,
+   "ci90": [
+    1821,
+    1889
+   ]
+  },
+  {
+   "uciElo": 1900,
+   "depth": 4,
+   "n": 2661,
+   "solved": 0.678,
+   "puzzleRating": 2006,
+   "ci90": [
+    1978,
+    2039
+   ]
+  },
+  {
+   "uciElo": 2100,
+   "depth": 5,
+   "n": 2661,
+   "solved": 0.749,
+   "puzzleRating": 2166,
+   "ci90": [
+    2135,
+    2196
+   ]
+  },
+  {
+   "uciElo": 2400,
+   "depth": 7,
+   "n": 2661,
+   "solved": 0.846,
+   "puzzleRating": 2398,
+   "ci90": [
+    2371,
+    2427
+   ]
+  },
+  {
+   "uciElo": 2800,
+   "depth": 11,
+   "n": 2661,
+   "solved": 0.984,
+   "puzzleRating": 2969,
+   "ci90": [
+    2925,
+    3025
+   ]
+  }
+ ]
+}

@@ -1,0 +1,552 @@
+{
+ "generated": "2026-10-06T21:14:03.429Z",
+ "engineApi": "eloParams+searchWithParams",
+ "table": "default",
+ "engine": "aiPlayer.js",
+ "puzzles": 2661,
+ "reps": 1,
+ "workers": 14,
+ "seconds": 447,
+ "summary": [
+  {
+   "elo": 300,
+   "params": {
+    "nodeBudget": 1500,
+    "maxDepth": 1,
+    "qsDepth": 0.5,
+    "timeCapMs": 500,
+    "noiseCp": 60,
+    "blunderChance": 0.25,
+    "blindDepth": 0,
+    "missCaptureChance": 0.15,
+    "missQuietChance": 0.3,
+    "naturalCp": 40
+   },
+   "n": 2661,
+   "solved": 0.192,
+   "puzzleRating": 921,
+   "ci90": [
+    890,
+    949
+   ],
+   "freeFit": {
+    "R": 575,
+    "scale": 1352
+   },
+   "byBand": {
+    "400": 0.414,
+    "600": 0.438,
+    "800": 0.358,
+    "1000": 0.317,
+    "1200": 0.304,
+    "1400": 0.171,
+    "1600": 0.125,
+    "1800": 0.05,
+    "2000": 0.063,
+    "2200": 0.042,
+    "2400": 0.046,
+    "2600": 0.034
+   },
+   "oneMove": 0.668,
+   "mateIn1": 0.668,
+   "hangingPiece": 0.42,
+   "shortUnder1200": 0.406,
+   "firstMoveMissRate": 0.643
+  },
+  {
+   "elo": 500,
+   "params": {
+    "nodeBudget": 2000,
+    "maxDepth": 1,
+    "qsDepth": 0.7,
+    "timeCapMs": 500,
+    "noiseCp": 40,
+    "blunderChance": 0.14,
+    "blindDepth": 0,
+    "missCaptureChance": 0.1,
+    "missQuietChance": 0.25,
+    "naturalCp": 35
+   },
+   "n": 2661,
+   "solved": 0.258,
+   "puzzleRating": 1072,
+   "ci90": [
+    1044,
+    1101
+   ],
+   "freeFit": {
+    "R": 930,
+    "scale": 1075
+   },
+   "byBand": {
+    "400": 0.638,
+    "600": 0.592,
+    "800": 0.529,
+    "1000": 0.446,
+    "1200": 0.338,
+    "1400": 0.212,
+    "1600": 0.146,
+    "1800": 0.125,
+    "2000": 0.058,
+    "2200": 0.05,
+    "2400": 0.025,
+    "2600": 0.048
+   },
+   "oneMove": 0.783,
+   "mateIn1": 0.783,
+   "hangingPiece": 0.435,
+   "shortUnder1200": 0.567,
+   "firstMoveMissRate": 0.569
+  },
+  {
+   "elo": 700,
+   "params": {
+    "nodeBudget": 3000,
+    "maxDepth": 1,
+    "qsDepth": 1,
+    "timeCapMs": 500,
+    "noiseCp": 40,
+    "blunderChance": 0.12,
+    "blindDepth": 0,
+    "missCaptureChance": 0.08,
+    "missQuietChance": 0.2,
+    "naturalCp": 30
+   },
+   "n": 2661,
+   "solved": 0.321,
+   "puzzleRating": 1215,
+   "ci90": [
+    1186,
+    1246
+   ],
+   "freeFit": {
+    "R": 1137,
+    "scale": 1005
+   },
+   "byBand": {
+    "400": 0.638,
+    "600": 0.742,
+    "800": 0.662,
+    "1000": 0.563,
+    "1200": 0.421,
+    "1400": 0.3,
+    "1600": 0.204,
+    "1800": 0.138,
+    "2000": 0.108,
+    "2200": 0.046,
+    "2400": 0.054,
+    "2600": 0.028
+   },
+   "oneMove": 0.834,
+   "mateIn1": 0.834,
+   "hangingPiece": 0.435,
+   "shortUnder1200": 0.684,
+   "firstMoveMissRate": 0.489
+  },
+  {
+   "elo": 900,
+   "params": {
+    "nodeBudget": 4899,
+    "maxDepth": 1,
+    "qsDepth": 1,
+    "timeCapMs": 500,
+    "noiseCp": 33,
+    "blunderChance": 0.09,
+    "blindDepth": 1,
+    "missCaptureChance": 0.055,
+    "missQuietChance": 0.15000000000000002,
+    "naturalCp": 25
+   },
+   "n": 2661,
+   "solved": 0.379,
+   "puzzleRating": 1342,
+   "ci90": [
+    1315,
+    1373
+   ],
+   "freeFit": {
+    "R": 1307,
+    "scale": 905
+   },
+   "byBand": {
+    "400": 0.767,
+    "600": 0.817,
+    "800": 0.792,
+    "1000": 0.688,
+    "1200": 0.479,
+    "1400": 0.354,
+    "1600": 0.254,
+    "1800": 0.163,
+    "2000": 0.129,
+    "2200": 0.067,
+    "2400": 0.063,
+    "2600": 0.041
+   },
+   "oneMove": 0.968,
+   "mateIn1": 0.968,
+   "hangingPiece": 0.449,
+   "shortUnder1200": 0.797,
+   "firstMoveMissRate": 0.436
+  },
+  {
+   "elo": 1100,
+   "params": {
+    "nodeBudget": 8000,
+    "maxDepth": 2,
+    "qsDepth": 1,
+    "timeCapMs": 500,
+    "noiseCp": 25,
+    "blunderChance": 0.06,
+    "blindDepth": 1,
+    "missCaptureChance": 0.03,
+    "missQuietChance": 0.1,
+    "naturalCp": 20
+   },
+   "n": 2661,
+   "solved": 0.494,
+   "puzzleRating": 1597,
+   "ci90": [
+    1563,
+    1628
+   ],
+   "freeFit": {
+    "R": 1595,
+    "scale": 1013
+   },
+   "byBand": {
+    "400": 0.888,
+    "600": 0.846,
+    "800": 0.863,
+    "1000": 0.787,
+    "1200": 0.642,
+    "1400": 0.517,
+    "1600": 0.458,
+    "1800": 0.358,
+    "2000": 0.267,
+    "2200": 0.183,
+    "2400": 0.092,
+    "2600": 0.055
+   },
+   "oneMove": 0.959,
+   "mateIn1": 0.959,
+   "hangingPiece": 0.565,
+   "shortUnder1200": 0.874,
+   "firstMoveMissRate": 0.36
+  },
+  {
+   "elo": 1300,
+   "params": {
+    "nodeBudget": 12649,
+    "maxDepth": 2,
+    "qsDepth": 2,
+    "timeCapMs": 632,
+    "noiseCp": 20,
+    "blunderChance": 0.045,
+    "blindDepth": 1,
+    "missCaptureChance": 0.02,
+    "missQuietChance": 0.07,
+    "naturalCp": 15
+   },
+   "n": 2661,
+   "solved": 0.563,
+   "puzzleRating": 1749,
+   "ci90": [
+    1720,
+    1780
+   ],
+   "freeFit": {
+    "R": 1765,
+    "scale": 865
+   },
+   "byBand": {
+    "400": 0.957,
+    "600": 0.95,
+    "800": 0.917,
+    "1000": 0.896,
+    "1200": 0.742,
+    "1400": 0.617,
+    "1600": 0.558,
+    "1800": 0.417,
+    "2000": 0.283,
+    "2200": 0.196,
+    "2400": 0.138,
+    "2600": 0.103
+   },
+   "oneMove": 0.986,
+   "mateIn1": 0.986,
+   "hangingPiece": 0.754,
+   "shortUnder1200": 0.946,
+   "firstMoveMissRate": 0.305
+  },
+  {
+   "elo": 1500,
+   "params": {
+    "nodeBudget": 20000,
+    "maxDepth": 3,
+    "qsDepth": 3,
+    "timeCapMs": 1000,
+    "noiseCp": 15,
+    "blunderChance": 0.03,
+    "blindDepth": 1,
+    "missCaptureChance": 0.010000000000000002,
+    "missQuietChance": 0.04,
+    "naturalCp": 10
+   },
+   "n": 2661,
+   "solved": 0.69,
+   "puzzleRating": 2033,
+   "ci90": [
+    2002,
+    2061
+   ],
+   "freeFit": {
+    "R": 2104,
+    "scale": 943
+   },
+   "byBand": {
+    "400": 0.957,
+    "600": 0.967,
+    "800": 0.963,
+    "1000": 0.925,
+    "1200": 0.842,
+    "1400": 0.796,
+    "1600": 0.767,
+    "1800": 0.654,
+    "2000": 0.504,
+    "2200": 0.396,
+    "2400": 0.275,
+    "2600": 0.166
+   },
+   "oneMove": 0.995,
+   "mateIn1": 0.995,
+   "hangingPiece": 0.768,
+   "shortUnder1200": 0.964,
+   "firstMoveMissRate": 0.197
+  },
+  {
+   "elo": 1700,
+   "params": {
+    "nodeBudget": 37417,
+    "maxDepth": 4,
+    "qsDepth": 51,
+    "timeCapMs": 1871,
+    "noiseCp": 12,
+    "blunderChance": 0.02,
+    "blindDepth": 2,
+    "missCaptureChance": 0.005,
+    "missQuietChance": 0.02,
+    "naturalCp": 8
+   },
+   "n": 2661,
+   "solved": 0.76,
+   "puzzleRating": 2191,
+   "ci90": [
+    2160,
+    2221
+   ],
+   "freeFit": {
+    "R": 2287,
+    "scale": 877
+   },
+   "byBand": {
+    "400": 0.974,
+    "600": 0.979,
+    "800": 0.975,
+    "1000": 0.958,
+    "1200": 0.925,
+    "1400": 0.883,
+    "1600": 0.838,
+    "1800": 0.758,
+    "2000": 0.617,
+    "2200": 0.504,
+    "2400": 0.354,
+    "2600": 0.269
+   },
+   "oneMove": 1,
+   "mateIn1": 1,
+   "hangingPiece": 0.826,
+   "shortUnder1200": 0.975,
+   "firstMoveMissRate": 0.155
+  },
+  {
+   "elo": 1900,
+   "params": {
+    "nodeBudget": 70000,
+    "maxDepth": 6,
+    "qsDepth": 99,
+    "timeCapMs": 3500,
+    "noiseCp": 8,
+    "blunderChance": 0.010000000000000002,
+    "blindDepth": 2,
+    "missCaptureChance": 0,
+    "missQuietChance": 0,
+    "naturalCp": 5
+   },
+   "n": 2661,
+   "solved": 0.825,
+   "puzzleRating": 2344,
+   "ci90": [
+    2319,
+    2369
+   ],
+   "freeFit": {
+    "R": 2497,
+    "scale": 886
+   },
+   "byBand": {
+    "400": 0.983,
+    "600": 0.992,
+    "800": 0.988,
+    "1000": 0.988,
+    "1200": 0.929,
+    "1400": 0.917,
+    "1600": 0.917,
+    "1800": 0.825,
+    "2000": 0.75,
+    "2200": 0.65,
+    "2400": 0.471,
+    "2600": 0.407
+   },
+   "oneMove": 1,
+   "mateIn1": 1,
+   "hangingPiece": 0.899,
+   "shortUnder1200": 0.99,
+   "firstMoveMissRate": 0.108
+  },
+  {
+   "elo": 2100,
+   "params": {
+    "nodeBudget": 120000,
+    "maxDepth": 8,
+    "qsDepth": 99,
+    "timeCapMs": 6000,
+    "noiseCp": 4,
+    "blunderChance": 0,
+    "blindDepth": 2,
+    "missCaptureChance": 0,
+    "missQuietChance": 0,
+    "naturalCp": 0
+   },
+   "n": 2661,
+   "solved": 0.858,
+   "puzzleRating": 2428,
+   "ci90": [
+    2401,
+    2453
+   ],
+   "freeFit": {
+    "R": 2581,
+    "scale": 808
+   },
+   "byBand": {
+    "400": 0.991,
+    "600": 0.992,
+    "800": 0.988,
+    "1000": 0.992,
+    "1200": 0.95,
+    "1400": 0.954,
+    "1600": 0.946,
+    "1800": 0.896,
+    "2000": 0.8,
+    "2200": 0.729,
+    "2400": 0.525,
+    "2600": 0.434
+   },
+   "oneMove": 1,
+   "mateIn1": 1,
+   "hangingPiece": 0.913,
+   "shortUnder1200": 0.993,
+   "firstMoveMissRate": 0.086
+  },
+  {
+   "elo": 2300,
+   "params": {
+    "nodeBudget": 200000,
+    "maxDepth": 12,
+    "qsDepth": 99,
+    "timeCapMs": 10000,
+    "noiseCp": 0,
+    "blunderChance": 0,
+    "blindDepth": 2,
+    "missCaptureChance": 0,
+    "missQuietChance": 0,
+    "naturalCp": 0
+   },
+   "n": 2661,
+   "solved": 0.899,
+   "puzzleRating": 2543,
+   "ci90": [
+    2516,
+    2574
+   ],
+   "freeFit": {
+    "R": 2788,
+    "scale": 864
+   },
+   "byBand": {
+    "400": 0.991,
+    "600": 0.992,
+    "800": 0.992,
+    "1000": 0.996,
+    "1200": 0.958,
+    "1400": 0.971,
+    "1600": 0.975,
+    "1800": 0.933,
+    "2000": 0.85,
+    "2200": 0.808,
+    "2400": 0.65,
+    "2600": 0.607
+   },
+   "oneMove": 1,
+   "mateIn1": 1,
+   "hangingPiece": 0.942,
+   "shortUnder1200": 0.994,
+   "firstMoveMissRate": 0.062
+  },
+  {
+   "elo": 2500,
+   "params": {
+    "nodeBudget": 300000,
+    "maxDepth": 64,
+    "qsDepth": 99,
+    "timeCapMs": 10000,
+    "noiseCp": 0,
+    "blunderChance": 0,
+    "blindDepth": 2,
+    "missCaptureChance": 0,
+    "missQuietChance": 0,
+    "naturalCp": 0
+   },
+   "n": 2661,
+   "solved": 0.91,
+   "puzzleRating": 2577,
+   "ci90": [
+    2552,
+    2608
+   ],
+   "freeFit": {
+    "R": 2868,
+    "scale": 896
+   },
+   "byBand": {
+    "400": 0.991,
+    "600": 0.992,
+    "800": 0.992,
+    "1000": 0.996,
+    "1200": 0.958,
+    "1400": 0.975,
+    "1600": 0.975,
+    "1800": 0.933,
+    "2000": 0.879,
+    "2200": 0.846,
+    "2400": 0.679,
+    "2600": 0.641
+   },
+   "oneMove": 1,
+   "mateIn1": 1,
+   "hangingPiece": 0.928,
+   "shortUnder1200": 0.996,
+   "firstMoveMissRate": 0.057
+  }
+ ]
+}

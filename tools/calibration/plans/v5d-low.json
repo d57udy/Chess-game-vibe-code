@@ -1,0 +1,39 @@
+{
+  "comment": "v5d path, extra games on the cheap low end (below and around SF 1320) to tighten the chained ladder.",
+  "engines": {
+    "p": "tools/calibration/out/snap-v5d:tools/calibration/tables/path-v5d.json"
+  },
+  "out": "tools/calibration/out/v5d-low",
+  "games": 160,
+  "seed": 2,
+  "pairs": [
+    "p:-300,p:-100",
+    "p:-100,p:100",
+    "p:100,p:300",
+    "p:300,p:500",
+    "p:500,p:700",
+    "p:700,p:800",
+    "p:800,p:900",
+    "p:900,p:1000",
+    "p:1000,p:1100",
+    "p:1100,p:1200",
+    "p:1200,p:1300",
+    "p:-300,p:100",
+    "p:-100,p:300",
+    "p:100,p:500",
+    "p:300,p:700",
+    "p:500,p:800",
+    "p:700,p:900",
+    "p:800,p:1000",
+    "p:900,p:1100",
+    "p:1000,p:1200",
+    "p:1100,p:1300",
+    "p:1100,sf:1320",
+    "p:1200,sf:1320",
+    "p:1300,sf:1320",
+    "p:1100,maia:1100",
+    "p:1200,maia:1100",
+    "p:1300,maia:1100",
+    "p:1300,sf:1500"
+  ]
+}

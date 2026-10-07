@@ -1,0 +1,10 @@
+{
+  "comment": "Baseline low end: intermediate slider values so the ladder below Stockfish's 1320 floor has closer (more informative) matches.",
+  "engines": { "base": "0187e9a" },
+  "out": "tools/calibration/out/baseline",
+  "games": 32,
+  "pairs": [
+    "base:300,base:500", "base:500,base:700", "base:700,base:850", "base:850,base:1000",
+    "base:1000,base:1150", "base:1150,base:1300", "base:1150,sf:1320", "base:1000,sf:1320", "base:1300,sf:1320"
+  ]
+}

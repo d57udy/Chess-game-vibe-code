@@ -1,0 +1,39 @@
+{
+  "comment": "v5c engine (fractional maxDepth, rows -100 and 100): low-end ladder chained up to Stockfish 1320 and Maia 1100.",
+  "engines": {
+    "v5c": "tools/calibration/out/snap-v5c"
+  },
+  "out": "tools/calibration/out/v5c-low",
+  "games": 64,
+  "pairs": [
+    "v5c:-100,v5c:100",
+    "v5c:100,v5c:300",
+    "v5c:300,v5c:500",
+    "v5c:500,v5c:700",
+    "v5c:700,v5c:900",
+    "v5c:900,v5c:1100",
+    "v5c:1100,v5c:1300",
+    "v5c:-100,v5c:300",
+    "v5c:100,v5c:500",
+    "v5c:300,v5c:700",
+    "v5c:500,v5c:900",
+    "v5c:700,v5c:1100",
+    "v5c:900,v5c:1300",
+    "v5c:1100,sf:1320",
+    "v5c:1300,sf:1320",
+    "v5c:1300,maia:1100",
+    "v5c:1100,maia:1100",
+    "v5c:1300,sf:1500",
+    "v5c:700,v5c:800",
+    "v5c:800,v5c:900",
+    "v5c:900,v5c:1000",
+    "v5c:1000,v5c:1100",
+    "v5c:1100,v5c:1200",
+    "v5c:1200,v5c:1300",
+    "v5c:800,v5c:1000",
+    "v5c:1000,v5c:1200",
+    "v5c:1000,sf:1320",
+    "v5c:1200,sf:1320",
+    "v5c:1200,maia:1100"
+  ]
+}
