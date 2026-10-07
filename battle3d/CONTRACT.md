@@ -340,3 +340,58 @@ createAudio() -> {
 
 Mixing: master gain, gentle compressor/limiter, fight bus vs footstep bus vs UI bus, voice cap kept. Stereo pan from the
 source's screen x (-1..1), distance attenuation from the camera, fully muted when the tab is hidden.
+
+---
+
+# v5: ELO calibration (steps 1 to 5) and a hint button in 3D
+
+Owner asked: calibrate the AI strength (1 Stockfish matches, 2 re-tune the slider mapping, 3 device-independent
+search budget, 4 human-like weakness at low levels, 5 human-scale check), and bring back the 2D game's hint button
+in the 3D game. Target scale: the slider should mean a human Lichess-style rating (rapid). Engine (CCRL-style)
+ratings are also recorded so the scale can be switched later.
+
+## Ownership (v5)
+
+| Agent | Owns |
+|---|---|
+| engine (`elo-engine`) | `aiPlayer.js` (search budget, weakness model, ELO mapping), `aiWorker.js`/`aiClient.js` only if the API needs it |
+| calibration (`elo-calibrate`) | `tools/calibration/**` (match harness vs Stockfish, Elo fitting, reports), `docs/elo-calibration.md` |
+| human benchmark (`elo-human`) | `tools/puzzles/**` (Lichess puzzle sample + solver benchmark), the human-scale section of `docs/elo-calibration.md` |
+| game (`b3d-game`) | 3D hint: `controller.js`, `index.html`, `hud.css`, `main.js`, README |
+| scene (`b3d-scene`) | hint visuals in `scene.js` / `scene-fx.js` |
+| units (`b3d-units`) | optional hint gesture on the hinted unit in `units.js` |
+| qa (`b3d-qa`) | tests |
+
+Third-party tools (Stockfish, puzzle data) are used only for offline measurement, installed outside the shipped game
+(scratch dir or a tools-local install that is gitignored). Never commit GPL binaries or the full puzzle database; commit
+scripts, small result tables and a small CC0 puzzle sample at most.
+
+## Engine API (v5)
+
+```js
+// aiPlayer.js (unchanged entry points stay working)
+ChessAI.eloParams(elo) -> { nodeBudget, maxDepth, timeCapMs, noise..., blunder... }   // the mapping, data-driven
+ChessAI.setEloTable(table)                            // calibration can inject a candidate mapping for matches
+ChessAI.searchWithParams(state, params) -> move        // used by the calibration harness
+// requestAIMove(state, elo, { timeMs, hint: true }) for hints: full strength, node budget sized for ~1 s on a phone
+```
+
+Device independence: strength is set by a node budget (positions searched), with the time limit only as a safety cap,
+so the same level plays the same moves on a phone and a Mac (given the same random seed).
+
+Weakness model at low levels (replaces uniform random moves): with a level-dependent probability, overlook threats
+(e.g. search without quiescence or with a reduced horizon), miss captures of hanging pieces, misjudge by limited noise,
+and prefer "natural" moves (captures, checks, developing moves). Must stay legal and never crash.
+
+## Hint in 3D (game, scene, units)
+
+A "Hint" button in the HUD (and the `H` key) on the human's turn: asks the AI at full strength (hint mode), then shows
+the suggestion: a glowing arrow from the piece to the target square on the board, highlights both squares, the piece
+does a small "ready" gesture, and the status line says e.g. "Hint: knight to f3". It disappears on the next move,
+undo, new game, or when the player selects another piece. Disabled while the AI thinks, during animations, when the
+game is over, and in AI vs AI. Cancel any running hint request on those events.
+
+```js
+sceneAPI.setHint({ from: {row,col}, to: {row,col}, capture } | null)   // scene: arrow + square glow, render-on-demand aware
+units.playHint(square)                                                 // units: short gesture, optional, must be safe to skip
+```

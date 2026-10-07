@@ -159,6 +159,7 @@ class Runner {
 export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio = null } = {}) {
     const S = sceneAPI;
     const R = new Runner();
+    const H = new Runner();   // hint gestures: separate so isBusy() stays false while a hint plays
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -1115,7 +1116,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     // Render-on-demand tokens: 'idle' while units exist (scene throttles it), 'units-fight' while animating.
     function syncTokens() {
         if (!S.keepAlive) return;
-        const busy = R.busy;
+        const busy = R.busy || H.busy;
         if (busy !== fightToken) { fightToken = busy; try { S.keepAlive('units-fight', busy); } catch (e) { /* ignore */ } }
         const want = units.size > 0;
         if (want !== idleToken) { idleToken = want; try { S.keepAlive('idle', want); } catch (e) { /* ignore */ } }
@@ -1123,6 +1124,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function update(dt) {
         R.update(dt);
+        if (H.busy) H.update(dt);
         syncTokens();
         for (const u of units) {
             if (!u.mixer) continue;
@@ -1198,7 +1200,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
                 u.lookApplied = true;
             }
         }
-        if (R.busy || u.dead || u.dying || u.fidget || u.look || R.time < u.nextFidget) return;
+        if (R.busy || u === hintUnit || u.dead || u.dying || u.fidget || u.look || R.time < u.nextFidget) return;
         u.nextFidget = R.time + rand(9, 26);
         if (Math.random() < 0.5 || fidgeting >= 2) {
             u.look = { t: 0, dur: rand(1.6, 2.6), angle: rand(0.35, 0.6) * (Math.random() < 0.5 ? -1 : 1) };
@@ -1214,6 +1216,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     // UnitsAPI
 
     function syncBoard(board) {
+        cancelHint();
         R.abortAll();
         stopTrails();
         finalizers.length = 0;
@@ -1259,7 +1262,42 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         idle(u, 0);
     }
 
+    // Hint: the hinted unit hops and raises its weapon once, with a soft 'select'. Cancelled by any
+    // move, syncBoard or skip; cancelling puts the unit back on the ground in its idle.
+    let hintUnit = null;
+    function cancelHint() {
+        const u = hintUnit;
+        hintUnit = null;
+        H.abortAll();
+        if (u && units.has(u) && !u.dying) {
+            u.root.position.y = 0;
+            if (!R.busy) idle(u, 0.15);
+        }
+    }
+
+    function playHint(square) {
+        cancelHint();
+        const u = square ? unitAtSq(square) : null;
+        if (!u || R.busy || u.dead) return Promise.resolve();
+        hintUnit = u;
+        const gesture = function* () {
+            sfxAt('select', u, { volume: 0.6 });
+            const a = play(u, u.isSkeleton ? ['Block', 'Taunt', 'Blocking'] : ['Block', 'Blocking', 'Cheer'], { speed: 1.6, fade: 0.08 });
+            const y0 = 0;
+            yield* tween(0.3, k => { u.root.position.y = y0 + 0.12 * 4 * k * (1 - k); });
+            u.root.position.y = 0;
+            if (a) yield untilClip(u, a, Math.min(0.45, a.getClip().duration * 0.5));
+            idle(u, 0.25);
+        };
+        return new Promise(res => {
+            H.spawn(gesture(), () => { if (hintUnit === u) hintUnit = null; res(); });
+            S.requestRender?.();
+            syncTokens();
+        });
+    }
+
     function playMove(ev) {
+        cancelHint();
         if (R.busy) fastForward();
         const color = ev.color;
         const type = String(ev.piece).toLowerCase();
@@ -1305,6 +1343,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     }
 
     function playCheck(kingSquare) {
+        cancelHint();
         const K = unitAtSq(kingSquare);
         if (!K) return Promise.resolve();
         if (R.busy) fastForward();
@@ -1316,6 +1355,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     }
 
     function playGameOver({ result, loser, kingSquare } = {}) {
+        cancelHint();
         if (R.busy) fastForward();
         const all = [...units].filter(u => !u.dying);
         return run((function* () {
@@ -1355,6 +1395,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     }
 
     function skip() {
+        cancelHint();
         if (R.busy) fastForward();
         stopTrails();
         cam.close(0);
@@ -1406,6 +1447,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         setFightCamera: on => { fightCamera = !!on; },   // extra: controller turns close-ups off in AI vs AI
         setCast,
         getLegend,
+        playHint,
         lastFightPlan: () => kit.lastPlan,
         // debug
         _clips: clips,

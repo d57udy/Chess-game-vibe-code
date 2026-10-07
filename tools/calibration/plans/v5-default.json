@@ -1,0 +1,12 @@
+{
+  "comment": "v5 engine (node budgets + weakness model), its untuned default table. Snapshot of the working tree in out/snap-v5a.",
+  "engines": { "v5": "tools/calibration/out/snap-v5a" },
+  "out": "tools/calibration/out/v5-default",
+  "games": 16,
+  "pairs": [
+    "v5:300,v5:700", "v5:300,v5:500", "v5:500,v5:700", "v5:700,v5:1000", "v5:1000,v5:1300", "v5:1300,v5:1600", "v5:1600,v5:1900", "v5:1900,v5:2100", "v5:2100,v5:2300", "v5:2300,v5:2500",
+    "v5:700,sf:1320", "v5:1000,sf:1320", "v5:1300,sf:1320", "v5:1600,sf:1320", "v5:1600,sf:1700",
+    "v5:1900,sf:1700", "v5:1900,sf:2100", "v5:2100,sf:2100", "v5:2300,sf:2100", "v5:2300,sf:2500", "v5:2500,sf:2100", "v5:2500,sf:2500",
+    "v5:1000,maia:1100", "v5:1300,maia:1100", "v5:1300,maia:1500", "v5:1600,maia:1500", "v5:1600,maia:1900", "v5:1900,maia:1900"
+  ]
+}

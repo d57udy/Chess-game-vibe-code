@@ -10,6 +10,7 @@ const MOVE_WATCHDOG_SECONDS = 30; // a stuck animation is skipped after this muc
 const MODES = ['human-ai', 'human-human', 'ai-ai'];
 const AI_PAUSE = { 'human-ai': 0.25, 'ai-ai': 0.6 }; // scene seconds before the AI starts thinking
 const SETTINGS_KEY = 'battle3d.settings';
+const HINT_ELO = 2500;        // hint mode ignores the ELO and plays at full strength with its own node budget
 const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 const squareName = (sq) => String.fromCharCode(97 + sq.col) + (8 - sq.row);
 
@@ -28,16 +29,32 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         mode: $('mode-select'), elo: $('elo-slider'), eloValue: $('elo-value'), eloRow: $('elo-row'),
         sideLabel: $('side-label'), sideW: $('side-w'), sideB: $('side-b'),
         speedFull: $('speed-full'), speedFast: $('speed-fast'), labels: $('labels-toggle'),
-        newGame: $('new-game'), undo: $('undo'), skip: $('skip'),
+        newGame: $('new-game'), undo: $('undo'), skip: $('skip'), hint: $('hint'),
         moveList: $('move-list'), moveCount: $('move-count'),
         promo: $('promo'), promoCancel: $('promo-cancel'),
         mute: $('mute'), ambience: $('ambience-toggle'), announce: $('announce'), stage: $('stage')
     };
 
+    // The AI strength range lives in the slider's min/max/step/value attributes (index.html), so a
+    // recalibration only edits the markup. The top end is labelled "Max" (the engine's real top strength).
+    const ELO = {
+        min: Number(el.elo.min) || 300,
+        max: Number(el.elo.max) || 2500,
+        step: Number(el.elo.step) || 100,
+        def: Number(el.elo.defaultValue) || 1200
+    };
+    const clampElo = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return ELO.def;
+        const snapped = ELO.min + Math.round((n - ELO.min) / ELO.step) * ELO.step;
+        return Math.max(ELO.min, Math.min(ELO.max, snapped));
+    };
+    const eloLabel = (elo) => (elo >= ELO.max ? 'Max' : String(elo));
+
     const st = {
         mode: 'human-ai',
         humanColor: 'w',
-        elo: 1200,
+        elo: ELO.def,
         speed: 'full',
         labels: true,
         muted: false,
@@ -53,6 +70,9 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         aiWaiting: false,        // pause before the AI request
         aiToken: 0,              // bumped by cancelAI so a pending pause drops out
         pendingPromotion: null,  // { from, to }
+        hint: null,              // { from, to, capture, piece, promotion, castling } shown on the board
+        hintHandle: null,        // in-flight hint request { promise, cancel }
+        hintToken: 0,            // bumped by clearHint so a late answer drops out
         version: 0,              // bumped whenever the position changes underneath async work
         error: null
     };
@@ -184,18 +204,25 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         else if (st.moving && st.phase === 'check') text = `${sideName(gs().currentPlayer)} is in check!`;
         else if (st.moving) text = st.anim?.capture ? 'Battle in progress...' : `${sideName(st.anim?.color)} is moving...`;
         else if (showOver) text = s.message;
-        else if (thinking()) text = `${sideName(gs().currentPlayer)} (AI ${st.elo}) is thinking...`;
+        else if (thinking()) text = `${sideName(gs().currentPlayer)} (AI ${eloLabel(st.elo)}) is thinking...`;
         else if (st.pendingPromotion) text = 'Choose a promotion piece.';
+        else if (st.hintHandle) text = 'Thinking of a hint...';
+        else if (st.hint) text = hintText(st.hint);
         else text = s.message + (st.mode === 'human-ai' && isHumanTurn() ? ' Your move.' : '');
         el.statusText.textContent = text;
         el.statusText.title = text;
         el.turnDot.className = `turn-dot ${st.moving && st.phase === 'move' ? st.anim?.color : gs().currentPlayer}`;
-        el.statusLine.classList.toggle('thinking', !st.moving && !s.over && thinking());
+        el.statusLine.classList.toggle('thinking', !st.moving && !s.over && (thinking() || !!st.hintHandle));
         el.statusLine.classList.toggle('check', showCheck);
         el.statusLine.classList.toggle('over', showOver);
 
         el.undo.disabled = st.moving || st.pendingPromotion !== null || undoPlies() === 0;
         el.skip.disabled = !st.moving;
+        if (el.hint) {
+            el.hint.disabled = !canHint();
+            el.hint.classList.toggle('busy', !!st.hintHandle);
+            el.hint.setAttribute('aria-busy', String(!!st.hintHandle));
+        }
         el.sideW.disabled = el.sideB.disabled = st.mode === 'ai-ai';
         el.sideLabel.textContent = st.mode === 'human-human' ? 'View from' : 'Play as';
         el.eloRow.classList.toggle('disabled', st.mode === 'human-human');
@@ -203,7 +230,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         setSeg(el.sideW, el.sideB, st.humanColor === 'w');
         setSeg(el.speedFull, el.speedFast, st.speed === 'full');
         el.mode.value = st.mode;
-        el.eloValue.textContent = st.elo;
+        el.eloValue.textContent = eloLabel(st.elo);
         el.labels.checked = st.labels;
         if (el.mute) {
             el.mute.setAttribute('aria-pressed', String(st.muted));
@@ -318,6 +345,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             return false;
         }
         ev.isAI = isAI;
+        clearHint();
         log('move', ev.notation, ev);
         const version = ++st.version;
         st.moving = true;
@@ -453,7 +481,10 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             else if (piece) sfx('invalid', { row, col });
             clearSelection();
         }
+        // A click on the board cancels a hint still being computed; a shown hint stays only while its piece is selected
+        if (st.hintHandle || (st.hint && !(st.selected && st.selected.row === st.hint.from.row && st.selected.col === st.hint.from.col))) clearHint();
         refreshHighlights();
+        updateHud();
     }
 
     function onSquareHover(row, col) {
@@ -496,10 +527,89 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         updateHud();
     }
 
+    // --- Hint ---
+    const canHint = () => !st.moving && !thinking() && !st.hintHandle && !st.pendingPromotion &&
+        !gs().isGameOver && st.mode !== 'ai-ai' && isHumanTurn();
+
+    function hintText(h) {
+        if (h.castling) return `Hint: castle ${h.to.col > h.from.col ? 'kingside' : 'queenside'}.`;
+        let text = `Hint: ${PIECE_NAMES[h.piece.toLowerCase()]} to ${squareName(h.to)}`;
+        if (h.capture) text += ', capture';
+        if (h.promotion) text += `, promote to ${PIECE_NAMES[h.promotion.toLowerCase()]}`;
+        return text + '.';
+    }
+
+    // Asks the AI for the best move at full strength and shows it; the player still makes the move.
+    async function requestHint() {
+        if (!canHint()) return;
+        const token = ++st.hintToken;
+        const version = st.version;
+        let handle;
+        try {
+            handle = g.requestAIMove(g.getCurrentGameStateSnapshot(), HINT_ELO, { hint: true });
+        } catch (error) {
+            console.error('battle3d: hint request failed to start', error);
+            return;
+        }
+        st.hintHandle = handle;
+        updateHud();
+        let move = null;
+        try { move = await handle.promise; } catch (error) { console.error('battle3d: hint failed', error); }
+        if (token !== st.hintToken || st.hintHandle !== handle) return; // cleared or superseded
+        st.hintHandle = null;
+        if (version !== st.version || !move?.from || !move?.to) {
+            updateHud();
+            return;
+        }
+        const piece = g.getPieceAt(move.from.row, move.from.col);
+        if (!piece) { updateHud(); return; }
+        const legal = g.generateLegalMoves(move.from.row, move.from.col);
+        const target = legal.find(m => m.row === move.to.row && m.col === move.to.col);
+        if (!target) { updateHud(); return; }
+        st.hint = {
+            from: { row: move.from.row, col: move.from.col },
+            to: { row: move.to.row, col: move.to.col },
+            capture: !!g.getPieceAt(move.to.row, move.to.col) || !!target.isEnPassant,
+            piece,
+            promotion: target.isPromotion ? (move.promotionPiece || 'Q') : null,
+            castling: !!target.isCastling
+        };
+        // Pre-select the suggested unit so one click on the target plays it
+        st.selected = { ...st.hint.from };
+        st.moves = legal;
+        st.cursor = null;
+        try { sceneAPI.setHint?.({ from: st.hint.from, to: st.hint.to, capture: st.hint.capture }); } catch (e) { log('setHint failed', e); }
+        if (typeof units.playHint === 'function') {
+            // The gesture plays its own soft select sound
+            const from = st.hint.from;
+            Promise.resolve().then(() => units.playHint(from)).catch(e => log('playHint failed', e));
+        } else {
+            sfx('select', st.hint.from);
+        }
+        refreshHighlights();
+        updateHud();
+        announce(hintText(st.hint));
+    }
+
+    // Removes the shown hint and cancels a running hint request
+    function clearHint() {
+        st.hintToken++;
+        if (st.hintHandle) {
+            const handle = st.hintHandle;
+            st.hintHandle = null;
+            try { handle.cancel(); } catch (e) { /* ignore */ }
+        }
+        if (st.hint) {
+            st.hint = null;
+            try { sceneAPI.setHint?.(null); } catch (e) { log('setHint failed', e); }
+        }
+    }
+
     // --- Commands ---
     // Stops anything in flight and invalidates pending async continuations.
     function abortInFlight() {
         clearRings(); // before units are skipped and resynced
+        clearHint();
         cancelAI();
         closePromotion();
         st.version++; // stale scene-clock waits still resolve, their continuations see the new version
@@ -554,6 +664,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
 
     function setMode(mode) {
         if (!MODES.includes(mode)) return;
+        clearHint();
         cancelAI();
         closePromotion();
         st.mode = mode;
@@ -570,6 +681,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
 
     function setHumanColor(color) {
         if (st.mode === 'ai-ai' || color === st.humanColor) return;
+        clearHint();
         cancelAI();
         closePromotion();
         st.humanColor = color;
@@ -596,7 +708,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     function setElo(elo) {
-        st.elo = Math.max(300, Math.min(2500, Math.round(Number(elo) || 1200)));
+        st.elo = clampElo(elo);
         persist();
         updateHud();
     }
@@ -651,12 +763,15 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             if (st.pendingPromotion) cancelPromotion();
             else if (!modalOpen) {
                 if (st.selected) sfx('deselect', st.selected);
-                clearSelection(); st.cursor = null; refreshHighlights();
+                clearSelection(); st.cursor = null; clearHint(); refreshHighlights(); updateHud();
             }
             return;
         }
         if (modalOpen || typing) return;
-        if (event.code === 'Space' && !onControl) {
+        if ((event.key === 'h' || event.key === 'H') && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault();
+            requestHint();
+        } else if (event.code === 'Space' && !onControl) {
             event.preventDefault();
             skip();
         } else if (KEY_STEPS[event.key] && !onControl) {
@@ -685,6 +800,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     el.newGame.addEventListener('click', newGame);
     el.undo.addEventListener('click', undo);
     el.skip.addEventListener('click', skip);
+    el.hint?.addEventListener('click', requestHint);
     el.promo.querySelectorAll('button[data-piece]').forEach(button =>
         button.addEventListener('click', () => choosePromotion(button.dataset.piece)));
     el.promoCancel.addEventListener('click', cancelPromotion);
@@ -703,7 +819,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     const saved = loadSettings();
     if (MODES.includes(saved.mode)) st.mode = saved.mode;
     if (saved.humanColor === 'w' || saved.humanColor === 'b') st.humanColor = saved.humanColor;
-    if (Number.isFinite(saved.elo)) st.elo = Math.max(300, Math.min(2500, Math.round(saved.elo)));
+    if (Number.isFinite(saved.elo)) st.elo = clampElo(saved.elo); // older saves may lie outside a new range
     if (saved.speed === 'full' || saved.speed === 'fast') st.speed = saved.speed;
     else if (st.mode === 'ai-ai') st.speed = 'fast';
     if (typeof saved.labels === 'boolean') st.labels = saved.labels;
@@ -736,12 +852,15 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             elo: st.elo,
             cursor: st.cursor,
             selected: st.selected,
-            pendingPromotion: st.pendingPromotion
+            pendingPromotion: st.pendingPromotion,
+            hint: st.hint ? { from: st.hint.from, to: st.hint.to, capture: st.hint.capture } : null,
+            hintPending: !!st.hintHandle
         };
     }
 
     return {
         newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
+        hint: requestHint, clearHint,
         viewSide,
         clickSquare: onSquareClick,
         // Cast changes rebuild every unit: drop rings before setCast, refresh() reapplies them after

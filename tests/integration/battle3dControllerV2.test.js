@@ -66,7 +66,8 @@ describe('battle3d controller v2: settings', () => {
             const s = C.state();
             assert.equal(s.mode, 'human-ai');
             assert.equal(s.humanColor, 'w');
-            assert.ok(s.elo >= 300 && s.elo <= 2500, `elo ${s.elo}`);
+            const sl = C.button('elo-slider');
+            assert.ok(s.elo >= +sl.min && s.elo <= +sl.max, `elo ${s.elo}`);
             assert.equal(s.speed, 'full');
             assert.equal(s.labels, true);
             assert.equal(s.muted, false);
@@ -84,6 +85,38 @@ describe('battle3d controller v2: settings', () => {
         C.button('speed-fast').click();
         assert.equal(C.state().speed, 'fast');
         assert.deepEqual(C.errors, []);
+    }));
+});
+
+describe('battle3d controller: ELO slider range (markup-driven)', () => {
+    const range = (C) => { const e = C.button('elo-slider'); return { min: +e.min, max: +e.max, step: +e.step || 100 }; };
+
+    for (const [name, stored] of [['above max', 99999], ['below min', 1], ['off-step', 1234], ['old max 2500', 2500], ['old min 300', 300]]) {
+        test(`stored elo ${name} (${stored}) is clamped and snapped into the slider range`, withCtl({ setup: seed({ elo: stored }) }, async (C) => {
+            const { min, max, step } = range(C);
+            const e = C.state().elo;
+            assert.ok(e >= min && e <= max, `${e} in [${min}, ${max}]`);
+            assert.equal((e - min) % step, 0, `${e} on a ${step} step`);
+            assert.equal(String(C.button('elo-slider').value), String(e));
+            if (stored >= max) assert.equal(e, max);
+            if (stored <= min) assert.equal(e, min);
+        }));
+    }
+
+    test('the top value is labelled "Max" in the HUD and the thinking status; others show the number', withCtl(async (C) => {
+        const { max } = range(C);
+        const elo = C.button('elo-slider');
+        elo.value = String(max);
+        elo.dispatchEvent(new C.w.Event('input'));
+        assert.equal(C.state().elo, max);
+        assert.equal(C.button('elo-value').textContent, 'Max');
+        await C.play('e2e4');
+        await C.step(0.3);
+        assert.match(C.status(), /Max/, 'thinking status shows Max');
+        assert.equal(C.aiCalls().slice(-1)[0].elo, max, 'the engine still gets the number');
+        elo.value = String(max - 2 * (+elo.step || 100));
+        elo.dispatchEvent(new C.w.Event('input'));
+        assert.equal(C.button('elo-value').textContent, String(max - 2 * (+elo.step || 100)));
     }));
 });
 

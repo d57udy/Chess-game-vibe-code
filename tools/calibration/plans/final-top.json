@@ -1,0 +1,17 @@
+{
+  "comment": "Final pass, top level (1.2M nodes): fewer games per pair, it also reuses the identical p:2900 path row.",
+  "engines": {
+    "f": "tools/calibration/out/snap-v5d:tools/calibration/tables/final.json"
+  },
+  "out": "tools/calibration/out/final-top",
+  "games": 40,
+  "seed": 4,
+  "pairs": [
+    "f:2200,f:2300",
+    "f:2100,f:2300",
+    "f:2100,sf:2300",
+    "f:2200,sf:2300",
+    "f:2300,sf:2500",
+    "f:2300,sf:2700"
+  ]
+}

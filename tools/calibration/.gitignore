@@ -1,0 +1,3 @@
+# Offline-only third-party tools (Stockfish is GPL; never commit it) and bulky match output.
+.vendor/
+out/

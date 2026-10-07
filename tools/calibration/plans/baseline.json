@@ -1,0 +1,17 @@
+{
+  "comment": "Baseline: the slider table as of commit 0187e9a (time-based search). Ladder between adjacent levels plus Stockfish anchors near each level.",
+  "engines": { "base": "0187e9a" },
+  "out": "tools/calibration/out/baseline",
+  "games": 16,
+  "pairs": [
+    "base:300,base:700", "base:300,sf:1320",
+    "base:700,base:1000", "base:700,sf:1320",
+    "base:1000,base:1300", "base:1000,sf:1320",
+    "base:1300,base:1600", "base:1300,sf:1320", "base:1300,sf:1700",
+    "base:1600,base:1900", "base:1600,sf:1320", "base:1600,sf:1700", "base:1600,sf:2100",
+    "base:1900,base:2100", "base:1900,sf:1700", "base:1900,sf:2100", "base:1900,sf:2500",
+    "base:2100,base:2300", "base:2100,sf:1700", "base:2100,sf:2100", "base:2100,sf:2500",
+    "base:2300,base:2500", "base:2300,sf:2100", "base:2300,sf:2500",
+    "base:2500,sf:2100", "base:2500,sf:2500", "base:2500,sf:2900"
+  ]
+}

@@ -65,7 +65,7 @@
             </div>
             <div class="row" id="elo-row">
                 <label for="elo-slider">AI strength (ELO) <output id="elo-value" for="elo-slider">1200</output></label>
-                <input id="elo-slider" type="range" min="300" max="2500" step="100" value="1200">
+                <input id="elo-slider" type="range" min="400" max="2400" step="100" value="1200">
             </div>
             <div class="row">
                 <span class="label" id="side-label">Play as</span>
@@ -95,6 +95,7 @@
             <div class="row buttons">
                 <button type="button" id="new-game" class="btn primary">New game</button>
                 <button type="button" id="undo" class="btn">Undo</button>
+                <button type="button" id="hint" class="btn" title="Suggest a move (H)" aria-keyshortcuts="h"><span class="spinner" aria-hidden="true"></span>Hint <kbd>H</kbd></button>
                 <button type="button" id="skip" class="btn" title="Skip the current animation (Space)">Skip <kbd>Space</kbd></button>
             </div>
             <details id="legend-details" class="moves">
@@ -115,7 +116,8 @@
                     <li>Touch: 1 finger drag rotates. 2 fingers zoom, move and turn the view. Double-tap zooms to that spot, double-tap again zooms back out.</li>
                     <li>Mouse: drag rotates, right-drag or Shift+drag moves the view, the wheel zooms.</li>
                     <li>Reset view brings the camera back to your side.</li>
-                    <li>Keyboard: arrow keys move the cursor, <kbd>Enter</kbd> selects or moves, <kbd>Esc</kbd> cancels, <kbd>Space</kbd> skips a fight.</li>
+                    <li>Keyboard: arrow keys move the cursor, <kbd>Enter</kbd> selects or moves, <kbd>Esc</kbd> cancels, <kbd>Space</kbd> skips a fight, <kbd>H</kbd> asks for a hint.</li>
+                    <li>Hint (on your turn): the AI suggests a move; the piece is pre-selected with an arrow to the square. Click the square to play it, or ignore it.</li>
                 </ul>
             </details>
             <section class="menu-section" aria-labelledby="install-heading">

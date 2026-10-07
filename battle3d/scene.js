@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildWorld, FRAME_OUTER } from './scene-world.js';
-import { createFx } from './scene-fx.js';
+import { createFx, createHint } from './scene-fx.js';
 import { highlightTexture } from './scene-textures.js';
 import { createRig } from './scene-rig.js';
 import { createCinematic } from './cinematic.js';
@@ -99,6 +99,7 @@ export async function createScene(container, { debug = false, renderer: injected
   // near plane small enough that close fight shots never clip (shots keep >= 1.5 units from units)
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
   const fx = createFx(scene, { emberPoints: world.emberPoints, camera });
+  const hint = createHint(scene);
 
   // ---- render-on-demand state ----
   const tokens = new Set();
@@ -510,6 +511,13 @@ export async function createScene(container, { debug = false, renderer: injected
     for (let i = ri; i < rings.length; i++) rings[i].visible = false;
     requestRender();
   }
+  // Move hint arrow. It stays through camera moves and view changes; the pulse runs at the idle
+  // frame rate (no keepAlive token), and is static under reduced motion.
+  function setHint(h) {
+    hint.set(h);
+    requestRender();
+  }
+
   function clearHighlights() {
     setHighlights({ selected: null, moves: [], lastMove: null, check: null, hover: null });
   }
@@ -687,6 +695,7 @@ export async function createScene(container, { debug = false, renderer: injected
     world.update(dt, time);
     fx.update(dt);
     updateHighlights(time);
+    hint.update(time, reduceMotion);
     updateTimers(camDt);
     updateCameraTween(camDt);
     rigMoving = !camTween && !scripted ? rig.update(camDt) : false;
@@ -770,6 +779,7 @@ export async function createScene(container, { debug = false, renderer: injected
       mode,
       activeTokens: [...tokens],
       fxAlive: fx.alive(),
+      hint: hint.get(),
       camera: { position: camera.position.toArray(), target: v.target.toArray(), scripted, tweening: !!camTween },
       timeScale,
       slowFactor,
@@ -821,6 +831,8 @@ export async function createScene(container, { debug = false, renderer: injected
     pickAt, // extension: (clientX, clientY) -> { row, col } | null
     setHighlights,
     clearHighlights, // extension
+    setHint,
+    getHint: () => hint.get(), // extension (tests)
     setView,
     getViewSide: () => viewSide, // extension
     resetView,

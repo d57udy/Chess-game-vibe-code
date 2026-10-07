@@ -67,6 +67,11 @@ function uiLog(...args) {
     if (typeof debugLog === 'function') debugLog(...args);
 }
 
+// The slider's max is the engine's real top strength and is shown as "Max"
+function eloLabel(elo) {
+    return elo >= (parseInt(aiEloSlider.max, 10) || Infinity) ? 'Max' : String(elo);
+}
+
 function sideName(player) {
     return player === 'w' ? 'White' : 'Black';
 }
@@ -146,7 +151,7 @@ function updateGameModeDisplay() {
         aiSettingsDiv.style.display = 'block';
         playerColorIndicator.style.display = 'block';
     } else if (gameMode === 'ai-ai') {
-        modeText = `Mode: AI vs AI (ELO: ${aiElo})`;
+        modeText = `Mode: AI vs AI (ELO: ${eloLabel(aiElo)})`;
         aiSettingsDiv.style.display = 'block';
         playerColorIndicator.style.display = 'none';
     } else {
@@ -764,7 +769,7 @@ function updateStatusDisplay() {
     const locked = isInputLocked();
     let text;
     if (isGameOver) text = gameStatusMessage;
-    else if (isAIThinking) text = `AI (ELO: ${aiElo}) is thinking...`;
+    else if (isAIThinking) text = `AI (ELO: ${eloLabel(aiElo)}) is thinking...`;
     else if (hintRequest) text = "Thinking of a hint...";
     else if (hintMessage) text = hintMessage;
     else text = gameStatusMessage || `${sideName(currentPlayer)}'s turn.`;
@@ -993,7 +998,7 @@ function handleGameModeChange() {
 
 function handleEloChange() {
     aiElo = parseInt(aiEloSlider.value, 10);
-    aiEloValueSpan.textContent = aiElo;
+    aiEloValueSpan.textContent = eloLabel(aiElo);
     if (isAIThinking) {
         cancelAIRequest(); // Restart the pending AI move at the new strength
     }
@@ -1063,7 +1068,7 @@ function setupEventListeners() {
 
     gameModeSelect.addEventListener('change', handleGameModeChange);
     aiEloSlider.addEventListener('input', () => {
-        aiEloValueSpan.textContent = aiEloSlider.value; // Label only; applied on 'change'
+        aiEloValueSpan.textContent = eloLabel(parseInt(aiEloSlider.value, 10)); // Label only; applied on 'change'
     });
     aiEloSlider.addEventListener('change', handleEloChange);
     document.addEventListener('keydown', handleKeyDown);
@@ -1071,7 +1076,7 @@ function setupEventListeners() {
     // Sync state with the initial control values
     gameMode = gameModeSelect.value;
     aiElo = parseInt(aiEloSlider.value, 10);
-    aiEloValueSpan.textContent = aiElo;
+    aiEloValueSpan.textContent = eloLabel(aiElo);
     syncBattleModeSelect();
 }
 

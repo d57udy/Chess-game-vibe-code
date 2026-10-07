@@ -1,0 +1,133 @@
+{
+ "generated": "2026-10-06T20:11:53.290Z",
+ "sfDepthRule": "1 + int(skillLevel(UCI_Elo))",
+ "puzzles": 2661,
+ "summary": [
+  {
+   "player": "maia-1100",
+   "n": 2661,
+   "solved": 0.374,
+   "puzzleRating": 1331,
+   "ci90": [
+    1303,
+    1359
+   ],
+   "freeFit": {
+    "R": 1282,
+    "scale": 995
+   }
+  },
+  {
+   "player": "maia-1200",
+   "n": 2661,
+   "solved": 0.377,
+   "puzzleRating": 1338,
+   "ci90": [
+    1310,
+    1365
+   ],
+   "freeFit": {
+    "R": 1294,
+    "scale": 975
+   }
+  },
+  {
+   "player": "maia-1300",
+   "n": 2661,
+   "solved": 0.379,
+   "puzzleRating": 1343,
+   "ci90": [
+    1315,
+    1372
+   ],
+   "freeFit": {
+    "R": 1290,
+    "scale": 1047
+   }
+  },
+  {
+   "player": "maia-1400",
+   "n": 2661,
+   "solved": 0.386,
+   "puzzleRating": 1359,
+   "ci90": [
+    1328,
+    1391
+   ],
+   "freeFit": {
+    "R": 1312,
+    "scale": 1031
+   }
+  },
+  {
+   "player": "maia-1500",
+   "n": 2661,
+   "solved": 0.387,
+   "puzzleRating": 1360,
+   "ci90": [
+    1334,
+    1391
+   ],
+   "freeFit": {
+    "R": 1311,
+    "scale": 1042
+   }
+  },
+  {
+   "player": "maia-1600",
+   "n": 2661,
+   "solved": 0.387,
+   "puzzleRating": 1361,
+   "ci90": [
+    1331,
+    1389
+   ],
+   "freeFit": {
+    "R": 1308,
+    "scale": 1076
+   }
+  },
+  {
+   "player": "maia-1700",
+   "n": 2661,
+   "solved": 0.396,
+   "puzzleRating": 1381,
+   "ci90": [
+    1344,
+    1415
+   ],
+   "freeFit": {
+    "R": 1323,
+    "scale": 1156
+   }
+  },
+  {
+   "player": "maia-1800",
+   "n": 2661,
+   "solved": 0.381,
+   "puzzleRating": 1347,
+   "ci90": [
+    1311,
+    1380
+   ],
+   "freeFit": {
+    "R": 1273,
+    "scale": 1202
+   }
+  },
+  {
+   "player": "maia-1900",
+   "n": 2661,
+   "solved": 0.386,
+   "puzzleRating": 1358,
+   "ci90": [
+    1324,
+    1390
+   ],
+   "freeFit": {
+    "R": 1285,
+    "scale": 1219
+   }
+  }
+ ]
+}

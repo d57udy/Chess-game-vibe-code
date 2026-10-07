@@ -1,0 +1,10 @@
+{
+  "comment": "Human anchor: Maia (lc0, 1 node, as the Lichess bots maia1/maia5/maia9 play) vs Stockfish UCI_Elo. Gives the engine Elo of players with known Lichess rapid ratings.",
+  "out": "tools/calibration/out/maia-anchor",
+  "games": 64,
+  "pairs": [
+    "maia:1100,sf:1320", "maia:1100,sf:1500", "maia:1100,sf:1700", "maia:1100,sf:1900",
+    "maia:1500,sf:1320", "maia:1500,sf:1500", "maia:1500,sf:1700", "maia:1500,sf:1900",
+    "maia:1900,sf:1320", "maia:1900,sf:1500", "maia:1900,sf:1700", "maia:1900,sf:1900"
+  ]
+}

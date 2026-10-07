@@ -10,7 +10,7 @@
 //   Google Fonts              stale-while-revalidate
 // Query strings on same-origin URLs (?debug=1, ?v=12, ?nosw=1) are ignored for cache keys, so debug or
 // cache-busting links never create duplicate entries.
-const VERSION = '4.0.0';
+const VERSION = '5.0.0';
 const PREFIX = 'chess3d-';
 const SHELL = `${PREFIX}shell-${VERSION}`;
 const RUNTIME = `${PREFIX}runtime-${VERSION}`;

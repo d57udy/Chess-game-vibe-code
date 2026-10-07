@@ -365,12 +365,26 @@ describe('AI orchestration (stubbed engine)', () => {
         assert.equal(s.disabled, true, 'slider disabled without an AI');
     }));
 
+    test('ELO label: the slider maximum reads "Max" (value label, AI vs AI mode text, thinking status)', withDom(async (D) => {
+        const slider = D.el('ai-elo-slider');
+        const max = Number(slider.max);
+        D.setElo(max);
+        assert.equal(D.el('ai-elo-value').textContent, 'Max');
+        D.setMode('ai-ai');
+        assert.match(D.doc.body.textContent, /AI vs AI \(ELO: Max\)/);
+        await D.waitFor(() => D.aiCalls().length > 0, { message: 'AI request' });
+        assert.match(D.status(), /ELO: Max\) is thinking/);
+        assert.equal(D.aiCalls().slice(-1)[0].elo, max, 'engine receives the number');
+        D.setElo(max - 200);
+        assert.equal(D.el('ai-elo-value').textContent, String(max - 200));
+    }));
+
     test('hint: requested at max strength with a time budget, highlighted, then cleared', withDom(async (D) => {
         D.el('hint-button').click();
         const calls = D.aiCalls();
         assert.equal(calls.length, 1);
         assert.equal(calls[0].options.timeMs, 1500);
-        assert.equal(calls[0].elo, 2500);
+        assert.equal(calls[0].elo, Number(D.el('ai-elo-slider').max), 'hint at the slider maximum');
         assert.equal(D.el('hint-button').disabled, true);
         assert.equal(D.status(), 'Thinking of a hint...');
         calls[0].resolve(move({ row: 6, col: 4 }, { row: 4, col: 4 }, { piece: 'P' }));

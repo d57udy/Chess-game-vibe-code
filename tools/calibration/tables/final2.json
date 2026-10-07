@@ -1,0 +1,23 @@
+[
+ { "elo": 400, "nodeBudget": 820, "maxDepth": 1, "qsDepth": 0, "noiseCp": 244, "blunderChance": 0.783, "blindDepth": 0, "missCaptureChance": 0.441, "missQuietChance": 0.737, "naturalCp": 69 },
+ { "elo": 500, "nodeBudget": 1000, "maxDepth": 1, "qsDepth": 0.03, "noiseCp": 170, "blunderChance": 0.569, "blindDepth": 0, "missCaptureChance": 0.333, "missQuietChance": 0.574, "naturalCp": 58 },
+ { "elo": 600, "nodeBudget": 1200, "maxDepth": 1, "qsDepth": 0.19, "noiseCp": 122, "blunderChance": 0.425, "blindDepth": 0, "missCaptureChance": 0.253, "missQuietChance": 0.454, "naturalCp": 50 },
+ { "elo": 700, "nodeBudget": 1400, "maxDepth": 1, "qsDepth": 0.42, "noiseCp": 76, "blunderChance": 0.295, "blindDepth": 0, "missCaptureChance": 0.176, "missQuietChance": 0.34, "naturalCp": 43 },
+ { "elo": 800, "nodeBudget": 1800, "maxDepth": 1, "qsDepth": 0.63, "noiseCp": 47, "blunderChance": 0.179, "blindDepth": 0, "missCaptureChance": 0.118, "missQuietChance": 0.268, "naturalCp": 37 },
+ { "elo": 900, "nodeBudget": 2200, "maxDepth": 1, "qsDepth": 0.78, "noiseCp": 40, "blunderChance": 0.134, "blindDepth": 0, "missCaptureChance": 0.094, "missQuietChance": 0.236, "naturalCp": 34 },
+ { "elo": 1000, "nodeBudget": 2600, "maxDepth": 1, "qsDepth": 0.9, "noiseCp": 40, "blunderChance": 0.127, "blindDepth": 0, "missCaptureChance": 0.087, "missQuietChance": 0.217, "naturalCp": 32 },
+ { "elo": 1100, "nodeBudget": 3300, "maxDepth": 1.1, "qsDepth": 1, "noiseCp": 38, "blunderChance": 0.114, "blindDepth": 0, "missCaptureChance": 0.075, "missQuietChance": 0.19, "naturalCp": 29 },
+ { "elo": 1200, "nodeBudget": 4600, "maxDepth": 1.45, "qsDepth": 1, "noiseCp": 33, "blunderChance": 0.093, "blindDepth": 0, "missCaptureChance": 0.058, "missQuietChance": 0.155, "naturalCp": 26 },
+ { "elo": 1300, "nodeBudget": 5200, "maxDepth": 1.55, "qsDepth": 1, "noiseCp": 32, "blunderChance": 0.087, "blindDepth": 1, "missCaptureChance": 0.052, "missQuietChance": 0.145, "naturalCp": 24 },
+ { "elo": 1400, "nodeBudget": 6600, "maxDepth": 1.81, "qsDepth": 1, "noiseCp": 28, "blunderChance": 0.071, "blindDepth": 1, "missCaptureChance": 0.039, "missQuietChance": 0.119, "naturalCp": 22 },
+ { "elo": 1500, "nodeBudget": 9000, "maxDepth": 2.13, "qsDepth": 1.25, "noiseCp": 24, "blunderChance": 0.056, "blindDepth": 1, "missCaptureChance": 0.027, "missQuietChance": 0.092, "naturalCp": 19 },
+ { "elo": 1600, "nodeBudget": 12000, "maxDepth": 2.48, "qsDepth": 1.96, "noiseCp": 20, "blunderChance": 0.046, "blindDepth": 1, "missCaptureChance": 0.02, "missQuietChance": 0.071, "naturalCp": 15 },
+ { "elo": 1700, "nodeBudget": 19000, "maxDepth": 2.94, "qsDepth": 2.88, "noiseCp": 16, "blunderChance": 0.032, "blindDepth": 1, "missCaptureChance": 0.011, "missQuietChance": 0.044, "naturalCp": 11 },
+ { "elo": 1800, "nodeBudget": 27000, "maxDepth": 3.71, "qsDepth": 25.72, "noiseCp": 13, "blunderChance": 0.025, "blindDepth": 1, "missCaptureChance": 0.008, "missQuietChance": 0.031, "naturalCp": 9 },
+ { "elo": 1900, "nodeBudget": 38000, "maxDepth": 4.57, "qsDepth": 53.18, "noiseCp": 11, "blunderChance": 0.02, "blindDepth": 2, "missCaptureChance": 0.005, "missQuietChance": 0.019, "naturalCp": 7 },
+ { "elo": 2000, "nodeBudget": 57000, "maxDepth": 5.51, "qsDepth": 83.16, "noiseCp": 9, "blunderChance": 0.013, "blindDepth": 2, "missCaptureChance": 0.002, "missQuietChance": 0.007, "naturalCp": 6 },
+ { "elo": 2100, "nodeBudget": 83000, "maxDepth": 6.64, "qsDepth": 99, "noiseCp": 7, "blunderChance": 0.007, "blindDepth": 2, "missCaptureChance": 0, "missQuietChance": 0, "naturalCp": 3 },
+ { "elo": 2200, "nodeBudget": 130000, "maxDepth": 8.55, "qsDepth": 99, "noiseCp": 3, "blunderChance": 0, "blindDepth": 2, "missCaptureChance": 0, "missQuietChance": 0, "naturalCp": 0 },
+ { "elo": 2300, "nodeBudget": 290000, "maxDepth": 64, "qsDepth": 99, "noiseCp": 0, "blunderChance": 0, "blindDepth": 2, "missCaptureChance": 0, "missQuietChance": 0, "naturalCp": 0 },
+ { "elo": 2400, "nodeBudget": 1200000, "maxDepth": 64, "qsDepth": 99, "noiseCp": 0, "blunderChance": 0, "blindDepth": 2, "missCaptureChance": 0, "missQuietChance": 0, "naturalCp": 0 }
+]

@@ -1,0 +1,15 @@
+{
+  "comment": "v5 engine with qsDepth/missQuietChance, its default table (snapshot out/snap-v5b).",
+  "engines": { "v5b": "tools/calibration/out/snap-v5b" },
+  "out": "tools/calibration/out/v5b-default",
+  "games": 24,
+  "pairs": [
+    "v5b:300,v5b:500", "v5b:500,v5b:700", "v5b:700,v5b:900", "v5b:900,v5b:1100", "v5b:1100,v5b:1300", "v5b:1300,v5b:1500",
+    "v5b:1500,v5b:1700", "v5b:1700,v5b:1900", "v5b:1900,v5b:2100", "v5b:2100,v5b:2300", "v5b:2300,v5b:2500",
+    "v5b:300,v5b:700", "v5b:700,v5b:1100", "v5b:1100,v5b:1500", "v5b:1500,v5b:1900",
+    "v5b:900,sf:1320", "v5b:1100,sf:1320", "v5b:1300,sf:1320", "v5b:1300,sf:1500", "v5b:1500,sf:1500", "v5b:1500,sf:1700",
+    "v5b:1700,sf:1700", "v5b:1700,sf:1900", "v5b:1900,sf:1900", "v5b:1900,sf:2100", "v5b:2100,sf:2100", "v5b:2100,sf:2300",
+    "v5b:2300,sf:2300", "v5b:2300,sf:2500", "v5b:2500,sf:2300", "v5b:2500,sf:2500",
+    "v5b:900,maia:1100", "v5b:1100,maia:1100", "v5b:1300,maia:1100", "v5b:1300,maia:1500", "v5b:1500,maia:1500", "v5b:1500,maia:1900", "v5b:1700,maia:1900"
+  ]
+}
