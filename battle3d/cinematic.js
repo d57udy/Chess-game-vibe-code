@@ -35,7 +35,9 @@ export function createCinematic(ctx) {
   let fade = 0;
   let fadeJob = null;
 
+  let boxed = false;
   function letterbox(on) {
+    boxed = !!on;
     const t = ctx.reducedMotion() ? 'none' : 'transform 0.35s ease';
     barTop.style.transition = barBottom.style.transition = t;
     barTop.style.transform = on ? 'translateY(0)' : 'translateY(-100%)';
@@ -370,6 +372,7 @@ export function createCinematic(ctx) {
     // used by scene.js
     twoShotView, reset, dispose,
     isSlow: () => !!slowJob,
+    isLetterboxed: () => boxed,
     isFading: () => !!fadeJob || fade > 0,
   };
 }

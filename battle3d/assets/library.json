@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "generated": "2026-10-08",
+  "packs": [
+    {
+      "id": "quaternius-rpg",
+      "name": "Quaternius RPG Characters",
+      "author": "Quaternius",
+      "description": "Six fantasy adventurers with their own weapons and animations.",
+      "license": "CC0 1.0 Universal",
+      "path": "packs/quaternius-rpg/pack.json",
+      "thumb": "packs/quaternius-rpg/thumbs/Warrior.webp",
+      "models": 6,
+      "kind": "humanoid",
+      "army": "heroes",
+      "bytes": 1530776
+    },
+    {
+      "id": "quaternius-monsters",
+      "name": "Quaternius Animated Monsters",
+      "author": "Quaternius",
+      "description": "A slime, a bat, a dragon and a skeleton with attacks, deaths and hits.",
+      "license": "CC0 1.0 Universal",
+      "path": "packs/quaternius-monsters/pack.json",
+      "thumb": "packs/quaternius-monsters/thumbs/Slime.webp",
+      "models": 4,
+      "kind": "creature",
+      "army": "monsters",
+      "bytes": 351184
+    },
+    {
+      "id": "quaternius-farm",
+      "name": "Quaternius Farm Animals",
+      "author": "Quaternius",
+      "description": "A horse for mounted knights, plus a whole barnyard army.",
+      "license": "CC0 1.0 Universal",
+      "path": "packs/quaternius-farm/pack.json",
+      "thumb": "packs/quaternius-farm/thumbs/Horse.webp",
+      "models": 7,
+      "kind": "animal",
+      "army": "animals",
+      "bytes": 694828
+    }
+  ]
+}

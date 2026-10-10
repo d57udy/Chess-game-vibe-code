@@ -371,8 +371,43 @@ const ALIASES = {
 };
 const DEFAULT_VARIANT = { step: 'light', whoosh: 'light' };
 
+// Mumbly voice blips for speech bubbles: one short formant-filtered syllable per ~80 ms.
+// hero: warm, low, slightly nasal; skeleton: hollow, higher, with a dry click on each syllable.
+const VOICES = {
+    hero: { base: 150, spread: 40, formants: [[650, 1100], [450, 1800], [350, 2300], [700, 1250]], wave: 'sawtooth', click: 0 },
+    skeleton: { base: 240, spread: 70, formants: [[500, 900], [300, 700], [400, 1500]], wave: 'square', click: 0.18 }
+};
+
+function voiceBlips(c, out, t, { voice = 'hero', syllables = 6 } = {}) {
+    const v = VOICES[voice] || VOICES.hero;
+    const n = clamp(Math.round(syllables) || 1, 1, 24);
+    let at = t;
+    for (let i = 0; i < n; i++) {
+        const dur = 0.05 + Math.random() * 0.04;
+        const [f1, f2] = v.formants[Math.floor(Math.random() * v.formants.length)];
+        // Phrase shape: pitch drifts down towards the end, a small lift on the first syllable
+        const pitch = v.base + (Math.random() - 0.5) * v.spread + (i === 0 ? 20 : 0) - (i / n) * 25;
+        const bp1 = c.createBiquadFilter(); bp1.type = 'bandpass'; bp1.frequency.value = f1; bp1.Q.value = 6;
+        const bp2 = c.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = f2; bp2.Q.value = 8;
+        const mix = c.createGain(); mix.gain.value = 1;
+        bp1.connect(mix); bp2.connect(mix);
+        mix.connect(envelope(c, out, at, 0.5, 0.012, dur));
+        const osc = c.createOscillator();
+        osc.type = v.wave;
+        osc.frequency.setValueAtTime(pitch, at);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(40, pitch * (0.92 + Math.random() * 0.12)), at + dur);
+        osc.connect(bp1); osc.connect(bp2);
+        osc.start(at);
+        osc.stop(at + dur + 0.05);
+        if (v.click) burst(c, out, at, { type: 'bandpass', f: 2200 + Math.random() * 1200, q: 4, dur: 0.01, peak: v.click });
+        at += dur + 0.02 + Math.random() * 0.03;
+        if (Math.random() < 0.12) at += 0.06; // a little pause between "words"
+    }
+    return at - t;
+}
+
 export const SOUND_BANK = Object.keys(BANK).map(key => ({ key, bus: BANK[key].bus, count: BANK[key].count, length: BANK[key].len }));
-export const SOUND_NAMES = [...new Set([...Object.keys(BANK).map(k => k.split(':')[0]), ...Object.keys(ALIASES)])];
+export const SOUND_NAMES = [...new Set([...Object.keys(BANK).map(k => k.split(':')[0]), ...Object.keys(ALIASES), 'blip'])];
 
 // Runs a recipe into dest through its balance gain
 function runRecipe(c, def, dest, t, rng) {
@@ -540,8 +575,9 @@ export function createAudio({ muted = false, ambience = true } = {}) {
         return { pan: Number.isFinite(pan) ? pan : 0, gain: Number.isFinite(gain) ? gain : 1 };
     }
 
-    function play(name, { volume = 1, rate = 1, pos = null, variant = null, index = null, pan = null } = {}) {
+    function play(name, { volume = 1, rate = 1, pos = null, variant = null, index = null, pan = null, voice, syllables } = {}) {
         if (mutedFlag || hidden || !ctx || ctx.state !== 'running' || voices.size >= MAX_VOICES) return;
+        if (name === 'blip') { playBlips({ volume, pos, pan, voice, syllables }); return; }
         const key = resolveKey(name, variant);
         if (!key) return;
         const def = BANK[key];
@@ -566,7 +602,7 @@ export function createAudio({ muted = false, ambience = true } = {}) {
 
         const fightBus = def.bus === 'fight';
         const baseRate = rate * (1 + (Math.random() * 2 - 1) * JITTER);
-        const voice = { out, head, fight: fightBus, baseRate, src: null };
+        const entry = { out, head, fight: fightBus, baseRate, src: null };
         let length;
         try {
             const list = rendered.get(key);
@@ -579,7 +615,7 @@ export function createAudio({ muted = false, ambience = true } = {}) {
                 src.playbackRate.value = baseRate * (fightBus ? slowRate : 1);
                 src.connect(out);
                 src.start(t);
-                voice.src = src;
+                entry.src = src;
                 length = list[i].duration / (baseRate * (fightBus ? slowRate : 1));
             } else {
                 // Live fallback (not rendered yet, or no OfflineAudioContext): run the recipe directly.
@@ -592,13 +628,37 @@ export function createAudio({ muted = false, ambience = true } = {}) {
             out.disconnect?.();
             return;
         }
-        voices.add(voice);
+        voices.add(entry);
         const finish = () => {
-            if (!voices.delete(voice)) return;
-            try { voice.out.disconnect(); voice.head.disconnect?.(); } catch (e) { /* ignore */ }
+            if (!voices.delete(entry)) return;
+            try { entry.out.disconnect(); entry.head.disconnect?.(); } catch (e) { /* ignore */ }
         };
-        if (voice.src && 'onended' in voice.src) voice.src.onended = finish;
+        if (entry.src && 'onended' in entry.src) entry.src.onended = finish;
         setTimeout(finish, (length + 0.3) * 1000)?.unref?.();
+    }
+
+    // Speech blips are live (parameterised by syllable count), on the ui bus, positioned like other sounds
+    function playBlips({ volume, pos, pan, voice, syllables }) {
+        const where = spatial(pos);
+        const out = ctx.createGain();
+        out.gain.value = (Number.isFinite(volume) ? clamp(volume, 0, 2) : 1) * where.gain * 0.5;
+        let head = out;
+        const panValue = Number.isFinite(pan) ? clamp(pan, -1, 1) : where.pan;
+        if (panValue && typeof ctx.createStereoPanner === 'function') {
+            const panner = ctx.createStereoPanner();
+            panner.pan.value = panValue;
+            out.connect(panner);
+            head = panner;
+        }
+        head.connect(buses.ui || master);
+        const voiceEntry = { out, head, fight: false, baseRate: 1, src: null };
+        let length = 1;
+        try { length = voiceBlips(ctx, out, ctx.currentTime + 0.01, { voice, syllables }); } catch (e) { out.disconnect?.(); return; }
+        voices.add(voiceEntry);
+        setTimeout(() => {
+            if (!voices.delete(voiceEntry)) return;
+            try { out.disconnect(); head.disconnect?.(); } catch (e) { /* ignore */ }
+        }, (length + 0.3) * 1000)?.unref?.();
     }
 
     function stopAll() {
@@ -700,7 +760,7 @@ export function createAudio({ muted = false, ambience = true } = {}) {
 
     return {
         play, unlock, setMuted, setSlowMo, setAmbience,
-        has: (name, variant) => resolveKey(name, variant) !== null,
+        has: (name, variant) => name === 'blip' || resolveKey(name, variant) !== null,
         isMuted: () => mutedFlag,
         isAmbience: () => ambienceOn,
         isReady: () => ready,

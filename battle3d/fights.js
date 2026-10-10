@@ -496,7 +496,7 @@ export function createFights(k) {
         const dist = k.flatDist(start, vPos);
         const dir = v3().subVectors(vPos, start).setY(0).normalize();
         const ranged = A.type === 'b';
-        const standoff = ranged ? dist : Math.min(APPROACH, dist);
+        const standoff = ranged ? dist : Math.min(k.reach ? k.reach(A, V) : APPROACH, dist);
         const approach = vPos.clone().addScaledVector(dir, -standoff);
         const p = full ? plan(A, V) : { name: 'fast', clash: [], finisher: null };
 

@@ -129,13 +129,15 @@ const keysOf = (W, name) => [...(W.stores.get(name) || new Map()).keys()];
 const scoped = (p) => new URL(p, SCOPE).href;
 
 // --- module graph of the app (what the browser will request) ------------------------------------------
+// Static imports must resolve; dynamic import('./x.js') targets are optional modules (the code
+// catches a failed import), so a not-yet-written one is skipped rather than failing the walk.
 function importsOf(file) {
     const code = fs.readFileSync(file, 'utf8');
-    const out = new Set();
-    for (const m of code.matchAll(/(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]/g)) out.add(m[1]);
-    for (const m of code.matchAll(/(?:^|[\s;])import\s*['"]([^'"]+)['"]/g)) out.add(m[1]);
-    for (const m of code.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g)) out.add(m[1]);
-    return [...out];
+    const out = new Map();
+    for (const m of code.matchAll(/(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]/g)) out.set(m[1], false);
+    for (const m of code.matchAll(/(?:^|[\s;])import\s*['"]([^'"]+)['"]/g)) out.set(m[1], false);
+    for (const m of code.matchAll(/import\(\s*['"]([^'"]+)['"]\s*\)/g)) if (!out.has(m[1])) out.set(m[1], true);
+    return [...out].map(([spec, dynamic]) => ({ spec, dynamic }));
 }
 // Resolves import-map specifiers to CDN URLs and walks local + three modules.
 function moduleGraph() {
@@ -147,13 +149,16 @@ function moduleGraph() {
         for (const [k, v] of Object.entries(map)) if (k.endsWith('/') && spec.startsWith(k)) return v + spec.slice(k.length);
         return new URL(spec, fromUrl).href;
     };
-    const walk = (url) => {
+    const walk = (url, dynamic = false) => {
         if (seen.has(url)) return;
         seen.add(url);
         const file = localFile(url);
-        if (!file || !fs.existsSync(file)) throw new Error(`module not found: ${url}`);
+        if (!file || !fs.existsSync(file)) {
+            if (dynamic) return; // optional module not present (yet)
+            throw new Error(`module not found: ${url}`);
+        }
         if (url.startsWith(ORIGIN)) local.add(url); else cdn.add(url);
-        for (const spec of importsOf(file)) walk(resolve(spec, url));
+        for (const { spec, dynamic: d } of importsOf(file)) walk(resolve(spec, url), d);
     };
     walk(scoped('battle3d/main.js'));
     return { cdn, local, map };
@@ -259,6 +264,23 @@ describe('sw.js', { skip: !have && 'no sw.js yet' }, () => {
         assert.ok(W.calls.skipWaiting >= 1);
         const notOk = W.net.log.filter((u) => { const f = localFile(u); return !f || !fs.existsSync(f); });
         assert.deepEqual(notOk, [], 'install requested URLs that do not exist');
+    });
+
+    test('v6 library: lines, rigs and library.json precached; built-in thumbs cached; packs left to runtime', { skip: !fs.existsSync(path.join(ROOT, 'battle3d', 'assets', 'library.json')) && 'no library.json' }, async () => {
+        const W = makeWorker();
+        const shell = new Set(W.consts.APP_SHELL);
+        const dirJson = (d) => fs.readdirSync(path.join(ROOT, d)).filter((f) => f.endsWith('.json')).map((f) => `${d}/${f}`);
+        const want = ['battle3d/assets/library.json', ...dirJson('battle3d/lines'), ...dirJson('battle3d/assets/rigs')];
+        assert.ok(want.length >= 1 + 3 + 4);
+        assert.deepEqual(want.filter((f) => !shell.has(f)), [], 'v6 data files missing from APP_SHELL');
+        assert.deepEqual([...shell].filter((f) => f.includes('/packs/')), [], 'packs are not in the shell');
+        await W.dispatch('install');
+        const cached = keysOf(W, W.consts.SHELL);
+        assert.deepEqual(cached.filter((u) => u.includes('/assets/packs/')), [], 'install does not precache packs');
+        const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'battle3d', 'assets', 'manifest.json'), 'utf8'));
+        const thumbs = Object.keys(m.models).map((id) => `battle3d/assets/thumbs/${id}.webp`);
+        assert.deepEqual(thumbs.filter((t) => !fs.existsSync(path.join(ROOT, t))), [], 'built-in thumbnails exist');
+        assert.deepEqual(thumbs.filter((t) => !cached.includes(scoped(t))), [], 'built-in thumbnails precached');
     });
 
     test('install survives being offline for the cast manifest and single failing files', async () => {

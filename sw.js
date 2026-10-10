@@ -10,13 +10,14 @@
 //   Google Fonts              stale-while-revalidate
 // Query strings on same-origin URLs (?debug=1, ?v=12, ?nosw=1) are ignored for cache keys, so debug or
 // cache-busting links never create duplicate entries.
-const VERSION = '5.0.0';
+const VERSION = '6.0.0';
 const PREFIX = 'chess3d-';
 const SHELL = `${PREFIX}shell-${VERSION}`;
 const RUNTIME = `${PREFIX}runtime-${VERSION}`;
 const NAV_TIMEOUT_MS = 4000;
 
 const THREE_BASE = 'https://cdn.jsdelivr.net/npm/three@0.186.1/';
+const VRM_BASE = 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@'; // pinned in the import map; cached when first used
 const CDN_PRECACHE = [
     `${THREE_BASE}build/three.module.js`,
     `${THREE_BASE}build/three.core.js`,
@@ -40,9 +41,15 @@ const APP_SHELL = [
     'battle3d/scene.js', 'battle3d/scene-rig.js', 'battle3d/scene-world.js', 'battle3d/scene-fx.js',
     'battle3d/scene-textures.js', 'battle3d/cinematic.js', 'battle3d/units.js', 'battle3d/fights.js',
     'battle3d/unit-visuals.js', 'battle3d/cast.js', 'battle3d/cast-ui.js', 'battle3d/install.js',
+    'battle3d/commentary.js', 'battle3d/coach.js', 'battle3d/bubbles.js', 'battle3d/tactics.js',
+    'battle3d/retarget.js', 'battle3d/vrm.js',
     'battle3d/hud.css', 'battle3d/cast.css', 'battle3d/install.css',
-    'battle3d/assets/manifest.json',
+    'battle3d/lines/hero-king.json', 'battle3d/lines/skeleton-king.json', 'battle3d/lines/coach.json',
+    'battle3d/assets/rigs/kaykit.json', 'battle3d/assets/rigs/mixamo.json', 'battle3d/assets/rigs/quaternius.json', 'battle3d/assets/rigs/vrm.json',
+    'battle3d/assets/manifest.json', 'battle3d/assets/library.json',
 ];
+// Library packs (battle3d/assets/packs/**) are NOT precached: they are fetched when a cast uses them and then
+// kept by the runtime caches (cache-first for .glb/.webp, stale-while-revalidate for pack.json).
 const ASSET_MANIFEST = 'battle3d/assets/manifest.json';
 
 const scoped = path => new URL(path, self.registration.scope).href;
@@ -64,7 +71,10 @@ async function castAssets() {
     const base = scoped('battle3d/assets/');
     const files = new Set();
     for (const f of [m.clips?.file, m.clips?.skeletonFile]) if (f) files.add(f);
-    for (const model of Object.values(m.models || {})) if (model.file) files.add(model.file);
+    for (const [id, model] of Object.entries(m.models || {})) {
+        if (model.file) files.add(model.file);
+        files.add(`thumbs/${id}.webp`); // cast editor library cards
+    }
     for (const side of Object.values(m.roles || {})) for (const role of Object.values(side)) {
         if (role.model) files.add(role.model);
         for (const p of role.props || []) files.add(p.file);
@@ -195,7 +205,7 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    if (request.url.startsWith(THREE_BASE) || url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'fonts.gstatic.com') {
+    if (request.url.startsWith(THREE_BASE) || request.url.startsWith(VRM_BASE) || url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'fonts.gstatic.com') {
         event.respondWith(cacheFirst(request));
         return;
     }

@@ -23,7 +23,8 @@
     {
         "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+            "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.5.5/lib/three-vrm.module.min.js"
         }
     }
     </script>
@@ -86,6 +87,25 @@
                 <button type="button" id="cast-open" class="btn small-btn" title="Choose which character plays each piece">Cast...</button>
             </div>
             <div class="row">
+                <label for="talk-select">Kings talk</label>
+                <select id="talk-select">
+                    <option value="off">Off</option>
+                    <option value="occasional" selected>Occasional</option>
+                    <option value="chatty">Chatty</option>
+                </select>
+            </div>
+            <div class="row">
+                <label class="check" for="coach-toggle"><input id="coach-toggle" type="checkbox"> Coach</label>
+                <button type="button" id="coach-review-open" class="btn small-btn" hidden>Review game</button>
+            </div>
+            <div class="row" id="coach-frequency-row">
+                <label for="coach-frequency">Coach advice</label>
+                <select id="coach-frequency">
+                    <option value="every" selected>Every move</option>
+                    <option value="mistakes">Mistakes only</option>
+                </select>
+            </div>
+            <div class="row">
                 <label class="check" for="ambience-toggle"><input id="ambience-toggle" type="checkbox" checked> Ambience (torches)</label>
             </div>
             <div class="row">
@@ -116,6 +136,8 @@
                     <li>Touch: 1 finger drag rotates. 2 fingers zoom, move and turn the view. Double-tap zooms to that spot, double-tap again zooms back out.</li>
                     <li>Mouse: drag rotates, right-drag or Shift+drag moves the view, the wheel zooms.</li>
                     <li>Reset view brings the camera back to your side.</li>
+                    <li>Click a move in the move list to look at that position; Esc returns to the game.</li>
+                    <li>Coach: your king warns about threats before you move and explains mistakes after, with "Take it back" and "Show me better".</li>
                     <li>Keyboard: arrow keys move the cursor, <kbd>Enter</kbd> selects or moves, <kbd>Esc</kbd> cancels, <kbd>Space</kbd> skips a fight, <kbd>H</kbd> asks for a hint.</li>
                     <li>Hint (on your turn): the AI suggests a move; the piece is pre-selected with an arrow to the square. Click the square to play it, or ignore it.</li>
                 </ul>
@@ -130,9 +152,45 @@
 
     <!-- Screen reader announcements (moves, results) -->
     <div id="announce" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    <!-- What the kings say (speech bubbles are visual; this region reads them out) -->
+    <div id="captions" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Review mode bar (looking at an earlier position) -->
+    <div id="review-bar" class="review-bar panel" data-bubble-avoid hidden>
+        <span>Reviewing an earlier position</span>
+        <button type="button" id="review-exit" class="btn small-btn primary">Back to game</button>
+    </div>
+
+    <!-- Coach advice card -->
+    <div id="coach-card" class="coach-card panel" role="status" data-bubble-avoid hidden>
+        <div class="coach-head">
+            <span class="coach-crown" aria-hidden="true">&#9813;</span>
+            <span class="coach-title">Your king advises</span>
+            <button type="button" id="coach-close" class="tip-close" aria-label="Dismiss advice">&times;</button>
+        </div>
+        <p id="coach-text" class="coach-text"></p>
+        <div id="coach-actions" class="coach-actions" hidden>
+            <button type="button" id="coach-undo" class="btn small-btn">Take it back</button>
+            <button type="button" id="coach-better" class="btn small-btn primary">Show me better</button>
+        </div>
+    </div>
+
+    <!-- End-of-game review -->
+    <div id="coach-review" class="modal" hidden>
+        <div class="modal-card panel review-card" role="dialog" aria-modal="true" aria-labelledby="coach-review-title">
+            <div class="cast-head">
+                <h2 id="coach-review-title">Game review</h2>
+                <button type="button" id="coach-review-close" class="icon-btn" aria-label="Close review">&times;</button>
+            </div>
+            <p id="coach-review-intro" class="muted"></p>
+            <svg id="coach-review-graph" class="eval-graph" role="img" aria-label="Evaluation graph"></svg>
+            <ol id="coach-review-list" class="moments"></ol>
+            <p class="muted small">Click a moment to look at that position. Esc or "Back to game" returns.</p>
+        </div>
+    </div>
 
     <!-- First-run hint -->
-    <div id="tip" class="tip panel" role="note" hidden>
+    <div id="tip" class="tip panel" role="note" data-bubble-avoid hidden>
         <span id="tip-text">Click a hero, then a highlighted square.</span>
         <button type="button" id="tip-close" class="tip-close" aria-label="Dismiss hint">&times;</button>
     </div>

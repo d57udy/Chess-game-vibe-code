@@ -4,10 +4,13 @@ import * as THREE from 'three';
 import { createScene } from './scene.js';
 import { createUnits } from './units.js';
 import { createController } from './controller.js';
+import { createCommentary } from './commentary.js';
+import { createCoach } from './coach.js';
 import { createAudio } from './audio.js';
 
 const g = globalThis; // classic-script globals from gameLogic.js / rules.js
 const MANIFESTS = ['battle3d/assets/manifest.json', 'battle3d/manifest.dev.json'];
+const ASSET_BASE = new URL('battle3d/assets/', location.href).href; // library.json and packs/ live here
 const TIP_KEY = 'battle3d.tipSeen';
 const TYPE_ORDER = ['k', 'q', 'r', 'b', 'n', 'p'];
 const TYPE_NAMES = { k: 'King', q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight', p: 'Pawn' };
@@ -136,7 +139,7 @@ function renderLegend(units, manifest) {
 }
 
 // --- Cast editor ---
-function setupCast({ units, manifest, castMod, controller }) {
+function setupCast({ units, manifest, castMod, controller, sceneAPI }) {
     const modal = $('cast-modal');
     const mount = $('cast-mount');
     const openButton = $('cast-open');
@@ -149,20 +152,45 @@ function setupCast({ units, manifest, castMod, controller }) {
         return;
     }
 
-    async function apply(cast) {
+    // Applies run one at a time (a double click or a quick second Apply must not interleave two rebuilds).
+    // prepareCast is idempotent: it loads every pack the cast uses (models and mounts) before resolveRoles,
+    // so a live Apply builds the same units as a reload. Failures leave the defaults in place and say so.
+    let queue = Promise.resolve();
+    function apply(cast) {
+        const run = queue.then(() => applyNow(cast));
+        queue = run.catch(() => {});
+        return run;
+    }
+
+    async function applyNow(cast) {
         current = cast;
         castMod.saveUserCast?.(cast);
+        let failed = [];
+        try {
+            ({ failed = [] } = await castMod.prepareCast?.(cast, { assetBase: ASSET_BASE }) || {});
+        } catch (error) {
+            failed = [{ id: 'library', error: String(error?.message || error) }];
+        }
         if (controller.state().moving) controller.skip();
         controller.clearRings();
+        let ok = true;
         try {
             await units.setCast(castMod.resolveRoles(manifest, cast));
             units.syncBoard(g.battle3dState().board);
         } catch (error) {
+            ok = false;
             console.error('battle3d: applying the cast failed', error);
         }
         controller.forgetRings(); // units were rebuilt; their old decorations are gone
         controller.refresh();
         renderLegend(units, manifest);
+        // Draw the rebuilt board now (a zero-length frame poses the new units, then renders): with rAF
+        // paused (background tab) the canvas would otherwise keep showing the old cast.
+        try { sceneAPI?.stepFrames?.(1, 0); } catch (e) { /* ignore */ }
+        sceneAPI?.requestRender?.();
+        if (!ok) showNotice('The new cast could not be built. Reload the page to try again.', { force: true });
+        else if (failed.length) showNotice(`Could not download ${failed.map(f => f.id).join(', ')}. Those pieces use the default characters.`, { force: true });
+        return { ok, failed };
     }
 
     function close() {
@@ -185,6 +213,7 @@ function setupCast({ units, manifest, castMod, controller }) {
         editor = ui.mountCastEditor(mount, {
             manifest,
             cast: current,
+            assetBase: ASSET_BASE,
             onApply: async (cast) => { await apply(cast); close(); }
         });
         $('cast-close').focus();
@@ -199,6 +228,17 @@ function setupCast({ units, manifest, castMod, controller }) {
 }
 
 // --- First-run tip ---
+// Short notice in the tip panel (when the first-run tip is not showing)
+function showNotice(text, { force = false } = {}) {
+    const tip = $('tip');
+    if (!tip.hidden && !force) return;
+    $('tip-text').textContent = text;
+    tip.hidden = false;
+    const hide = () => { tip.hidden = true; };
+    $('tip-close').addEventListener('click', hide, { once: true });
+    setTimeout(hide, 8000);
+}
+
 function showFirstRunTip(sceneAPI) {
     let seen = false;
     try { seen = localStorage.getItem(TIP_KEY) === '1'; } catch (e) { /* ignore */ }
@@ -234,10 +274,17 @@ async function boot() {
     const [manifest, castMod] = await Promise.all([fetchJson(manifestUrl), optionalImport('./cast.js')]);
     const units = await createUnits(sceneAPI, manifestUrl, { audio });
 
-    // A stored custom cast is applied before the first frame is shown
-    // Imported custom models live in IndexedDB; their blob URLs exist only after this
-    try { await castMod?.restoreCustomModels?.(); } catch (e) { log('restoring custom models failed', e); }
+    // A stored cast is applied before the first frame is shown. prepareCast restores imported models
+    // (IndexedDB blob URLs) and loads the pack.json of every library pack the cast uses.
     const savedCast = castMod?.loadUserCast?.();
+    let castFailed = [];
+    if (savedCast && castMod?.prepareCast) {
+        try {
+            ({ failed: castFailed = [] } = await castMod.prepareCast(savedCast, { assetBase: ASSET_BASE }) || {});
+        } catch (e) { log('preparing the cast failed', e); }
+    } else {
+        try { await castMod?.restoreCustomModels?.(); } catch (e) { log('restoring custom models failed', e); }
+    }
     if (savedCast && manifest && typeof units.setCast === 'function') {
         setProgress(0.95, 'Assembling your cast...');
         try { await units.setCast(castMod.resolveRoles(manifest, savedCast)); } catch (e) { console.error('battle3d: stored cast failed', e); }
@@ -252,16 +299,19 @@ async function boot() {
         pwaReady.then(pwa => pwa?.showInstallHint?.());
     };
     const controller = createController({ sceneAPI, units, audio, onMoveEnd, debug, log });
+    // Talking kings and coach listen to controller events; create them before the first game starts
+    const commentary = createCommentary({ controller, sceneAPI, units, audio, captionsEl: $('captions'), levelSelect: $('talk-select'), log });
+    const coach = createCoach({ controller, sceneAPI, units, audio, log });
     await sceneAPI.setView(controller.viewSide(), { animate: false });
     controller.newGame();
 
-    setupCast({ units, manifest, castMod, controller });
+    setupCast({ units, manifest, castMod, controller, sceneAPI });
     renderLegend(units, manifest);
     setupResetView(sceneAPI);
 
     if (debug) {
         window.__b3d = {
-            sceneAPI, units, controller, audio,
+            sceneAPI, units, controller, audio, commentary, coach,
             step: (n = 1, dt = 1 / 60) => sceneAPI.stepFrames(n, dt),
             state: () => controller.state()
         };
@@ -269,6 +319,7 @@ async function boot() {
     setProgress(1, 'Ready.');
     hideLoading();
     showFirstRunTip(sceneAPI);
+    if (castFailed.length) showNotice('Some characters could not be loaded (offline?), so the default ones stand in.');
     setupInstall(); // after the first frame: the service worker and install UI are not needed to play
     log('booted');
 }

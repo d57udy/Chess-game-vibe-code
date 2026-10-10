@@ -37,7 +37,7 @@ const SHARED_CLIPS = [
   'Block', 'Block_Attack', 'Block_Hit', 'Blocking', 'Hit_A', 'Hit_B',
   'Dodge_Backward', 'Dodge_Forward', 'Dodge_Left', 'Dodge_Right',
   'Death_A', 'Death_A_Pose', 'Death_B', 'Death_B_Pose', 'Cheer',
-  'Interact', 'PickUp', 'Use_Item', 'T-Pose',
+  'Interact', 'PickUp', 'Use_Item', 'T-Pose', 'Sit_Chair_Idle', 'Sit_Chair_Pose',
 ];
 const SHARED_FROM_SKELETON = ['Spawn_Air', 'Spawn_Ground'];
 const SKELETON_CLIPS = [

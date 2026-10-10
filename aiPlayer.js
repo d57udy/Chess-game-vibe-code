@@ -1244,6 +1244,208 @@ const ChessAI = (() => {
 
     const hintParams = () => normalizeParams(HINT_PARAMS);
 
+    // --- Analysis (coach mode): multi-PV search, opponent threats, move classification ---
+    // Separate from searchRoot so the calibrated play path is unchanged. Deterministic: no
+    // randomness, TT/killers/history cleared per call, node budget as the only strength limit.
+
+    // Squares attacked by the piece standing on s (pseudo-attacks, ignoring pins).
+    function attacksFrom(s) {
+        const p = sq[s], t = p < 0 ? -p : p, out = [];
+        if (t === PAWN) {
+            const r = s >> 3, c = s & 7, dr = p > 0 ? -1 : 1;
+            if (r + dr >= 0 && r + dr < 8) {
+                if (c > 0) out.push((r + dr) * 8 + c - 1);
+                if (c < 7) out.push((r + dr) * 8 + c + 1);
+            }
+        } else if (t === KNIGHT || t === KING) {
+            for (const x of t === KNIGHT ? KNIGHT_TARGETS[s] : KING_TARGETS[s]) out.push(x);
+        } else if (t) {
+            const d0 = t === BISHOP ? 4 : 0, d1 = t === ROOK ? 4 : 8;
+            for (let d = d0; d < d1; d++) {
+                for (const x of RAYS[d][s]) { out.push(x); if (sq[x] !== 0) break; }
+            }
+        }
+        return out;
+    }
+
+    // The principal variation stored in the TT from the current position (legal moves only,
+    // stops at a repetition of the walk itself).
+    function pvFromTT(maxPlies) {
+        const line = [], seen = new Set();
+        let made = 0;
+        while (made < maxPlies) {
+            const idx = hashLo & TT_MASK;
+            if (!TT_FLAG[idx] || TT_LO[idx] !== hashLo || TT_HI[idx] !== hashHi) break;
+            const m = TT_MOVE[idx];
+            const key = hashLo + ':' + hashHi;
+            if (!m || seen.has(key) || !legalMoves().includes(m)) break;
+            seen.add(key);
+            line.push(toGameMove(m));
+            makeMove(m);
+            made++;
+        }
+        while (made-- > 0) unmakeMove();
+        return line;
+    }
+
+    // Multi-PV iterative deepening on the current engine position. The first K root moves get
+    // full windows; the others a null window at the K-th best score, re-searched if they beat it.
+    // Returns { depth, nodes, stoppedBy, lines: [{ m, score, pv }] } (scores: side to move).
+    function analyzeCurrent(K, nodeBudget, timeCapMs) {
+        const moves = legalMoves();
+        if (moves.length === 0) return { depth: 0, nodes: 0, stoppedBy: 'terminal', lines: [] };
+        clearTT();
+        KILLERS.fill(0); HISTORY.fill(0);
+        nodes = 0; stopped = false; stoppedBy = null; canStop = false; blind = false; qsLimit = 99;
+        nodeLimit = Math.max(1, nodeBudget);
+        deadline = now() + (timeCapMs > 0 ? timeCapMs : Infinity);
+        const root = moves.map((m) => ({ m, score: -INF, next: -INF }));
+        let depthDone = 0;
+        for (let depth = 1; depth <= 64; depth++) {
+            canStop = depth > 1; // depth 1 always completes
+            const exact = [];
+            let kth = -INF;
+            for (let i = 0; i < root.length; i++) {
+                makeMove(root[i].m);
+                let s;
+                if (i < K) s = -search(depth - 1, -INF, INF, 1, true);
+                else {
+                    s = -search(depth - 1, -kth - 1, -kth, 1, true);
+                    if (s > kth && !stopped) s = -search(depth - 1, -INF, -kth, 1, true);
+                }
+                unmakeMove();
+                if (stopped) break;
+                root[i].next = s;
+                if (i < K || s > kth) {
+                    exact.push(s);
+                    exact.sort((a, b) => b - a);
+                    if (exact.length >= K) kth = exact[K - 1];
+                }
+            }
+            if (stopped) break;
+            for (const x of root) x.score = x.next;
+            root.sort((a, b) => b.score - a.score);
+            depthDone = depth;
+            const top = root[0].score;
+            if (Math.abs(top) > MATE_BOUND && depth >= MATE - Math.abs(top)) break;
+        }
+        canStop = false;
+        if (!stoppedBy) stoppedBy = 'depth';
+        const lines = root.slice(0, Math.min(K, root.length)).map((x) => {
+            const first = toGameMove(x.m);
+            makeMove(x.m);
+            const rest = pvFromTT(11);
+            unmakeMove();
+            return { m: x.m, score: x.score, pv: [first, ...rest] };
+        });
+        return { depth: depthDone, nodes, stoppedBy, lines };
+    }
+
+    // Mate distance in moves (positive: the side to move mates), or null.
+    const mateMoves = (s) => (Math.abs(s) > MATE_BOUND ? Math.sign(s) * Math.ceil((MATE - Math.abs(s)) / 2) : null);
+
+    // analyze(state, { nodes = 300000, multiPv = 3, timeCapMs }, positionHistory) ->
+    //   { eval, mate, bestMove, pv, alternatives: [{ move, eval, mate, pv }], depth, nodes, stoppedBy, terminal }
+    // eval: centipawns from White's point of view (mates are +/-(100000 - plies)); mate: moves to
+    // mate from White's point of view (+ White mates, - Black mates) or null. alternatives[0] is
+    // the best move; there are up to multiPv entries. With no legal move: bestMove null and
+    // terminal 'checkmate' or 'stalemate'.
+    function analyze(state, opts, positionHistory) {
+        const o = opts || {};
+        if (!loadState(state, positionHistory)) return null;
+        const K = Math.max(1, Math.min(8, Math.round(o.multiPv || 3)));
+        const nodeBudget = Math.max(1000, Math.round(o.nodes || 300000));
+        const white = side === WHITE ? 1 : -1;
+        if (legalMoves().length === 0) {
+            const mated = inCheck();
+            const s = mated ? -MATE : 0;
+            return {
+                eval: white * s, mate: mated ? -white * 0 : null, bestMove: null, pv: [], alternatives: [],
+                depth: 0, nodes: 0, stoppedBy: 'terminal', terminal: mated ? 'checkmate' : 'stalemate',
+            };
+        }
+        const res = analyzeCurrent(K, nodeBudget, o.timeCapMs > 0 ? o.timeCapMs : capFor(nodeBudget));
+        const alternatives = res.lines.map((l) => ({
+            move: l.pv[0], eval: white * l.score, mate: mateMoves(l.score) === null ? null : white * mateMoves(l.score), pv: l.pv,
+        }));
+        const best = alternatives[0];
+        return {
+            eval: best.eval, mate: best.mate, bestMove: best.move, pv: best.pv, alternatives,
+            depth: res.depth, nodes: res.nodes, stoppedBy: res.stoppedBy, terminal: null,
+        };
+    }
+
+    // threats(state, { nodes = 100000, max = 3, minGain = 120 }, positionHistory) ->
+    //   { threats: [{ move, gain, mate, motif, pv }], inCheck }
+    // The opponent's best ideas if it were their move (a null move for the side to move). gain is
+    // centipawns for the opponent relative to the static eval of that null-move position; mate
+    // threats have mate = moves to mate (for the opponent) and gain null. motif: 'mate', 'capture',
+    // 'promotion', 'fork' (the moved piece attacks two or more of our pieces worth >= a knight, or
+    // our king and one), 'check' or 'attack'. Empty when the side to move is in check (the threat
+    // already happened).
+    function threats(state, opts, positionHistory) {
+        const o = opts || {};
+        if (!loadState(state, positionHistory)) return null;
+        if (inCheck()) return { threats: [], inCheck: true };
+        const K = Math.max(1, Math.min(8, Math.round(o.max || 3)));
+        const nodeBudget = Math.max(1000, Math.round(o.nodes || 100000));
+        const minGain = o.minGain > 0 ? o.minGain : 120;
+        makeNullMove();
+        const baseline = evaluate() - TEMPO; // the opponent's static view after the pass
+        const res = analyzeCurrent(K, nodeBudget, o.timeCapMs > 0 ? o.timeCapMs : capFor(nodeBudget));
+        const out = [];
+        for (const l of res.lines) {
+            const mate = mateMoves(l.score);
+            const gain = mate === null ? l.score - baseline : null;
+            if (mate === null ? gain < minGain : mate <= 0) continue;
+            out.push({ move: l.pv[0], gain, mate: mate > 0 ? mate : null, motif: threatMotif(l.m, mate), pv: l.pv });
+        }
+        unmakeNullMove();
+        return { threats: out, inCheck: false };
+    }
+
+    function threatMotif(m, mate) {
+        if (mate !== null && mate > 0) return 'mate';
+        const to = (m >> 6) & 63;
+        if (isCapture(m)) return 'capture';
+        if ((m >> 12) & 7) return 'promotion';
+        makeMove(m);
+        const check = inCheck();
+        // After the move it is our turn: count our valuable pieces the moved piece attacks.
+        let targets = 0;
+        for (const x of attacksFrom(to)) {
+            const p = sq[x] * side; // > 0: ours
+            if (p === KING || (p > 0 && VALUE[p] >= VALUE[KNIGHT] && VALUE[p] >= VALUE[Math.abs(sq[to])])) targets++;
+            else if (p > 0 && VALUE[p] >= VALUE[KNIGHT] && !attacked(x, side)) targets++;
+        }
+        unmakeMove();
+        if (targets >= 2) return 'fork';
+        return check ? 'check' : 'attack';
+    }
+
+    // Lichess-style win percentage for a centipawn score (side's point of view); mates and huge
+    // scores are capped at +/-1000 cp.
+    function winPercent(cp) {
+        const c = Math.max(-1000, Math.min(1000, Number(cp) || 0));
+        return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * c)) - 1);
+    }
+
+    // classifyMove(evalBefore, evalAfter, side) -> 'best'|'good'|'inaccuracy'|'mistake'|'blunder'
+    // Evals are White-POV centipawns (numbers, or analyze() results); side 'w'|'b' is the mover.
+    // The win% the mover lost: <= 2 best, < 10 good, < 20 inaccuracy, < 30 mistake, else blunder
+    // (Lichess uses 10/20/30 for inaccuracy/mistake/blunder).
+    const CLASSIFY_THRESHOLDS = { best: 2, good: 10, inaccuracy: 20, mistake: 30 };
+    function classifyMove(evalBefore, evalAfter, sideToMove) {
+        const num = (e) => (e && typeof e === 'object' ? Number(e.eval) : Number(e)) || 0;
+        const s = sideToMove === 'b' || sideToMove === BLACK ? -1 : 1;
+        const loss = winPercent(s * num(evalBefore)) - winPercent(s * num(evalAfter));
+        if (loss <= CLASSIFY_THRESHOLDS.best) return 'best';
+        if (loss < CLASSIFY_THRESHOLDS.good) return 'good';
+        if (loss < CLASSIFY_THRESHOLDS.inaccuracy) return 'inaccuracy';
+        if (loss < CLASSIFY_THRESHOLDS.mistake) return 'mistake';
+        return 'blunder';
+    }
+
     // --- Conversion to/from the gameLogic.js move shape ---
     function toGameMove(m) {
         const from = m & 63, to = (m >> 6) & 63, promo = (m >> 12) & 7, flags = m >> 15;
@@ -1316,6 +1518,11 @@ const ChessAI = (() => {
         DEFAULT_ELO_TABLE: DEFAULT_ELO_TABLE.map((r) => Object.freeze({ ...r })),
         hintParams,
         setSeed,
+        analyze,
+        threats,
+        classifyMove,
+        winPercent,
+        CLASSIFY_THRESHOLDS,
         applyMoveToGlobals,
         loadState,
         loadFromGlobals,

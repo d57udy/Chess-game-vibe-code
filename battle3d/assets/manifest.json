@@ -32,10 +32,16 @@
   "roles": {
     "w": {
       "p": {
+        "crown": false,
+        "accessories": [],
+        "tint": null,
+        "label": "Pawn",
+        "glyph": "♙",
         "model": "characters/Rogue_Hooded.glb",
         "modelId": "Rogue_Hooded",
         "name": "Hooded Rogue",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.342,
         "show": [
           "Knife"
@@ -69,8 +75,6 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [],
         "recolor": {
           "from": [
             75,
@@ -80,9 +84,6 @@
           "sat": 1,
           "light": 1.05
         },
-        "tint": null,
-        "label": "Pawn",
-        "glyph": "♙",
         "loadout": "dagger_buckler",
         "ranged": false,
         "idle": "Idle",
@@ -110,13 +111,22 @@
             "1H_Melee_Attack_Slice_Horizontal",
             "Unarmed_Melee_Attack_Kick"
           ]
-        }
+        },
+        "mount": null
       },
       "n": {
+        "crown": false,
+        "accessories": [
+          "plume"
+        ],
+        "tint": null,
+        "label": "Knight",
+        "glyph": "♘",
         "model": "characters/Knight.glb",
         "modelId": "Knight",
         "name": "Knight",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.38,
         "show": [
           "Knight_Helmet",
@@ -132,10 +142,6 @@
           "2H_Sword"
         ],
         "props": [],
-        "crown": false,
-        "accessories": [
-          "plume"
-        ],
         "recolor": {
           "from": [
             330,
@@ -145,9 +151,6 @@
           "sat": 1,
           "light": 1
         },
-        "tint": null,
-        "label": "Knight",
-        "glyph": "♘",
         "loadout": "sword_badge",
         "ranged": false,
         "idle": "Idle",
@@ -175,13 +178,22 @@
             "1H_Melee_Attack_Slice_Diagonal",
             "Block_Attack"
           ]
-        }
+        },
+        "mount": null
       },
       "b": {
+        "crown": false,
+        "accessories": [
+          "glow"
+        ],
+        "tint": null,
+        "label": "Bishop",
+        "glyph": "♗",
         "model": "characters/Mage.glb",
         "modelId": "Mage",
         "name": "Mage",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.38,
         "show": [
           "Mage_Hat",
@@ -194,14 +206,7 @@
           "1H_Wand"
         ],
         "props": [],
-        "crown": false,
-        "accessories": [
-          "glow"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "Bishop",
-        "glyph": "♗",
         "loadout": "staff",
         "ranged": true,
         "idle": "Idle",
@@ -228,13 +233,22 @@
             "Spellcast_Shoot",
             "Spellcast_Long"
           ]
-        }
+        },
+        "mount": null
       },
       "r": {
+        "crown": false,
+        "accessories": [
+          "banner"
+        ],
+        "tint": null,
+        "label": "Rook",
+        "glyph": "♖",
         "model": "characters/Barbarian.glb",
         "modelId": "Barbarian",
         "name": "Barbarian",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.475,
         "show": [
           "Barbarian_Hat",
@@ -269,14 +283,7 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [
-          "banner"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "Rook",
-        "glyph": "♖",
         "loadout": "axe_tower",
         "ranged": false,
         "idle": "Idle",
@@ -304,13 +311,23 @@
             "1H_Melee_Attack_Slice_Horizontal",
             "Block_Attack"
           ]
-        }
+        },
+        "mount": null
       },
       "q": {
+        "crown": false,
+        "accessories": [
+          "tiara",
+          "aura"
+        ],
+        "tint": null,
+        "label": "Queen",
+        "glyph": "♕",
         "model": "characters/Rogue.glb",
         "modelId": "Rogue",
         "name": "Rogue",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.399,
         "show": [
           "Rogue_Cape",
@@ -323,11 +340,6 @@
           "Throwable"
         ],
         "props": [],
-        "crown": false,
-        "accessories": [
-          "tiara",
-          "aura"
-        ],
         "recolor": {
           "from": [
             75,
@@ -337,9 +349,6 @@
           "sat": 1,
           "light": 1
         },
-        "tint": null,
-        "label": "Queen",
-        "glyph": "♕",
         "loadout": "dual_daggers",
         "ranged": false,
         "idle": "Idle",
@@ -367,13 +376,24 @@
             "Dualwield_Melee_Attack_Slice",
             "Dualwield_Melee_Attack_Stab"
           ]
-        }
+        },
+        "mount": null
       },
       "k": {
+        "crown": true,
+        "accessories": [
+          "crown",
+          "cape",
+          "aura"
+        ],
+        "tint": null,
+        "label": "King",
+        "glyph": "♔",
         "model": "characters/Knight.glb",
         "modelId": "Knight",
         "name": "Knight",
         "army": "heroes",
+        "source": "builtin",
         "scale": 0.418,
         "show": [
           "Knight_Cape",
@@ -389,16 +409,7 @@
           "Knight_Helmet"
         ],
         "props": [],
-        "crown": true,
-        "accessories": [
-          "crown",
-          "cape",
-          "aura"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "King",
-        "glyph": "♔",
         "loadout": "greatsword",
         "ranged": false,
         "idle": "2H_Melee_Idle",
@@ -426,15 +437,22 @@
             "2H_Melee_Attack_Chop",
             "2H_Melee_Attack_Stab"
           ]
-        }
+        },
+        "mount": null
       }
     },
     "b": {
       "p": {
+        "crown": false,
+        "accessories": [],
+        "tint": null,
+        "label": "Pawn",
+        "glyph": "♟",
         "model": "characters/Skeleton_Minion.glb",
         "modelId": "Skeleton_Minion",
         "name": "Skeleton Minion",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.342,
         "show": [],
         "hide": [],
@@ -460,12 +478,7 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [],
         "recolor": null,
-        "tint": null,
-        "label": "Pawn",
-        "glyph": "♟",
         "loadout": "bone_blade",
         "ranged": false,
         "idle": "Idle_B",
@@ -493,13 +506,22 @@
             "1H_Melee_Attack_Slice_Horizontal",
             "Unarmed_Melee_Attack_Punch_A"
           ]
-        }
+        },
+        "mount": null
       },
       "n": {
+        "crown": false,
+        "accessories": [
+          "plume"
+        ],
+        "tint": null,
+        "label": "Knight",
+        "glyph": "♞",
         "model": "characters/Skeleton_Warrior.glb",
         "modelId": "Skeleton_Warrior",
         "name": "Skeleton Warrior",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.38,
         "show": [
           "Skeleton_Warrior_Helmet"
@@ -547,14 +569,7 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [
-          "plume"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "Knight",
-        "glyph": "♞",
         "loadout": "bone_blade_shield",
         "ranged": false,
         "idle": "Idle_Combat",
@@ -582,13 +597,22 @@
             "1H_Melee_Attack_Chop",
             "1H_Melee_Attack_Slice_Diagonal"
           ]
-        }
+        },
+        "mount": null
       },
       "b": {
+        "crown": false,
+        "accessories": [
+          "glow"
+        ],
+        "tint": null,
+        "label": "Bishop",
+        "glyph": "♝",
         "model": "characters/Skeleton_Mage.glb",
         "modelId": "Skeleton_Mage",
         "name": "Skeleton Mage",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.38,
         "show": [
           "Skeleton_Mage_Hat"
@@ -616,14 +640,7 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [
-          "glow"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "Bishop",
-        "glyph": "♝",
         "loadout": "bone_staff",
         "ranged": true,
         "idle": "Idle_B",
@@ -650,13 +667,22 @@
             "Spellcast_Shoot",
             "Spellcast_Long"
           ]
-        }
+        },
+        "mount": null
       },
       "r": {
+        "crown": false,
+        "accessories": [
+          "banner"
+        ],
+        "tint": null,
+        "label": "Rook",
+        "glyph": "♜",
         "model": "characters/Skeleton_Warrior.glb",
         "modelId": "Skeleton_Warrior",
         "name": "Skeleton Warrior",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.475,
         "show": [
           "Skeleton_Warrior_Helmet"
@@ -704,14 +730,7 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [
-          "banner"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "Rook",
-        "glyph": "♜",
         "loadout": "bone_axe_tower",
         "ranged": false,
         "idle": "Idle_Combat",
@@ -739,13 +758,23 @@
             "1H_Melee_Attack_Jump_Chop",
             "Block_Attack"
           ]
-        }
+        },
+        "mount": null
       },
       "q": {
+        "crown": false,
+        "accessories": [
+          "tiara",
+          "aura"
+        ],
+        "tint": null,
+        "label": "Queen",
+        "glyph": "♛",
         "model": "characters/Skeleton_Rogue.glb",
         "modelId": "Skeleton_Rogue",
         "name": "Skeleton Rogue",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.399,
         "show": [
           "Skeleton_Rogue_Hood",
@@ -794,11 +823,6 @@
             ]
           }
         ],
-        "crown": false,
-        "accessories": [
-          "tiara",
-          "aura"
-        ],
         "recolor": {
           "from": [
             240,
@@ -808,9 +832,6 @@
           "sat": 1,
           "light": 1
         },
-        "tint": null,
-        "label": "Queen",
-        "glyph": "♛",
         "loadout": "dual_bone_blades",
         "ranged": false,
         "idle": "Idle_B",
@@ -838,13 +859,24 @@
             "Dualwield_Melee_Attack_Slice",
             "Dualwield_Melee_Attack_Stab"
           ]
-        }
+        },
+        "mount": null
       },
       "k": {
+        "crown": true,
+        "accessories": [
+          "crown",
+          "cape",
+          "aura"
+        ],
+        "tint": null,
+        "label": "King",
+        "glyph": "♚",
         "model": "characters/Skeleton_Mage.glb",
         "modelId": "Skeleton_Mage",
         "name": "Skeleton Mage",
         "army": "skeletons",
+        "source": "builtin",
         "scale": 0.418,
         "show": [],
         "hide": [
@@ -892,16 +924,7 @@
             ]
           }
         ],
-        "crown": true,
-        "accessories": [
-          "crown",
-          "cape",
-          "aura"
-        ],
         "recolor": null,
-        "tint": null,
-        "label": "King",
-        "glyph": "♚",
         "loadout": "bone_king",
         "ranged": false,
         "idle": "Idle_B",
@@ -929,7 +952,8 @@
             "1H_Melee_Attack_Slice_Horizontal",
             "Block_Attack"
           ]
-        }
+        },
+        "mount": null
       }
     }
   },
@@ -1253,6 +1277,8 @@
     "PickUp": 1.3,
     "Use_Item": 1.6,
     "T-Pose": 0,
+    "Sit_Chair_Idle": 3.6,
+    "Sit_Chair_Pose": 0,
     "Spawn_Air": 1.3,
     "Spawn_Ground": 1.3,
     "Death_C_Skeletons": 2,

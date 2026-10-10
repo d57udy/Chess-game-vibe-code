@@ -139,5 +139,42 @@ for (const model of Object.keys(manifest.models)) for (const loadout of Object.k
   for (const a of [r.anims.idle, ...r.anims.attack]) if (!allClips.has(a)) fail(`${model}/${loadout}: unknown clip ${a}`);
 }
 console.log(`presets: ${Object.keys(castMod.PRESETS).length}, model x loadout combinations: ${combos}`);
+
+// 4. Library packs: index, pack.json, files, thumbnails, licenses, clip names inside each GLB, validator.
+const library = JSON.parse(fs.readFileSync(path.join(ASSETS, 'library.json'), 'utf8'));
+for (const entry of library.packs) {
+  const pj = path.join(ASSETS, entry.path);
+  if (!fs.existsSync(pj)) { fail(`library: ${entry.path} missing`); continue; }
+  const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
+  castMod.registerPack(pack);
+  if (!/^CC0/.test(pack.license?.name || '')) fail(`${pack.id}: license is not CC0`);
+  if (!fs.existsSync(path.join(path.dirname(pj), 'LICENSE.txt'))) fail(`${pack.id}: LICENSE.txt missing`);
+  if (!fs.existsSync(path.join(ASSETS, entry.thumb))) fail(`${pack.id}: index thumbnail missing`);
+  let bytes = 0;
+  for (const m of pack.models) {
+    const file = path.join(path.dirname(pj), m.file);
+    if (!fs.existsSync(path.join(path.dirname(pj), m.thumb))) fail(`${pack.id}/${m.id}: thumbnail missing`);
+    if (!fs.existsSync(file)) { fail(`${pack.id}/${m.id}: ${m.file} missing`); continue; }
+    bytes += fs.statSync(file).size;
+    const report = await validator.validateBytes(new Uint8Array(fs.readFileSync(file)), { uri: m.file });
+    if (report.issues.numErrors) fail(`${pack.id}/${m.id}: ${report.issues.numErrors} validator errors`);
+    const g = await load(path.relative(ASSETS, file));
+    const names = new Set(g.animations.map(a => a.name));
+    for (const [key, v] of Object.entries(m.anims)) for (const n of [].concat(v)) if (!names.has(n)) fail(`${pack.id}/${m.id}: anims.${key} ${n} not in the GLB`);
+    for (const a of m.anims.attack) if (typeof m.impacts[a] !== 'number') fail(`${pack.id}/${m.id}: no impact for ${a}`);
+    for (const [k, b] of Object.entries(m.bones || {})) if (!g.scene.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(b))) fail(`${pack.id}/${m.id}: bones.${k} ${b} not found`);
+    console.log(`pack ${pack.id}/${m.id}: ${fs.statSync(file).size} bytes, ${m.tris} tris, ${g.animations.length} clips, validator ${report.issues.numErrors}/${report.issues.numWarnings}`);
+  }
+  if (Math.abs(bytes - entry.bytes) > 1024) fail(`${pack.id}: library bytes ${entry.bytes} != ${bytes}`);
+}
+// Pack presets resolve to pack models once their packs are registered.
+for (const [id, p] of Object.entries(castMod.PRESETS)) {
+  if (!p.packs) continue;
+  const roles = castMod.resolveRoles(manifest, castMod.presetCast(id));
+  const used = castMod.TYPES.flatMap(t => [roles.w[t], roles.b[t]]).filter(r => r.source === 'pack' || r.mount);
+  if (!used.length) fail(`preset ${id}: no pack model resolved`);
+  for (const r of used) for (const f of [r.source === 'pack' ? r.model : null, r.mount?.model].filter(Boolean)) if (!fs.existsSync(path.join(ASSETS, f))) fail(`preset ${id}: ${f} missing`);
+}
+console.log(`library: ${library.packs.length} packs`);
 console.log(errors ? `${errors} problems` : 'all asset checks passed');
 process.exit(errors ? 1 : 0);

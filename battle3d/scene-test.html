@@ -22,7 +22,7 @@
 </head>
 <body>
   <div id="stage"></div>
-  <div id="bar">
+  <div id="bar" data-bubble-avoid>
     <button data-a="w">White view</button>
     <button data-a="b">Black view</button>
     <button data-a="focus">Focus e4/d5</button>
@@ -40,6 +40,9 @@
     <button data-a="decal">Decals</button>
     <button data-a="stats">Stats</button>
     <button data-a="hint">Hint (cycle)</button>
+    <button data-a="sayw">Say (White king)</button>
+    <button data-a="sayb">Say (Skeleton king)</button>
+    <button data-a="sayclear">Clear bubbles</button>
   </div>
   <div id="info">click a square</div>
   <script type="module">
@@ -187,6 +190,16 @@
         if (auto === 'hintb') api.setView('b', { animate: false });
         api.stepFrames(10);
       }
+      // bubbles: ?auto=say (both kings, mid-typewriter), saydone (fully shown), sayfight (letterboxed shot hides them)
+      if (auto && auto.startsWith('say')) {
+        api.say({ side: 'w', square: { row: 7, col: 4 }, name: 'White King', text: 'Behold! My pawn advances with the dignity of a thousand trumpets.' });
+        api.say({ side: 'b', square: { row: 0, col: 4 }, name: 'Skeleton King', text: 'I have a bone to pick with your bishop.' });
+        api.stepFrames(auto === 'say' ? 40 : 150);
+        if (auto === 'sayfight') { api.cinematic.letterbox(true); api.stepFrames(2); }
+        const bw = api.getBubble('w');
+        const bb = api.getBubble('b');
+        document.title = `SAY w=${bw && bw.opacity}:${bw && bw.shown.length} b=${bb && bb.opacity}:${bb && bb.shown.length}`;
+      }
       if (auto === 'pick') {
         // project square centers (and a unit's head) to screen and pick them back
         const rect = api.renderer.domElement.getBoundingClientRect();
@@ -251,6 +264,15 @@
         info.textContent = `hint ${JSON.stringify(api.getHint())}`;
         return;
       }
+      if (a === 'sayw' || a === 'sayb') {
+        const lines = a === 'sayw'
+          ? ['Behold! My pawn advances with the dignity of a thousand trumpets.', 'Check? How terribly rude.', 'Onward, for honour and slightly better pawn structure!']
+          : ['I have a bone to pick with your bishop.', 'Relax. Being captured builds character.', 'Nice move. Shame about the rest of your army.'];
+        api.say({ side: a === 'sayw' ? 'w' : 'b', square: a === 'sayw' ? { row: 7, col: 4 } : { row: 0, col: 4 },
+          name: a === 'sayw' ? 'White King' : 'Skeleton King', text: lines[Math.floor(Math.random() * lines.length)] });
+        return;
+      }
+      if (a === 'sayclear') { api.sayClear(); return; }
       if (a === 'stats') { info.textContent = JSON.stringify(api.stats()); return; }
       if (a === 'slow') { slow = !slow; api.setTimeScale(slow ? 0.25 : 1); }
       info.textContent = `${a} done`;

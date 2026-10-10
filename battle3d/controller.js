@@ -13,12 +13,16 @@ const SETTINGS_KEY = 'battle3d.settings';
 const HINT_ELO = 2500;        // hint mode ignores the ELO and plays at full strength with its own node budget
 const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 const squareName = (sq) => String.fromCharCode(97 + sq.col) + (8 - sq.row);
+const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+const ANALYSIS_WAIT_SECONDS = 1.5; // after a move's scene, wait at most this long for its analysis before going on
+const BIG_EVAL = 300, BIG_EVAL_RESET = 150; // centipawns for winningBig / losingBig
 
 function loadSettings() {
     try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; }
 }
+// Merges, so settings owned by commentary.js / coach.js in the same object survive
 function saveSettings(settings) {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* private mode etc. */ }
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...loadSettings(), ...settings })); } catch (e) { /* private mode etc. */ }
 }
 
 export function createController({ sceneAPI, units, audio = null, onMoveEnd = null, debug = false, log = () => {} }) {
@@ -32,6 +36,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         newGame: $('new-game'), undo: $('undo'), skip: $('skip'), hint: $('hint'),
         moveList: $('move-list'), moveCount: $('move-count'),
         promo: $('promo'), promoCancel: $('promo-cancel'),
+        reviewBar: $('review-bar'), reviewExit: $('review-exit'),
         mute: $('mute'), ambience: $('ambience-toggle'), announce: $('announce'), stage: $('stage')
     };
 
@@ -74,6 +79,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         hintHandle: null,        // in-flight hint request { promise, cancel }
         hintToken: 0,            // bumped by clearHint so a late answer drops out
         version: 0,              // bumped whenever the position changes underneath async work
+        resets: 0,               // bumped by new game / undo / loadFen (drops late analysis results)
+        reviewIndex: null,       // history index shown in review mode (input locked), null = live
+        turnStartedAt: 0,        // performance.now() when the side to move got the turn
+        bigSide: null,           // 'w' | 'b' after a winningBig event, until the eval comes back
+        endgameAnnounced: false,
+        repeated: new Set(),     // position strings already reported as repeating
         error: null
     };
 
@@ -95,7 +106,9 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     const status = () => g.battle3dGameStatus();
     const viewSide = () => (st.mode === 'ai-ai' ? 'w' : st.humanColor);
     const thinking = () => st.aiWaiting || st.aiHandle !== null;
-    const inputLocked = () => st.moving || st.pendingPromotion !== null || gs().isGameOver || !isHumanTurn() || thinking();
+    const inputLocked = () => st.moving || st.pendingPromotion !== null || st.reviewIndex !== null || gs().isGameOver || !isHumanTurn() || thinking();
+    const opponent = (c) => (c === 'w' ? 'b' : 'w');
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
     function checkSquare() {
         return g.isKingInCheck(gs().currentPlayer) ? g.findKing(gs().currentPlayer) : null;
@@ -201,6 +214,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         const showOver = !st.moving && s.over;
         let text;
         if (st.error) text = st.error;
+        else if (st.reviewIndex !== null) text = reviewText(st.reviewIndex);
         else if (st.moving && st.phase === 'check') text = `${sideName(gs().currentPlayer)} is in check!`;
         else if (st.moving) text = st.anim?.capture ? 'Battle in progress...' : `${sideName(st.anim?.color)} is moving...`;
         else if (showOver) text = s.message;
@@ -274,7 +288,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             }
             const span = document.createElement('span');
             span.textContent = entry.moveNotation;
-            if (i === last) span.className = 'last';
+            span.dataset.index = String(i);
+            span.className = 'mv' + (i === last && st.reviewIndex === null ? ' last' : '') + (i === st.reviewIndex ? ' reviewed' : '');
             li.append(span);
             count++;
             if (mover === 'b') li = null;
@@ -295,7 +310,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     async function maybeStartAI() {
-        if (st.moving || thinking() || gs().isGameOver || isHumanTurn()) return;
+        if (st.moving || thinking() || st.reviewIndex !== null || gs().isGameOver || isHumanTurn()) return;
         const version = st.version;
         const token = st.aiToken;
         st.aiWaiting = true;
@@ -335,6 +350,11 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
 
     // --- Moves ---
     async function playMove(from, to, promotion, isAI) {
+        if (st.reviewIndex !== null) exitReview({ quiet: true });
+        const keyBefore = g.battle3dFen();
+        const stateBefore = g.getCurrentGameStateSnapshot();
+        const thinkSeconds = st.turnStartedAt ? (now() - st.turnStartedAt) / 1000 : 0;
+        const resets = st.resets;
         let ev;
         try {
             ev = g.battle3dApplyMove(from, to, promotion);
@@ -346,6 +366,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         }
         ev.isAI = isAI;
         clearHint();
+        const analysisAfter = analyzeCurrent(); // runs in the worker while the scene plays
         log('move', ev.notation, ev);
         const version = ++st.version;
         st.moving = true;
@@ -392,7 +413,22 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         renderMoveList();
         updateHud();
         try { onMoveEnd?.(ev); } catch (e) { log('onMoveEnd failed', e); }
+
+        // The analysis runs in its own worker, so the AI starts right away
         maybeStartAI();
+
+        // Commentary and coach events: wait briefly for this position's analysis (it ran during the scene)
+        let after = analysisAfter?.result ?? null;
+        if (!after && analysisAfter) {
+            // Give up only when both the scene clock and the wall clock have run out (tests step the scene fast)
+            const giveUp = Promise.all([wait(ANALYSIS_WAIT_SECONDS), new Promise(r => setTimeout(r, ANALYSIS_WAIT_SECONDS * 1000))]);
+            after = await Promise.race([analysisAfter.promise, giveUp.then(() => null)]);
+        }
+        if (resets === st.resets) {
+            const before = analysisCache.get(keyBefore)?.result ?? null;
+            await emitMoveEvents(ev, s, { before, after, stateBefore, thinkSeconds });
+            if (version === st.version) startTurn(); // a newer move emits its own turn
+        }
         return true;
     }
 
@@ -449,6 +485,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         audio.play(name, { ...opts, pos });
     }
 
+    function castlingTowardRook(from, moves, row, col) {
+        const king = g.getPieceAt(from.row, from.col), rook = g.getPieceAt(row, col);
+        if (!king || king.toUpperCase() !== 'K' || !rook || rook !== (king === 'K' ? 'R' : 'r') || row !== from.row) return null;
+        return moves.find(m => m.isCastling && Math.sign(m.col - from.col) === Math.sign(col - from.col)) || null;
+    }
+
     function onSquareClick(row, col) {
         if (row === null || row === undefined) return;
         if (inputLocked()) {
@@ -458,13 +500,15 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         }
         const piece = g.getPieceAt(row, col);
         if (st.selected) {
-            const move = st.moves.find(m => m.row === row && m.col === col);
+            // King then own rook castles toward that rook (the rook's pick proxy can also cover g1/c1)
+            const move = st.moves.find(m => m.row === row && m.col === col) ||
+                castlingTowardRook(st.selected, st.moves, row, col);
             if (move) {
                 const from = st.selected;
                 if (move.isPromotion) {
                     openPromotion(from, { row, col });
                 } else {
-                    playMove(from, { row, col }, null, false);
+                    playMove(from, { row: move.row, col: move.col }, null, false);
                 }
                 return;
             }
@@ -528,7 +572,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     // --- Hint ---
-    const canHint = () => !st.moving && !thinking() && !st.hintHandle && !st.pendingPromotion &&
+    const canHint = () => !st.moving && !thinking() && !st.hintHandle && !st.pendingPromotion && st.reviewIndex === null &&
         !gs().isGameOver && st.mode !== 'ai-ai' && isHumanTurn();
 
     function hintText(h) {
@@ -561,11 +605,20 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             updateHud();
             return;
         }
+        if (!showSuggestion(move)) { updateHud(); return; }
+        emit('hintUsed', { color: gs().currentPlayer, hint: { from: st.hint.from, to: st.hint.to } }); // the user's own king
+    }
+
+    // Shows a suggested move as the hint arrow with the piece pre-selected (hint button, coach "Show me better").
+    // Returns false when the move is not legal in the current position.
+    function showSuggestion(move) {
+        if (!move?.from || !move?.to || st.moving || st.reviewIndex !== null || !isHumanTurn() || gs().isGameOver) return false;
         const piece = g.getPieceAt(move.from.row, move.from.col);
-        if (!piece) { updateHud(); return; }
+        if (!piece || g.getPlayerForPiece(piece) !== gs().currentPlayer) return false;
         const legal = g.generateLegalMoves(move.from.row, move.from.col);
         const target = legal.find(m => m.row === move.to.row && m.col === move.to.col);
-        if (!target) { updateHud(); return; }
+        if (!target) return false;
+        clearHint();
         st.hint = {
             from: { row: move.from.row, col: move.from.col },
             to: { row: move.to.row, col: move.to.col },
@@ -589,6 +642,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         refreshHighlights();
         updateHud();
         announce(hintText(st.hint));
+        return true;
     }
 
     // Removes the shown hint and cancels a running hint request
@@ -605,11 +659,265 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         }
     }
 
+    // --- Game events (commentary.js, coach.js) ---
+    // Each line-bank event carries `color` = the king who would naturally say it (its own point of view).
+    // Lifecycle events for the coach: reset, turn, moveDone. Unknown types are ignored by listeners.
+    const eventListeners = new Set();
+
+    function onEvent(fn) {
+        eventListeners.add(fn);
+        return () => eventListeners.delete(fn);
+    }
+
+    function emit(type, data = {}) {
+        const event = { type, ply: gs().currentMoveIndex, mode: st.mode, humanColor: st.humanColor, aiElo: st.elo, ...data };
+        for (const fn of [...eventListeners]) {
+            try { fn(event); } catch (e) { log('event listener failed', type, e); }
+        }
+        try { window.dispatchEvent(new CustomEvent('game:event', { detail: event })); } catch (e) { /* no DOM events */ }
+    }
+
+    function resetEventState() {
+        st.bigSide = null;
+        st.endgameAnnounced = false;
+        st.repeated.clear();
+    }
+
+    function startTurn() {
+        st.turnStartedAt = now();
+        if (!gs().isGameOver) analyzeCurrent(); // usually cached from the move's scene; new game / undo start it here
+        emit('turn', { color: gs().currentPlayer, human: isHumanTurn(), over: !!gs().isGameOver });
+    }
+
+    // Centipawns from White's point of view (requestAnalysis: eval is White-POV cp, mates +-(100000 - plies))
+    function evalCp(result) {
+        if (!result) return null;
+        const e = result.eval ?? result.score ?? result;
+        if (typeof e === 'number') return Number.isFinite(e) ? e : null;
+        if (e && typeof e === 'object') {
+            if (Number.isFinite(e.mate)) return Math.sign(e.mate || 1) * (10000 - 10 * Math.abs(e.mate));
+            if (Number.isFinite(e.cp)) return e.cp;
+        }
+        return null;
+    }
+    const povCp = (cp, color) => (cp === null ? null : color === 'w' ? cp : -cp);
+
+    // Lichess-style win% model; classifyMove from the engine wins when it exists
+    function classify(beforeCp, afterCp, mover, played, bestBefore) {
+        if (beforeCp === null || afterCp === null) return null;
+        if (typeof g.classifyMove === 'function') {
+            try { const c = g.classifyMove(beforeCp, afterCp, mover); if (c) return c; } catch (e) { log('classifyMove failed', e); }
+        }
+        const win = (cp) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+        const drop = win(povCp(beforeCp, mover)) - win(povCp(afterCp, mover));
+        if (drop >= 30) return 'blunder';
+        if (drop >= 20) return 'mistake';
+        if (drop >= 10) return 'inaccuracy';
+        if (bestBefore && sameMove(bestBefore, played)) return 'best';
+        return 'good';
+    }
+    const sameMove = (a, b) => a && b && a.from?.row === b.from?.row && a.from?.col === b.from?.col &&
+        a.to?.row === b.to?.row && a.to?.col === b.to?.col;
+
+    let tacticsModule;
+    function loadTactics() {
+        tacticsModule ??= import('./tactics.js').catch(() => null);
+        return tacticsModule;
+    }
+
+    async function emitMoveEvents(ev, s, { before, after, stateBefore, thinkSeconds }) {
+        const mover = ev.color, other = opponent(mover);
+        const evalBefore = evalCp(before), evalAfter = evalCp(after);
+        const played = { from: ev.from, to: ev.to, promotion: ev.promotion };
+        const classification = classify(evalBefore, evalAfter, mover, played, before?.bestMove);
+        let motifs = [];
+        if (classification) {
+            const tactics = await loadTactics();
+            try {
+                motifs = tactics?.detect?.(stateBefore, { from: ev.from, to: ev.to, promotionPiece: ev.promotion },
+                    g.getCurrentGameStateSnapshot(), { before, after }) || [];
+            } catch (e) { log('tactics failed', e); }
+        }
+        const brilliant = classification === 'best' && !s.over && isSacrifice(ev);
+        const base = {
+            mover, brilliant, piece: ev.piece, square: ev.to, from: ev.from, captured: ev.captured?.piece || null,
+            evalBefore, evalAfter, classification, motif: motifs[0]?.motif || null, motifs,
+            thinkSeconds, isAI: !!ev.isAI, notation: ev.notation
+        };
+        const out = [];
+        const push = (color, type, extra) => out.push([type, { ...base, color, ...extra }]);
+
+        if (ev.captured) {
+            const queen = ev.captured.piece.toLowerCase() === 'q';
+            push(mover, queen ? 'capturedQueen' : 'myCapture');
+            push(other, queen ? 'lostQueen' : 'lostPiece');
+        }
+        if (ev.castling) push(mover, 'castle');
+        if (ev.enPassant) push(mover, 'enPassant');
+        if (ev.promotion) push(mover, 'promotion');
+        if (s.over) {
+            if (s.result === 'checkmate') { push(mover, 'checkmateWin'); push(other, 'checkmateLoss'); }
+            else if (s.result === 'stalemate') { push(mover, 'stalemate'); push(other, 'stalemate'); }
+            else { push(mover, 'draw', { reason: s.result }); push(other, 'draw', { reason: s.result }); }
+        } else {
+            if (s.inCheck) { push(mover, 'check'); push(other, 'gotChecked'); }
+            const key = g.getBoardPositionString(gs().gameHistory[gs().currentMoveIndex]);
+            if (repetitions() >= 2 && !st.repeated.has(key)) { st.repeated.add(key); push(mover, 'repetition'); push(other, 'repetition'); }
+            if (!st.endgameAnnounced && isEndgame()) { st.endgameAnnounced = true; push(mover, 'endgame'); push(other, 'endgame'); }
+            if (classification === 'blunder') { push(mover, 'blunderByMe'); push(other, 'blunderByOpponent'); }
+            else if (brilliant) push(mover, 'brilliantMove');
+            const moverCp = povCp(evalAfter, mover);
+            if (moverCp !== null) {
+                if (Math.abs(evalAfter) < BIG_EVAL_RESET) st.bigSide = null;
+                const leader = evalAfter >= BIG_EVAL ? 'w' : evalAfter <= -BIG_EVAL ? 'b' : null;
+                if (leader && leader !== st.bigSide && Math.abs(evalAfter) < 9000) {
+                    st.bigSide = leader;
+                    push(leader, 'winningBig'); push(opponent(leader), 'losingBig');
+                }
+                const mate = after?.mate; // moves to mate, + White mates, - Black mates
+                if (Number.isFinite(mate) && mate !== 0 && (mate > 0) === (mover === 'w') && Math.abs(mate) <= 2 && !s.inCheck) push(mover, 'mateThreat');
+            }
+            if (!ev.isAI && thinkSeconds >= 30) push(other, 'longThink');
+        }
+        for (const [type, data] of out) emit(type, data);
+        emit('moveDone', {
+            ...base, color: mover, ev, status: s, before, after, stateBefore,
+            bestBefore: before?.bestMove || null, alternatives: before?.alternatives || null
+        });
+    }
+
+    function repetitions() {
+        const hist = gs().gameHistory, idx = gs().currentMoveIndex;
+        const current = g.getBoardPositionString(hist[idx]);
+        let n = 0;
+        for (let i = 0; i <= idx; i++) if (g.getBoardPositionString(hist[i]) === current) n++;
+        return n;
+    }
+
+    // Endgame: no queens, or at most one minor/rook per side besides pawns
+    function isEndgame() {
+        let queens = 0, minors = 0;
+        for (const row of gs().board) for (const p of row) {
+            if (!p) continue;
+            const t = p.toLowerCase();
+            if (t === 'q') queens++;
+            else if (t !== 'p' && t !== 'k') minors += PIECE_VALUES[t];
+        }
+        return queens === 0 ? minors <= 16 : minors <= 6;
+    }
+
+    // A best move that leaves a more valuable piece where the opponent can take it
+    function isSacrifice(ev) {
+        const moved = (ev.promotion || ev.piece).toLowerCase();
+        const gained = ev.captured ? PIECE_VALUES[ev.captured.piece.toLowerCase()] : 0;
+        if (PIECE_VALUES[moved] - gained < 2) return false;
+        try { return g.isSquareAttacked(ev.to.row, ev.to.col, opponent(ev.color)); } catch (e) { return false; }
+    }
+
+    // --- Analysis (elo-engine's requestAnalysis in the worker), cached per position ---
+    const analysisNeeds = new Map(); // source -> { nodes, multiPv }
+    const analysisCache = new Map(); // fen -> { nodes, multiPv, handle, result, promise }
+
+    function setAnalysisNeed(source, opts) {
+        if (opts) analysisNeeds.set(source, opts); else analysisNeeds.delete(source);
+    }
+
+    function analysisOptions() {
+        let nodes = 0, multiPv = 1;
+        for (const o of analysisNeeds.values()) { nodes = Math.max(nodes, o.nodes || 0); multiPv = Math.max(multiPv, o.multiPv || 1); }
+        return nodes > 0 ? { nodes, multiPv } : null;
+    }
+
+    function analyzeCurrent() {
+        const opts = analysisOptions();
+        if (!opts || typeof g.requestAnalysis !== 'function') return null;
+        const key = g.battle3dFen();
+        const cached = analysisCache.get(key);
+        if (cached && cached.nodes >= opts.nodes && cached.multiPv >= opts.multiPv) return cached;
+        let handle;
+        try { handle = g.requestAnalysis(g.getCurrentGameStateSnapshot(), opts); } catch (e) { log('analysis failed to start', e); return null; }
+        const entry = { ...opts, handle, result: null, promise: null };
+        entry.promise = Promise.resolve(handle?.promise).then(result => {
+            entry.handle = null;
+            entry.result = result || null;
+            if (!result && analysisCache.get(key) === entry) analysisCache.delete(key);
+            return entry.result;
+        }, error => {
+            log('analysis failed', error);
+            if (analysisCache.get(key) === entry) analysisCache.delete(key);
+            return null;
+        });
+        analysisCache.set(key, entry);
+        if (analysisCache.size > 300) analysisCache.delete(analysisCache.keys().next().value);
+        return entry;
+    }
+
+    function cancelAnalyses() {
+        for (const [key, entry] of [...analysisCache]) {
+            if (!entry.handle) continue;
+            analysisCache.delete(key);
+            try { entry.handle.cancel(); } catch (e) { /* ignore */ }
+        }
+    }
+
+    // Coach / review: analysis of the current position, or null when unavailable
+    function analysisFor(key = g.battle3dFen()) {
+        return analysisCache.get(key) || null;
+    }
+
+    // --- Review mode: look at an earlier position without changing the game ---
+    function reviewText(i) {
+        const entry = gs().gameHistory[i];
+        if (!entry || i === 0) return 'Reviewing the start position. Esc returns to the game.';
+        const mover = gs().gameHistory[i - 1].currentPlayer;
+        return `Reviewing ${entry.moveNumber}${mover === 'w' ? '.' : '...'} ${entry.moveNotation}. Esc returns to the game.`;
+    }
+
+    function enterReview(index) {
+        const hist = gs().gameHistory;
+        if (st.moving || !Number.isInteger(index) || index < 0 || index >= hist.length) return false;
+        if (index === gs().currentMoveIndex && st.reviewIndex === null) return false;
+        cancelAI();
+        clearHint();
+        closePromotion();
+        clearSelection();
+        clearRings();
+        st.reviewIndex = index;
+        try { units.syncBoard(hist[index].board); } catch (e) { log('review sync failed', e); }
+        clearRings({ forget: true });
+        sceneAPI.setHighlights({ selected: null, moves: [], lastMove: hist[index].lastMove || null, check: null, hover: null });
+        sceneAPI.requestRender?.();
+        el.reviewBar && (el.reviewBar.hidden = false);
+        renderMoveList();
+        updateHud();
+        announce(reviewText(index));
+        emit('review', { index });
+        return true;
+    }
+
+    function exitReview({ quiet = false } = {}) {
+        if (st.reviewIndex === null) return;
+        st.reviewIndex = null;
+        el.reviewBar && (el.reviewBar.hidden = true);
+        safeSync();
+        refreshHighlights();
+        renderMoveList();
+        updateHud();
+        if (!quiet) {
+            emit('review', { index: null });
+            maybeStartAI();
+        }
+    }
+
     // --- Commands ---
     // Stops anything in flight and invalidates pending async continuations.
     function abortInFlight() {
         clearRings(); // before units are skipped and resynced
         clearHint();
+        cancelAnalyses();
+        st.resets++;
+        st.reviewIndex = null;
+        if (el.reviewBar) el.reviewBar.hidden = true;
         cancelAI();
         closePromotion();
         st.version++; // stale scene-clock waits still resolve, their continuations see the new version
@@ -631,8 +939,13 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     function newGame() {
         abortInFlight();
         g.battle3dNewGame();
+        resetEventState();
         resyncView();
         sceneAPI.setView(viewSide(), { animate: true });
+        emit('reset', { reason: 'newGame' });
+        emit('gameStart', { color: 'w' });
+        emit('gameStart', { color: 'b' });
+        startTurn();
         maybeStartAI();
     }
 
@@ -640,7 +953,10 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     function loadFen(fen) {
         abortInFlight();
         g.battle3dLoadFen(fen);
+        resetEventState();
         resyncView();
+        emit('reset', { reason: 'loadFen' });
+        startTurn();
         maybeStartAI();
     }
 
@@ -659,6 +975,10 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         abortInFlight();
         g.battle3dUndo(plies);
         resyncView();
+        emit('reset', { reason: 'undo', plies });
+        // The side that took moves back is now to move; its king speaks and the other may retort
+        emit('undoUsed', { color: gs().currentPlayer });
+        startTurn();
         maybeStartAI();
     }
 
@@ -760,6 +1080,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         const onControl = typing || tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY';
         const modalOpen = !!document.querySelector('.modal:not([hidden])');
         if (event.key === 'Escape') {
+            if (st.reviewIndex !== null && !modalOpen) { exitReview(); return; }
             if (st.pendingPromotion) cancelPromotion();
             else if (!modalOpen) {
                 if (st.selected) sfx('deselect', st.selected);
@@ -801,6 +1122,13 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     el.undo.addEventListener('click', undo);
     el.skip.addEventListener('click', skip);
     el.hint?.addEventListener('click', requestHint);
+    el.reviewExit?.addEventListener('click', () => exitReview());
+    el.moveList.addEventListener('click', (event) => {
+        const index = Number(event.target?.dataset?.index);
+        if (!Number.isInteger(index)) return;
+        if (index === gs().currentMoveIndex && st.reviewIndex !== null) exitReview();
+        else enterReview(index);
+    });
     el.promo.querySelectorAll('button[data-piece]').forEach(button =>
         button.addEventListener('click', () => choosePromotion(button.dataset.piece)));
     el.promoCancel.addEventListener('click', cancelPromotion);
@@ -854,13 +1182,16 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             selected: st.selected,
             pendingPromotion: st.pendingPromotion,
             hint: st.hint ? { from: st.hint.from, to: st.hint.to, capture: st.hint.capture } : null,
-            hintPending: !!st.hintHandle
+            hintPending: !!st.hintHandle,
+            reviewIndex: st.reviewIndex
         };
     }
 
     return {
         newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
         hint: requestHint, clearHint,
+        onEvent, setAnalysisNeed, showSuggestion, analyzeCurrent, analysisFor, enterReview, exitReview,
+        isHumanColor: (c) => !isAIColor(c),
         viewSide,
         clickSquare: onSquareClick,
         // Cast changes rebuild every unit: drop rings before setCast, refresh() reapplies them after

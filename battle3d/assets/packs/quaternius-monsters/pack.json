@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "id": "quaternius-monsters",
+  "name": "Quaternius Animated Monsters",
+  "author": "Quaternius",
+  "description": "A slime, a bat, a dragon and a skeleton with attacks, deaths and hits.",
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "source": "https://opengameart.org/content/lowpoly-animated-monsters",
+    "submitted": "2018-08-16",
+    "verified": "2026-10-08",
+    "note": "CC0 stated on the OpenGameArt page (uploaded by the author) and in the bundled License.txt."
+  },
+  "credit": "Quaternius Animated Monsters by Quaternius (CC0), https://opengameart.org/content/lowpoly-animated-monsters",
+  "rig": "quaternius-monster",
+  "kind": "creature",
+  "army": "monsters",
+  "models": [
+    {
+      "id": "Slime",
+      "label": "Slime",
+      "file": "Slime.glb",
+      "thumb": "thumbs/Slime.webp",
+      "kind": "creature",
+      "rig": "quaternius-monster",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.231,
+      "nativeHeight": 1.948,
+      "height": 0.45,
+      "tris": 1440,
+      "textures": [],
+      "bytes": 56332,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "small"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Body"
+      },
+      "anims": {
+        "idle": "Slime|Slime_Idle",
+        "walk": "Slime|Slime_Walk",
+        "run": "Slime|Slime_Walk",
+        "attack": [
+          "Slime|Slime_Attack"
+        ],
+        "death": [
+          "Slime|Slime_Death"
+        ],
+        "hit": [
+          "Slime|Slime_Attack"
+        ],
+        "block": "Slime|Slime_Idle",
+        "cheer": "Slime|Slime_Attack",
+        "spawn": "Slime|Slime_Idle",
+        "jump": "Slime|Slime_Walk"
+      },
+      "impacts": {
+        "Slime|Slime_Attack": 0.221
+      },
+      "clipDurations": {
+        "Slime|Slime_Attack": 0.625,
+        "Slime|Slime_Death": 0.417,
+        "Slime|Slime_Idle": 2.5,
+        "Slime|Slime_Walk": 0.833
+      }
+    },
+    {
+      "id": "Bat",
+      "label": "Bat",
+      "file": "Bat.glb",
+      "thumb": "thumbs/Bat.webp",
+      "kind": "creature",
+      "rig": "quaternius-monster",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1664,
+      "nativeHeight": 4.506,
+      "height": 0.75,
+      "tris": 1046,
+      "textures": [],
+      "bytes": 106864,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "flying"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Body"
+      },
+      "anims": {
+        "idle": "Bat|Bat_Flying",
+        "walk": "Bat|Bat_Flying",
+        "run": "Bat|Bat_Flying",
+        "attack": [
+          "Bat|Bat_Attack",
+          "Bat|Bat_Attack2"
+        ],
+        "death": [
+          "Bat|Bat_Death"
+        ],
+        "hit": [
+          "Bat|Bat_Hit"
+        ],
+        "block": "Bat|Bat_Hit",
+        "cheer": "Bat|Bat_Attack2",
+        "spawn": "Bat|Bat_Flying",
+        "jump": "Bat|Bat_Flying"
+      },
+      "impacts": {
+        "Bat|Bat_Attack": 0.638,
+        "Bat|Bat_Attack2": 0.296
+      },
+      "clipDurations": {
+        "Bat|Bat_Attack": 0.875,
+        "Bat|Bat_Attack2": 1.25,
+        "Bat|Bat_Death": 1.208,
+        "Bat|Bat_Flying": 1.25,
+        "Bat|Bat_Hit": 1.25
+      }
+    },
+    {
+      "id": "Dragon",
+      "label": "Dragon",
+      "file": "Dragon.glb",
+      "thumb": "thumbs/Dragon.webp",
+      "kind": "creature",
+      "rig": "quaternius-monster",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2386,
+      "nativeHeight": 3.982,
+      "height": 0.95,
+      "tris": 1344,
+      "textures": [],
+      "bytes": 122476,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "flying",
+        "big"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Body"
+      },
+      "anims": {
+        "idle": "Dragon|Dragon_Flying",
+        "walk": "Dragon|Dragon_Flying",
+        "run": "Dragon|Dragon_Flying",
+        "attack": [
+          "Dragon|Dragon_Attack",
+          "Dragon|Dragon_Attack2"
+        ],
+        "death": [
+          "Dragon|Dragon_Death"
+        ],
+        "hit": [
+          "Dragon|Dragon_Hit"
+        ],
+        "block": "Dragon|Dragon_Hit",
+        "cheer": "Dragon|Dragon_Attack2",
+        "spawn": "Dragon|Dragon_Flying",
+        "jump": "Dragon|Dragon_Flying"
+      },
+      "impacts": {
+        "Dragon|Dragon_Attack": 0.621,
+        "Dragon|Dragon_Attack2": 0.354
+      },
+      "clipDurations": {
+        "Dragon|Dragon_Attack": 0.875,
+        "Dragon|Dragon_Attack2": 1.667,
+        "Dragon|Dragon_Death": 1.208,
+        "Dragon|Dragon_Flying": 1.667,
+        "Dragon|Dragon_Hit": 1.667
+      }
+    },
+    {
+      "id": "Skeleton",
+      "label": "Bone Brute",
+      "file": "Skeleton.glb",
+      "thumb": "thumbs/Skeleton.webp",
+      "kind": "creature",
+      "rig": "quaternius-monster",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1637,
+      "nativeHeight": 5.191,
+      "height": 0.85,
+      "tris": 1810,
+      "textures": [],
+      "bytes": 65512,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "undead"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Skeleton|Skeleton_Idle",
+        "walk": "Skeleton|Skeleton_Running",
+        "run": "Skeleton|Skeleton_Running",
+        "attack": [
+          "Skeleton|Skeleton_Attack"
+        ],
+        "death": [
+          "Skeleton|Skeleton_Death"
+        ],
+        "hit": [
+          "Skeleton|Skeleton_Attack"
+        ],
+        "block": "Skeleton|Skeleton_Idle",
+        "cheer": "Skeleton|Skeleton_Spawn",
+        "spawn": "Skeleton|Skeleton_Spawn",
+        "jump": "Skeleton|Skeleton_Running"
+      },
+      "impacts": {
+        "Skeleton|Skeleton_Attack": 0.613
+      },
+      "clipDurations": {
+        "Skeleton|Skeleton_Attack": 0.917,
+        "Skeleton|Skeleton_Death": 0.333,
+        "Skeleton|Skeleton_Idle": 2.667,
+        "Skeleton|Skeleton_Running": 1,
+        "Skeleton|Skeleton_Spawn": 2.875
+      }
+    }
+  ]
+}

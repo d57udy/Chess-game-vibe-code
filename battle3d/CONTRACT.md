@@ -395,3 +395,95 @@ game is over, and in AI vs AI. Cancel any running hint request on those events.
 sceneAPI.setHint({ from: {row,col}, to: {row,col}, capture } | null)   // scene: arrow + square glow, render-on-demand aware
 units.playHint(square)                                                 // units: short gesture, optional, must be safe to skip
 ```
+
+---
+
+# v6: talking kings, coach mode, model library (more models, casts, characters)
+
+Owner decisions: (1) kings make fun, snarky, engaging remarks from a PREDEFINED bank of about 300 phrases (no live AI);
+(2) a training/coach mode where the player's own king gives advice; (3) load more models for the pieces: a model
+library with more CC0 packs, a retargeting layer (VRM + Mixamo/Quaternius-style humanoids onto our animations), and
+new casts/characters. All three are on by agreement; build with the agent team.
+
+## Ownership (v6)
+
+| Agent | Owns |
+|---|---|
+| lines writer (`b3d-lines`, new) | `battle3d/lines/*.json` (king banks, coach templates), `battle3d/lines/STYLE.md` |
+| commentary + coach UI (`b3d-game`) | new `battle3d/commentary.js`, new `battle3d/coach.js` (UI/flow), `controller.js`, `main.js`, `index.html`, `hud.css`, `audio.js` (voice blips), README, `sw.js` VERSION bump at release |
+| speech bubbles (`b3d-scene`) | bubble rendering in `scene.js` / new `battle3d/bubbles.js` (+ CSS it needs, coordinate with b3d-game) |
+| king gestures + loading retargeted models (`b3d-units`) | `units.js` |
+| analysis engine (`elo-engine`) | `aiPlayer.js` analysis API, `aiWorker.js`, `aiClient.js`, new `battle3d/tactics.js` (motif detectors, pure JS) |
+| retargeting + import (`b3d-retarget`, new) | new `battle3d/retarget.js`, new `battle3d/vrm.js`, bone maps under `battle3d/assets/rigs/` |
+| model library + packs (`b3d-assets`) | `battle3d/assets/**` (new packs, manifest, library index, credits), `cast.js`, `cast-ui.js`, `cast.css`, `battle3d/tools/**`, `sw.js` precache list |
+| qa (`b3d-qa`) | tests |
+
+## 1. Talking kings
+
+Event bus: controller emits `game:event` objects `{ type, color, piece, square, captured, evalBefore, evalAfter,
+classification, motif, ply, thinkSeconds }`. Event types (the line bank uses these keys):
+`gameStart, myCapture, lostPiece, lostQueen, capturedQueen, check, gotChecked, mateThreat, promotion, castle,
+enPassant, blunderByOpponent, blunderByMe, brilliantMove, longThink, repetition, endgame, winningBig, losingBig,
+stalemate, checkmateWin, checkmateLoss, draw, hintUsed, undoUsed, idle`.
+
+`battle3d/lines/hero-king.json` and `skeleton-king.json`: about 150 lines each (about 300 total), keyed by event type,
+each line `{ text, weight?, minPly?, tags? }` with slots `{piece} {square} {captured} {opponent}`; PG and kind-hearted
+snark (teasing the opponent and the player, never insulting real people, no profanity), short (max ~90 chars), the
+hero king pompous and chivalrous, the skeleton king dry gallows humour. Both kings react to the same events from their
+own side's point of view. Optional per-AI-level flavour via `tags`.
+
+`commentary.js`: chooses who speaks (usually the king affected; the opponent king may retort), priority per event type,
+global cooldown (Occasional: >= 3 plies between remarks; Chatty: >= 1), a shuffle bag per event (no repeats until
+exhausted), settings Off / Occasional (default) / Chatty saved with settings; captions to an aria-live region;
+pauses during cinematics; never blocks input; works offline.
+
+Bubbles (`b3d-scene`): `sceneAPI.say({ unitWorldPos or square, text, side, durationMs })` shows a comic speech bubble
+anchored above the king's head (HTML overlay positioned by projecting the head position each frame, clamped to the
+viewport, readable on phones, one bubble per king, fades out). Units: `units.playGesture(square, kind 'talk'|'taunt'|
+'cheer'|'shrug'|'facepalm')` short, interruptible, safe to skip. Audio: `audio.play('blip', { voice: 'hero'|'skeleton',
+syllables })` short mumbly voice blips per bubble (synthesized), respects mute.
+
+## 2. Coach mode
+
+Toggle "Coach" in the menu (works vs AI and human vs human; off by default). All chess judgement comes from the engine
+(`elo-engine`), never from text generation. Engine API via the worker:
+
+```js
+requestAnalysis(state, { nodes = 300000, multiPv = 3 }) -> { promise -> { eval, bestMove, pv, alternatives: [{move, eval}] }, cancel }
+requestThreats(state) -> { promise -> { threats: [{ move, gain, motif }] }, cancel }   // opponent's best ideas if it were their move
+classifyMove(evalBefore, evalAfter, side) -> 'best'|'good'|'inaccuracy'|'mistake'|'blunder' // win% model like Lichess
+tactics.detect(stateBefore, move, stateAfter) -> [{ motif: 'fork'|'pin'|'skewer'|'hanging'|'backRank'|'missedCapture'|
+  'allowsMate'|'missedMate'|'trappedPiece'|'discovered', squares: [...], pieces: [...] }]
+tactics.hangingPieces(state, side) -> [{ square, piece, attackers, defenders }]
+```
+
+Coach flow (`coach.js`, b3d-game): before the player's move: optional nudges (threat warning, hanging piece, opening
+principles: castle, develop, centre) at most one per move; after the move: classify; for inaccuracy or worse, the
+player's king explains in plain language from coach templates in `battle3d/lines/coach.json` (by motif and
+classification, with slots) and offers "Take it back" (undo) and "Show me better" (hint arrow with the engine's best
+move); good moves get occasional praise. End of game: a short review panel (key moments with classifications, a small
+eval graph, jump to position via history review). Coach strength independent of the opponent's level; frequency
+setting (Every move / Mistakes only). Analysis runs in the worker, cancellable, about 0.3 to 1 s on a phone; the UI
+never blocks.
+
+## 3. Model library, retargeting, new casts
+
+Formats: `.glb`/`.gltf` (embedded) and `.vrm` (via `@pixiv/three-vrm`, MIT, loaded only when needed through the import
+map, version compatible with three 0.186.1; verify). FBX is not supported in-browser (convert in Blender; say so).
+
+Retargeting (`b3d-retarget`): detect the skeleton type (KayKit, Mixamo `mixamorig:*`, VRM humanoid, Quaternius,
+generic humanoid by name heuristics), map bones onto our clips' bones (data files in `assets/rigs/`), correct
+rest-pose differences so our shared clips (walk, attacks, deaths...) play correctly on other humanoids; fall back to
+"static" with a clear warning when it can't map. Expose `retarget.prepare(gltfOrVrm, THREE) -> { root, mixerTarget,
+clipMap, rigType, warnings }` for units.js.
+
+Model library (`b3d-assets`): three sources in the cast editor: Built-in (bundled CC0), More packs (hosted in the repo
+but downloaded only when chosen; each pack has `pack.json` with models, thumbnails, license, credit) and Import your
+own (`.glb`/`.vrm`, existing IndexedDB storage). Add at least 2 new CC0 packs (verify licenses from the source; record
+in CREDITS.md), e.g. Quaternius characters/monsters and animals (a real horse for knights), optimized like the KayKit
+assets (meshopt, small textures). New presets/casts using them (e.g. a monsters army, a mounted-knights variant).
+Thumbnails generated by a reproducible script. Validation on import: triangle and texture budgets, rig check,
+auto-scale and facing, team tint. Update sw.js precache for built-in assets only (packs cached at runtime when used).
+
+units.js (`b3d-units`): load models through `retarget.prepare` when a role uses a non-KayKit rig; mounted knight
+support (rider + horse, both animated, or the horse alone) if a horse model is added.

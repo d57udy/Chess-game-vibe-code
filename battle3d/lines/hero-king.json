@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "speaker": "hero",
+  "side": "w",
+  "opponentFallback": "Lord Rattles",
+  "events": {
+    "gameStart": [
+      {"text": "Heroes, to your squares! Try to look heroic, the painters are watching."},
+      {"text": "A fine day for glory. I've polished my crown twice, just in case."},
+      {"text": "{opponent}, prepare to be defeated in a dashing and memorable fashion."},
+      {"text": "Fear not, troops. I have a plan. It's mostly a speech, but it's a good speech."},
+      {"text": "Sixty-four squares of destiny. I call dibs on the dramatic ones."},
+      {"text": "Bards, sharpen your quills! A legend begins in roughly one move."},
+      {"text": "Skeletons again? Splendid. They never complain about the weather."},
+      {"text": "Let the record show I am not nervous. My armour simply rattles on its own."},
+      {"text": "A thinking machine? Ha! I too can think. Occasionally. With effort.", "tags": ["vsAI"]},
+      {"text": "My strategist is a very clever machine. I shall supply the charisma.", "tags": ["aiKing"]}
+    ],
+    "myCapture": [
+      {"text": "Huzzah! My {piece} takes your {captured}. Someone write that down.", "weight": 2},
+      {"text": "Off you pop, {captured}. Nothing personal, merely glorious."},
+      {"text": "A clean strike on {square}! I taught that {piece} everything. Mainly posing."},
+      {"text": "Another one for the tapestry. We'll need a bigger tapestry.", "minPly": 12},
+      {"text": "Your {captured} has been politely but firmly removed."},
+      {"text": "Ha! Did you see that? Tell me somebody saw that. Anybody?"},
+      {"text": "One fewer skeleton. The dust will settle. Literally."},
+      {"text": "Well struck, brave {piece}! Your knighthood is in the post."},
+      {"text": "I'd say sorry, {opponent}, but I was raised to be honest."},
+      {"text": "{square} is ours! I hereby rename it Square Magnificent."},
+      {"text": "Oh, splendid. I do love it when my plans happen by accident."},
+      {"text": "The {captured} falls! Cue the trumpets. Quietly, the {piece} is modest."},
+      {"text": "Take that, you rattling rascal! Ahem. Sorry. I got carried away."},
+      {"text": "Rattled, are we? I'd be rattled too. Well. You literally are.", "tags": ["retort"]}
+    ],
+    "lostPiece": [
+      {"text": "My {captured}! Gone! Fetch the poets. Make it rhyme with valiant.", "weight": 2},
+      {"text": "A noble sacrifice, I'm told. I'm choosing to believe it."},
+      {"text": "Fear not! The {captured} has retired to the countryside. Permanently."},
+      {"text": "Ouch. That {piece} has no manners whatsoever."},
+      {"text": "We'll avenge you, brave {captured}! Probably! Within reason!"},
+      {"text": "That was part of my plan. A part I hadn't fully planned."},
+      {"text": "{opponent}, that was rude. Effective, but rude."},
+      {"text": "Steady, troops! Nobody panic. I'm panicking enough for all of us."},
+      {"text": "Another hero off to the great tavern in the sky. Save me a seat. Not soon."},
+      {"text": "Hmm. I'd have defended {square}, had I noticed {square}."},
+      {"text": "Clearly that {captured} was exhausted from being so heroic."},
+      {"text": "Right. Fine. That goes straight into my Book of Grudges."},
+      {"text": "Gloat all you like, bone bag. My ballads will tell it differently.", "tags": ["retort"]},
+      {"text": "Rib me all you like. I have armour. And feelings, under the armour.", "tags": ["retort"]}
+    ],
+    "lostQueen": [
+      {"text": "My queen! No! She did all the actual work!"},
+      {"text": "The queen has fallen. Somebody tell her I was very brave about it."},
+      {"text": "Without the queen I shall have to lead. Personally. Oh dear."},
+      {"text": "Our mightiest piece and my best dance partner. A grim day."},
+      {"text": "Fine! FINE! I'll win without her. I'll just need a great deal of luck."}
+    ],
+    "capturedQueen": [
+      {"text": "Your queen, {opponent}! Taken! I'll be insufferable for a week."},
+      {"text": "The Skeleton Queen falls! I shall have a medal struck. Of myself."},
+      {"text": "That was the scary one, wasn't it? Excellent. I'm much braver now."},
+      {"text": "Huzzah! The bony queen is down! Ring the bells! All of them!"}
+    ],
+    "check": [
+      {"text": "Check! I've always wanted to say that with a flourish. Flourish!", "weight": 2},
+      {"text": "Check, {opponent}! Your crown is looking a tad wobbly."},
+      {"text": "My {piece} on {square} says hello. Also, check."},
+      {"text": "Check! Run, little skull, run!"},
+      {"text": "Check! And I didn't even have to leave my square."},
+      {"text": "Knock knock, {opponent}. It's me. It's check."},
+      {"text": "Check! Somebody fetch the Skeleton King a map of the exits."},
+      {"text": "Check! I'd offer you a way out, but I'm not that chivalrous."},
+      {"text": "A check, served with a side of panache."},
+      {"text": "Check! Was that good? Tell me it was good. It felt good."}
+    ],
+    "gotChecked": [
+      {"text": "Check? Me? Unthinkable! Somebody think of something!", "weight": 2},
+      {"text": "Excuse me, that {piece} is pointing at me. Rude!"},
+      {"text": "I'm not hiding. I'm strategically relocating."},
+      {"text": "Check! On ME? My portrait has never been so insulted."},
+      {"text": "Guards! Guards? Anyone? A pawn will do!"},
+      {"text": "Don't worry, everyone. Kings are very good at running. We practise."},
+      {"text": "That {piece} on {square} is breathing on my cape."},
+      {"text": "A minor inconvenience. Please nobody look at my knees."},
+      {"text": "Gloat later, bones. I'm busy being magnificently evasive.", "tags": ["retort"]},
+      {"text": "As if I hadn't foreseen it. I hadn't. But still. As if.", "tags": ["retort"]}
+    ],
+    "mateThreat": [
+      {"text": "I smell victory. Or metal polish. No, it's definitely victory."},
+      {"text": "Careful, {opponent}. One more step and it's curtains. Velvet ones."},
+      {"text": "Mate is in the air! Along with my glorious hair."},
+      {"text": "I'd start writing that farewell speech, {opponent}. Keep it short."},
+      {"text": "Mate threat? Pfft. I laugh in its face. Quietly. From behind a pawn.", "tags": ["retort"]}
+    ],
+    "promotion": [
+      {"text": "A pawn becomes a {piece}! Dreams come true. Mine mostly involve statues."},
+      {"text": "Arise, Sir Pawn! Well, now you're a {piece}. Arise anyway!"},
+      {"text": "From humble foot soldier to {piece}! I'm getting a little misty."},
+      {"text": "Promotion! I give the best promotions. Ask anyone. Ask the pawn."}
+    ],
+    "castle": [
+      {"text": "Castling! A tactical retreat into a lovely tower. With a view."},
+      {"text": "To the castle! Not running away, just admiring the architecture."},
+      {"text": "Safety first, glory second. Glory is a very close second."},
+      {"text": "The rook and I swap places. It's a dance. We've rehearsed."},
+      {"text": "Tucked in nicely. Somebody bring me a cushion and a sturdier rook."}
+    ],
+    "enPassant": [
+      {"text": "En passant! French for 'I know an obscure rule and I'm proud of it'."},
+      {"text": "En passant! Your pawn strolled past. Mine noticed. Manners matter."},
+      {"text": "Ha! The rarest and fanciest capture of them all. Applause, please."}
+    ],
+    "blunderByOpponent": [
+      {"text": "Oh dear, {opponent}. Was that a gift? You shouldn't have. Really."},
+      {"text": "Did you mean to do that? Don't answer. I'll enjoy it either way."},
+      {"text": "A blunder! I'd be gracious about it, but I'm busy being thrilled."},
+      {"text": "Ooh. That one will need a very creative ballad."},
+      {"text": "Thank you for that move. I accept on behalf of heroes everywhere."},
+      {"text": "Is that a trap? It looks like a present. I'm suspicious and delighted."},
+      {"text": "Even I saw that coming, and I mostly look at my reflection."},
+      {"text": "I'd offer you a take-back, {opponent}, but my chivalry has limits.", "tags": ["vsHuman"]},
+      {"text": "The great machine has erred! Somebody check its cogs.", "tags": ["vsAI"]}
+    ],
+    "blunderByMe": [
+      {"text": "Ah. Hmm. That was a bold experiment in losing pieces."},
+      {"text": "Commander, I say this with love: what was that?", "tags": ["myPlayer"]},
+      {"text": "Bit of a wobble there. We'll call it creative. Officially."},
+      {"text": "Let us never speak of that move. I've already started not speaking of it."},
+      {"text": "My crown just slipped. Out of embarrassment, mostly."},
+      {"text": "A blunder? No, no. A learning adventure. Heroes have those."},
+      {"text": "Oh no. Oh no no no. Sorry. A very kingly oh no."},
+      {"text": "My strategist sneezed. It happens to the best of us.", "tags": ["aiKing"]},
+      {"text": "Commander, the machine saw that. Machines see everything. Unsettling.", "tags": ["vsAI"]}
+    ],
+    "brilliantMove": [
+      {"text": "Brilliant! I'd like it noted that I was standing nearby at the time."},
+      {"text": "Magnificent! That move belongs in a museum. Next to my portrait."},
+      {"text": "Did we just do that? We did! Somebody fetch the tapestry people!"},
+      {"text": "Genius, Commander! I'll pretend I saw it coming all along.", "tags": ["myPlayer"]}
+    ],
+    "longThink": [
+      {"text": "Take your time, {opponent}. I'll just polish something."},
+      {"text": "Still thinking? Splendid. I've grown a beard. It's very distinguished."},
+      {"text": "Do skeletons dream? I think yours just nodded off."},
+      {"text": "A hush falls over the board. Mostly because I've dozed off."},
+      {"text": "Ahem. The bards are getting restless. One has started juggling."},
+      {"text": "Thinking hard? That's the spirit. Think a smidge faster, though."},
+      {"text": "Deep thoughts, {opponent}? Mine are about lunch. Glorious lunch."}
+    ],
+    "repetition": [
+      {"text": "Haven't we been here before? I recognise that tile. And that smirk."},
+      {"text": "Round and round we go. I'm getting dizzy and my crown is loose."},
+      {"text": "This again? I'll allow it. I look good from every angle."},
+      {"text": "Déjà vu! That's French. I'm extremely cultured."}
+    ],
+    "endgame": [
+      {"text": "The endgame! Kings may finally leave the castle. Gulp."},
+      {"text": "Fewer pieces, more room for me to stride heroically."},
+      {"text": "So it comes down to this. I've been rehearsing my 'this'."},
+      {"text": "In the endgame the king fights! Mainly by walking forward bravely."},
+      {"text": "Only a few of us left. Let's make it a ballad, not a limerick."}
+    ],
+    "winningBig": [
+      {"text": "Things are going rather well, aren't they? Don't jinx it. I said don't."},
+      {"text": "We're winning! Act natural. Wave. No, not like that."},
+      {"text": "I'd offer terms of surrender, but I'm enjoying this too much."},
+      {"text": "Is it vain to start planning the victory parade? Yes? Too late."},
+      {"text": "{opponent}, you're doing your best and I respect that. Also, I'm winning."},
+      {"text": "Victory draws near! I can tell by how tidy my cape looks."}
+    ],
+    "losingBig": [
+      {"text": "Things are fine. Totally fine. Nobody look at the board."},
+      {"text": "A hero is at his finest when all seems lost. So I'm about to be very fine."},
+      {"text": "Retreat? Never! But I wouldn't say no to a strategic stroll."},
+      {"text": "Courage, troops! We're not losing, we're building suspense."},
+      {"text": "I've seen worse odds. In a play. It ended badly. Never mind."},
+      {"text": "Mock me if you must. Comebacks are a hero's speciality.", "tags": ["retort"]}
+    ],
+    "stalemate": [
+      {"text": "Stalemate? Nobody wins? But I dressed up!"},
+      {"text": "No moves at all? A most unheroic ending. I demand a rematch."},
+      {"text": "Stalemate! Well, I didn't lose. I'll be telling everyone I didn't lose."}
+    ],
+    "checkmateWin": [
+      {"text": "Checkmate! Long live the King! That's me. I'm the King."},
+      {"text": "Victory! Sound the trumpets, light the bonfires, polish the statue!"},
+      {"text": "Checkmate! Well played, {opponent}. Mostly by me, but well played."},
+      {"text": "And so the bones are laid to rest. Again. Gently, this time."},
+      {"text": "We won! I was only pretending to be terrified. Mostly pretending."}
+    ],
+    "checkmateLoss": [
+      {"text": "Checkmate. I shall retire to my chambers and weep magnificently."},
+      {"text": "Defeated! Well played, {opponent}. I'll get you next time. Probably."},
+      {"text": "The King has fallen. Gracefully, I hope. I practised falling gracefully."},
+      {"text": "A loss. But think of the ballad! Tragedy sells, I'm told."},
+      {"text": "Fine. You win. I'm not crying. My visor is just foggy."}
+    ],
+    "draw": [
+      {"text": "A draw! Nobody loses. Everybody gets a little ribbon."},
+      {"text": "A draw. Honour is satisfied. My ego, somewhat less so."},
+      {"text": "We shall call it even. I shall call it a moral victory."}
+    ],
+    "hintUsed": [
+      {"text": "Consulting the oracle is not cheating. It's wisdom. Royal wisdom."},
+      {"text": "A wise king takes advice. I take it constantly. Look how wise I am."},
+      {"text": "A hint? Very wise. Even heroes ask for directions. Rarely. Today."},
+      {"text": "Consulting the oracle, Commander? I approve. It agrees with me.", "tags": ["myPlayer"]},
+      {"text": "A hint, {opponent}? Even skeletons ask for directions, I see.", "tags": ["retort"]},
+      {"text": "Peeking at the answers? I won't tell anyone. I'll tell everyone.", "tags": ["retort"]},
+      {"text": "Help from above? It won't save you. Probably. Hopefully.", "tags": ["retort"]},
+      {"text": "A hint! How sweet. Mine is called talent. And a lot of luck.", "tags": ["retort"]}
+    ],
+    "undoUsed": [
+      {"text": "We'll call that last move a rough draft."},
+      {"text": "History is written by the winners. And edited, apparently."},
+      {"text": "A take-back! The most noble of retreats."},
+      {"text": "Undo! Into the past we leap! Mind the timeline, it's fragile."},
+      {"text": "Taking it back, {opponent}? I saw it. The bards saw it. Too late.", "tags": ["retort"]},
+      {"text": "An undo! Was it something I did? It was, wasn't it. Splendid.", "tags": ["retort"]},
+      {"text": "Back in time, are we? Fine. I'll pretend I didn't gloat.", "tags": ["retort"]},
+      {"text": "Do-overs! In my day we had to lose fair and square.", "tags": ["retort"]}
+    ],
+    "idle": [
+      {"text": "Hello? Anybody? I've struck several heroic poses for nobody."},
+      {"text": "While we wait, I'll rehearse my victory speech. 'Friends, heroes...'"},
+      {"text": "Your move. No hurry. Kings are very patient. Mostly."},
+      {"text": "Is it my move? Is it yours? I'm a king, I don't keep track of these things."},
+      {"text": "If nobody moves soon, I shall be forced to sing. Nobody wants that."},
+      {"text": "Tick tock, {opponent}. My armour is getting stiff."},
+      {"text": "I've counted every square. Sixty-four. In case anyone wondered."}
+    ]
+  }
+}
