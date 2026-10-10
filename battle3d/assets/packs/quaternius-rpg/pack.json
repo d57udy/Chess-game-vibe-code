@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "id": "quaternius-rpg",
+  "name": "Quaternius RPG Characters",
+  "author": "Quaternius",
+  "description": "Six fantasy adventurers with their own weapons and animations.",
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "source": "https://opengameart.org/content/lowpoly-rpg-characters",
+    "submitted": "2021-06-18",
+    "verified": "2026-10-08",
+    "note": "CC0 stated on the OpenGameArt page (uploaded by the author) and in the bundled License.txt."
+  },
+  "credit": "Quaternius RPG Characters by Quaternius (CC0), https://opengameart.org/content/lowpoly-rpg-characters",
+  "rig": "quaternius-character",
+  "kind": "humanoid",
+  "army": "heroes",
+  "models": [
+    {
+      "id": "Warrior",
+      "label": "Warrior",
+      "file": "Warrior.glb",
+      "thumb": "thumbs/Warrior.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2914,
+      "nativeHeight": 2.917,
+      "height": 0.85,
+      "tris": 5402,
+      "textures": [
+        [
+          512,
+          512
+        ],
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 268804,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "sword",
+        "melee"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Weapon.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Warrior|Idle_Weapon",
+        "walk": "Warrior|Walk",
+        "run": "Warrior|Run",
+        "death": [
+          "Warrior|Death"
+        ],
+        "hit": [
+          "Warrior|RecieveHit"
+        ],
+        "block": "Warrior|RecieveHit_Attacking",
+        "cheer": "Warrior|PickUp",
+        "spawn": "Warrior|Idle",
+        "jump": "Warrior|Roll",
+        "attack": [
+          "Warrior|Sword_Attack",
+          "Warrior|Sword_AttackFast"
+        ]
+      },
+      "impacts": {
+        "Warrior|Sword_Attack": 0.471,
+        "Warrior|Sword_AttackFast": 0.304
+      },
+      "clipDurations": {
+        "Warrior|Death": 1.167,
+        "Warrior|Idle": 3.125,
+        "Warrior|Idle_Attacking": 1.667,
+        "Warrior|Idle_Weapon": 3.125,
+        "Warrior|PickUp": 1.25,
+        "Warrior|Punch": 0.75,
+        "Warrior|RecieveHit": 0.625,
+        "Warrior|RecieveHit_Attacking": 0.625,
+        "Warrior|Roll": 1,
+        "Warrior|Run": 0.875,
+        "Warrior|Run_Weapon": 0.875,
+        "Warrior|Sword_Attack": 0.833,
+        "Warrior|Sword_AttackFast": 0.833,
+        "Warrior|Walk": 1.25
+      }
+    },
+    {
+      "id": "Wizard",
+      "label": "Wizard",
+      "file": "Wizard.glb",
+      "thumb": "thumbs/Wizard.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2777,
+      "nativeHeight": 3.061,
+      "height": 0.85,
+      "tris": 5369,
+      "textures": [
+        [
+          512,
+          512
+        ],
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 288184,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": true,
+      "mountable": false,
+      "tags": [
+        "staff",
+        "magic"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Fist.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Wizard|Idle_Weapon",
+        "walk": "Wizard|Walk",
+        "run": "Wizard|Run",
+        "death": [
+          "Wizard|Death"
+        ],
+        "hit": [
+          "Wizard|RecieveHit"
+        ],
+        "block": "Wizard|RecieveHit_Attacking",
+        "cheer": "Wizard|PickUp",
+        "spawn": "Wizard|Idle",
+        "jump": "Wizard|Roll",
+        "attack": [
+          "Wizard|Spell1",
+          "Wizard|Spell2"
+        ]
+      },
+      "impacts": {
+        "Wizard|Spell1": 0.137,
+        "Wizard|Spell2": 0.846
+      },
+      "clipDurations": {
+        "Wizard|Death": 1.167,
+        "Wizard|Idle": 3.125,
+        "Wizard|Idle_Attacking": 1.667,
+        "Wizard|Idle_Weapon": 3.125,
+        "Wizard|PickUp": 1.25,
+        "Wizard|Punch": 0.75,
+        "Wizard|RecieveHit": 0.625,
+        "Wizard|RecieveHit_Attacking": 0.625,
+        "Wizard|Roll": 1,
+        "Wizard|Run": 0.875,
+        "Wizard|Run_Weapon": 0.875,
+        "Wizard|Spell1": 1.208,
+        "Wizard|Spell2": 1.458,
+        "Wizard|Staff_Attack": 0.75,
+        "Wizard|Walk": 1.25
+      }
+    },
+    {
+      "id": "Rogue",
+      "label": "Rogue",
+      "file": "Rogue.glb",
+      "thumb": "thumbs/Rogue.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2938,
+      "nativeHeight": 2.893,
+      "height": 0.85,
+      "tris": 2326,
+      "textures": [
+        [
+          512,
+          512
+        ],
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 201784,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "dagger",
+        "melee"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Fist.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Rogue|Attacking_Idle",
+        "walk": "Rogue|Walk",
+        "run": "Rogue|Run",
+        "death": [
+          "Rogue|Death"
+        ],
+        "hit": [
+          "Rogue|RecieveHit"
+        ],
+        "block": "Rogue|RecieveHit_Attacking",
+        "cheer": "Rogue|PickUp",
+        "spawn": "Rogue|Idle",
+        "jump": "Rogue|Roll",
+        "attack": [
+          "Rogue|Dagger_Attack",
+          "Rogue|Dagger_Attack2"
+        ]
+      },
+      "impacts": {
+        "Rogue|Dagger_Attack": 0.346,
+        "Rogue|Dagger_Attack2": 0.713
+      },
+      "clipDurations": {
+        "Rogue|Attacking_Idle": 1.667,
+        "Rogue|Dagger_Attack": 0.75,
+        "Rogue|Dagger_Attack2": 1.25,
+        "Rogue|Death": 1.167,
+        "Rogue|Idle": 3.125,
+        "Rogue|PickUp": 1.25,
+        "Rogue|Punch": 0.75,
+        "Rogue|RecieveHit": 0.625,
+        "Rogue|RecieveHit_Attacking": 0.625,
+        "Rogue|Roll": 1,
+        "Rogue|Run": 0.875,
+        "Rogue|Walk": 1.25
+      }
+    },
+    {
+      "id": "Ranger",
+      "label": "Ranger",
+      "file": "Ranger.glb",
+      "thumb": "thumbs/Ranger.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2903,
+      "nativeHeight": 2.928,
+      "height": 0.85,
+      "tris": 3803,
+      "textures": [
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 237496,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": true,
+      "mountable": false,
+      "tags": [
+        "bow",
+        "ranged"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Fist.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Ranger|Idle_Weapon",
+        "walk": "Ranger|Walk",
+        "run": "Ranger|Run",
+        "death": [
+          "Ranger|Death"
+        ],
+        "hit": [
+          "Ranger|RecieveHit"
+        ],
+        "block": "Ranger|RecieveHit_Attacking",
+        "cheer": "Ranger|PickUp",
+        "spawn": "Ranger|Idle",
+        "jump": "Ranger|Roll",
+        "attack": [
+          "Ranger|Bow_Attack_Shoot"
+        ]
+      },
+      "impacts": {
+        "Ranger|Bow_Attack_Shoot": 0.404
+      },
+      "clipDurations": {
+        "Ranger|Bow_Attack_Draw": 1.25,
+        "Ranger|Bow_Attack_Shoot": 0.625,
+        "Ranger|Death": 1.167,
+        "Ranger|Idle": 3.125,
+        "Ranger|Idle_Attacking": 1.667,
+        "Ranger|Idle_Weapon": 3.125,
+        "Ranger|PickUp": 1.25,
+        "Ranger|Punch": 0.75,
+        "Ranger|RecieveHit": 0.625,
+        "Ranger|RecieveHit_Attacking": 0.625,
+        "Ranger|Roll": 1,
+        "Ranger|Run": 0.875,
+        "Ranger|Run_Holding": 0.875,
+        "Ranger|Walk": 1.25
+      }
+    },
+    {
+      "id": "Cleric",
+      "label": "Cleric",
+      "file": "Cleric.glb",
+      "thumb": "thumbs/Cleric.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.2143,
+      "nativeHeight": 3.966,
+      "height": 0.85,
+      "tris": 5101,
+      "textures": [
+        [
+          512,
+          512
+        ],
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 284880,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "staff",
+        "magic"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Fist.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Cleric|Idle_Weapon",
+        "walk": "Cleric|Walk",
+        "run": "Cleric|Run",
+        "death": [
+          "Cleric|Death"
+        ],
+        "hit": [
+          "Cleric|RecieveHit"
+        ],
+        "block": "Cleric|RecieveHit_Attacking",
+        "cheer": "Cleric|PickUp",
+        "spawn": "Cleric|Idle",
+        "jump": "Cleric|Roll",
+        "attack": [
+          "Cleric|Staff_Attack",
+          "Cleric|Spell1"
+        ]
+      },
+      "impacts": {
+        "Cleric|Staff_Attack": 0.429,
+        "Cleric|Spell1": 0.137
+      },
+      "clipDurations": {
+        "Cleric|Attack_Idle": 1.667,
+        "Cleric|Death": 1.167,
+        "Cleric|Idle": 3.125,
+        "Cleric|Idle_Weapon": 3.125,
+        "Cleric|PickUp": 1.25,
+        "Cleric|Punch": 0.75,
+        "Cleric|RecieveHit": 0.625,
+        "Cleric|RecieveHit_Attacking": 0.625,
+        "Cleric|Roll": 1,
+        "Cleric|Run": 0.875,
+        "Cleric|Run_Weapon": 0.875,
+        "Cleric|Spell1": 1.208,
+        "Cleric|Spell2": 1.458,
+        "Cleric|Staff_Attack": 0.75,
+        "Cleric|Walk": 1.25
+      }
+    },
+    {
+      "id": "Monk",
+      "label": "Monk",
+      "file": "Monk.glb",
+      "thumb": "thumbs/Monk.webp",
+      "kind": "humanoid",
+      "rig": "quaternius-character",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.3001,
+      "nativeHeight": 2.832,
+      "height": 0.85,
+      "tris": 6714,
+      "textures": [
+        [
+          512,
+          512
+        ]
+      ],
+      "bytes": 249628,
+      "walkSpeedNative": 1.735,
+      "runSpeedNative": 3.252,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "unarmed",
+        "melee"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips",
+        "handR": "Fist.R",
+        "handL": "Fist.L"
+      },
+      "anims": {
+        "idle": "Monk|Idle_Attacking",
+        "walk": "Monk|Walk",
+        "run": "Monk|Run",
+        "death": [
+          "Monk|Death"
+        ],
+        "hit": [
+          "Monk|RecieveHit"
+        ],
+        "block": "Monk|RecieveHit_Attacking",
+        "cheer": "Monk|PickUp",
+        "spawn": "Monk|Idle",
+        "jump": "Monk|Roll",
+        "attack": [
+          "Monk|Attack",
+          "Monk|Attack2"
+        ]
+      },
+      "impacts": {
+        "Monk|Attack": 0.346,
+        "Monk|Attack2": 0.346
+      },
+      "clipDurations": {
+        "Monk|Attack": 0.833,
+        "Monk|Attack2": 0.833,
+        "Monk|Death": 1.167,
+        "Monk|Idle": 3.125,
+        "Monk|Idle_Attacking": 1.667,
+        "Monk|PickUp": 1.25,
+        "Monk|RecieveHit": 0.625,
+        "Monk|RecieveHit_Attacking": 0.625,
+        "Monk|Roll": 1,
+        "Monk|Run": 0.875,
+        "Monk|Walk": 1.25
+      }
+    }
+  ]
+}

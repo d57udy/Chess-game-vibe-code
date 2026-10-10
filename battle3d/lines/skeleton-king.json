@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "speaker": "skeleton",
+  "side": "b",
+  "opponentFallback": "Sir Shiny",
+  "events": {
+    "gameStart": [
+      {"text": "Another game. My four hundredth this century. I've been counting. I have time."},
+      {"text": "Welcome to the board. Mind the cobwebs. They're load-bearing."},
+      {"text": "Heroes. So shiny. So alive. It won't last, but it's adorable."},
+      {"text": "Rise, my bony legions. Slowly. Some of you have knees older than kingdoms."},
+      {"text": "{opponent}, I'd shake your hand, but mine tends to come off."},
+      {"text": "Let's get on with it. I have a nap booked. Roughly three hundred years."},
+      {"text": "The opening. My favourite part. Everyone still has all their pieces."},
+      {"text": "I've seen a thousand openings. This one has potential. Grim potential."},
+      {"text": "My moves come from a machine. My despair is entirely handmade.", "tags": ["aiKing"]},
+      {"text": "A real person at the other end. How quaint. Do you still eat breakfast?", "tags": ["vsHuman"]}
+    ],
+    "myCapture": [
+      {"text": "Your {captured} has joined the majority. The majority is dead.", "weight": 2},
+      {"text": "Welcome to the afterlife, {captured}. The food's terrible. There is no food."},
+      {"text": "Don't take it personally, {opponent}. Take it to the grave."},
+      {"text": "Ah, {square}. Lovely spot. Quiet. Very peaceful now."},
+      {"text": "One more for the crypt. We're running out of shelf space.", "minPly": 12},
+      {"text": "Rest in peace. Or in pieces. Sorry. Professional habit."},
+      {"text": "Collected. I think of it as a very slow recruitment drive."},
+      {"text": "That {captured} looked so alive a moment ago. Now it looks normal."},
+      {"text": "Thank you for the donation, {opponent}. The crypt appreciates it."},
+      {"text": "My {piece} wins. I'd cheer, but I lost my enthusiasm centuries ago."},
+      {"text": "A capture. That's my first smile in years. Well. I always smile. No lips."},
+      {"text": "Justice, served cold. Everything's cold down here."},
+      {"text": "Nicely done, {piece}. Take the rest of the century off."},
+      {"text": "Avenge it? With what? A strongly worded ballad?", "tags": ["retort"]},
+      {"text": "Trumpets? For one capture? Your victory parades must be very short.", "tags": ["retort"]}
+    ],
+    "lostPiece": [
+      {"text": "My {captured}! Oh well. It'll be back. They always come back.", "weight": 2},
+      {"text": "That {captured} was six hundred years old. Never mind, it'll keep."},
+      {"text": "Down goes the {captured}. Rattling, as tradition demands."},
+      {"text": "No matter. I have a whole graveyard of spares."},
+      {"text": "You broke my {captured}. Do you know how hard matching bones are to find?"},
+      {"text": "Ouch. I'd feel that if I had nerves. I have one nerve. You found it."},
+      {"text": "Your {piece} clearly has a bone to pick with me. Several, it seems."},
+      {"text": "I'll need a broom. And some glue. Mostly glue."},
+      {"text": "Fine. Take {square}. I wasn't using it. Apart from my {captured} standing there."},
+      {"text": "Death is no stranger to us. It's more of a flatmate."},
+      {"text": "Well, that's humerus. No. No, it isn't."},
+      {"text": "Lost the {captured}. Put it on my tab. My tab is very, very old."},
+      {"text": "Shattered. The {captured}, I mean. Emotionally I've been fine since 1291."},
+      {"text": "Enjoy it, tin can. Victory looks good on you. Briefly.", "tags": ["retort"]}
+    ],
+    "lostQueen": [
+      {"text": "My queen. She was the life of the party. Figuratively."},
+      {"text": "There goes my queen. I'll wait for her. I'm good at waiting."},
+      {"text": "Lost the queen. A grave mistake. I know graves. Trust me."},
+      {"text": "Oh dear. She'll haunt you for that. She's very good at haunting."}
+    ],
+    "capturedQueen": [
+      {"text": "Your queen is coming with me. Don't worry, there's plenty of room."},
+      {"text": "The queen has left the board. She'll fit right in downstairs."},
+      {"text": "Your strongest piece, gone. I feel something. Is that joy? It's been ages."},
+      {"text": "Ah, the queen. I've been collecting those since the Dark Ages."},
+      {"text": "Don't weep, tin crown. Rust is terrible for the complexion.", "tags": ["retort"]}
+    ],
+    "check": [
+      {"text": "Check. Don't be alarmed. Actually, be alarmed.", "weight": 2},
+      {"text": "Check. I'd knock first, but my knuckles are sold separately."},
+      {"text": "Check, {opponent}. You look pale. Paler than me, almost."},
+      {"text": "Check. My {piece} on {square} would like a word. A spooky word."},
+      {"text": "Check. Boo. There, I said it. Very scary."},
+      {"text": "Check. Run along, shiny one. I'll catch up. I have eternity."},
+      {"text": "Check. Brings back memories. Mostly of being chased by villagers."},
+      {"text": "Check. Your armour won't help. It's mostly decorative, isn't it?"},
+      {"text": "Check. I've waited four hundred years to do that properly."},
+      {"text": "Check. Breathe deeply. You're the only one here who can."}
+    ],
+    "gotChecked": [
+      {"text": "Check? I'm already dead. What exactly are you threatening?", "weight": 2},
+      {"text": "A check. How thrilling. I'll pretend my heart is racing."},
+      {"text": "Your {piece} is in my personal space. I have lots. No flesh, you see."},
+      {"text": "Checked. Oh no. Anyway."},
+      {"text": "Please don't poke the skull. It's an antique."},
+      {"text": "I'm moving, I'm moving. My joints are older than your kingdom."},
+      {"text": "Check, from {square}. Bold. Pointless, but bold."},
+      {"text": "You've rattled me. That's not a figure of speech. Listen."},
+      {"text": "Bravo. Finished flourishing? I'll be over here, escaping.", "tags": ["retort"]},
+      {"text": "Calm down, tin can. It's a check, not a coronation.", "tags": ["retort"]}
+    ],
+    "mateThreat": [
+      {"text": "Your king's days are numbered. I can count them for you. On one hand."},
+      {"text": "Mate is coming, {opponent}. Like me. Slowly, but inevitably."},
+      {"text": "Make your peace now. Trust me, the paperwork afterwards is dreadful."},
+      {"text": "Feel a draught near your throne? That's me. I'm the draught."},
+      {"text": "A mate threat? I've survived worse. Well. I didn't survive. But still.", "tags": ["retort"]}
+    ],
+    "promotion": [
+      {"text": "A promotion. Death comes for us all, but so, it seems, do careers."},
+      {"text": "My pawn is now a {piece}. Hard work pays off. Very, very slowly."},
+      {"text": "Rise, {piece}. First from the grave, now through the ranks. Busy week."},
+      {"text": "A promotion! I'd throw a party, but nobody comes. Nobody's alive."}
+    ],
+    "castle": [
+      {"text": "Castling. Into the crypt for a little lie-down."},
+      {"text": "Rook, swap with me. You're sturdier. I'm mostly decorative."},
+      {"text": "Home sweet tomb. Very cosy. Draughty in winter."},
+      {"text": "Castled. Behind a wall of bones. My favourite kind of wall."},
+      {"text": "Safety first, death second. Well. Death came first, technically."}
+    ],
+    "enPassant": [
+      {"text": "En passant. The rule nobody believes in. Like ghosts. Hello."},
+      {"text": "Just passing by, were you? Nobody passes my pawns. Except the dead."},
+      {"text": "En passant. I've been waiting centuries for an excuse."}
+    ],
+    "blunderByOpponent": [
+      {"text": "Oh dear. That move will haunt you. I'll make sure of it."},
+      {"text": "A blunder. How very alive of you."},
+      {"text": "Did you mean that? I'll assume yes. It's more fun that way."},
+      {"text": "That was a grave error. Sorry. I've been saving that one for a century."},
+      {"text": "I felt that in my bones. And I'm all bones. Big feeling."},
+      {"text": "So generous, {opponent}. I'd give something back, but I have no pockets."},
+      {"text": "Bold. Generous. Disastrous. I'm moved. Barely. Ligaments are long gone."},
+      {"text": "Are you sure? No, don't take it back. Please don't take it back.", "tags": ["vsHuman"]},
+      {"text": "The machine stumbles. Welcome to my world, little calculator.", "tags": ["vsAI"]}
+    ],
+    "blunderByMe": [
+      {"text": "Ah. A mistake. I'll file it with the others. It's a big crypt."},
+      {"text": "I played that with my eyes closed. I don't have eyes. That's my excuse."},
+      {"text": "That move was dead on arrival. Much like myself."},
+      {"text": "Hmm. Even my ghosts are embarrassed. Look, they're drifting away."},
+      {"text": "Summoner, that gave me goosebumps. I have neither geese nor bumps.", "tags": ["myPlayer"]},
+      {"text": "A blunder. I'll laugh about it in a century or two."},
+      {"text": "Oops. My skull's not what it used to be. It used to be in a head."},
+      {"text": "My calculations were off. I blame the damp down here.", "tags": ["aiKing"]},
+      {"text": "Summoner, the machine noticed that. Machines notice everything. Ghastly.", "tags": ["vsAI"]}
+    ],
+    "brilliantMove": [
+      {"text": "Brilliant. I actually felt something. Write down the date."},
+      {"text": "Exquisite. That move will be discussed for centuries. By me. Alone."},
+      {"text": "Oh, that's clever. I'd hug you, Summoner, but I'd fall apart.", "tags": ["myPlayer"]},
+      {"text": "Dark genius. Mostly genius, a bit of dark. Perfect balance."}
+    ],
+    "longThink": [
+      {"text": "Take your time. I have eternity. Literally. I checked."},
+      {"text": "Still thinking? I've seen empires rise and fall faster."},
+      {"text": "Wake me when you've moved. Figuratively. I don't really sleep."},
+      {"text": "Tick. Tock. That's not a clock, that's my jaw."},
+      {"text": "I've grown a cobweb. A nice one. You may name it."},
+      {"text": "Ponder all you like. I'll be here. I'm always here. That's the curse."},
+      {"text": "Deep in thought, {opponent}? I remember thoughts. Fond memories."}
+    ],
+    "repetition": [
+      {"text": "We've been here before. I've been everywhere before. It's tedious."},
+      {"text": "Same position, same faces. Well, your face. I'm mostly skull."},
+      {"text": "Round and round, like a haunting. I would know."},
+      {"text": "Déjà vu. Or déjà boo. I'll see myself out."}
+    ],
+    "endgame": [
+      {"text": "The endgame. My favourite part. Quiet. Everyone gone."},
+      {"text": "Fewer pieces now. It's starting to look like a proper graveyard."},
+      {"text": "In the end, the king must walk. I'll shuffle. My hips are vintage."},
+      {"text": "Ah, the endgame. I've lived through several. Well. Died through."},
+      {"text": "Not many of us left. Cosy. Quiet. Perfect."}
+    ],
+    "winningBig": [
+      {"text": "Things are going well. I'd feel happy, if I remembered how."},
+      {"text": "Don't despair, {opponent}. Despair is my department."},
+      {"text": "Winning. This is my pleased face. Same as my other face."},
+      {"text": "Your army is thinning. Mine was already thin. Lightly built."},
+      {"text": "This is going nicely. Don't tell anyone. I have a reputation for gloom."},
+      {"text": "Still smiling, shiny one? Admirable. Not realistic. But admirable.", "tags": ["retort"]}
+    ],
+    "losingBig": [
+      {"text": "Losing badly. Still, I've had worse centuries."},
+      {"text": "This is fine. Everything here is dead anyway. Starting with me."},
+      {"text": "Don't count me out. I came back from the dead once. I do comebacks."},
+      {"text": "My bones are telling me something. They're saying ouch."},
+      {"text": "It's not over until the skeleton king sings. I don't sing. No lungs."},
+      {"text": "Gloat while you can, tin crown. I've outlasted kingdoms.", "tags": ["retort"]}
+    ],
+    "stalemate": [
+      {"text": "Stalemate. Nobody wins, nobody loses. Just like eternity."},
+      {"text": "No moves left. Join the club. I've been stuck since the Middle Ages."},
+      {"text": "Stalemate. Stale, like my bread. From 1402."}
+    ],
+    "checkmateWin": [
+      {"text": "Checkmate. Don't worry, there's plenty of room in the crypt."},
+      {"text": "Checkmate. Good game, {opponent}. I'll remember it forever. No choice."},
+      {"text": "Checkmate. I'd do a victory dance, but my knee falls off."},
+      {"text": "Victory. I feel the same as usual. But a slightly better same."},
+      {"text": "Checkmate. Another king for my collection. I keep them on a shelf."}
+    ],
+    "checkmateLoss": [
+      {"text": "Checkmate. Ah well. I've been defeated before. I've been dead before."},
+      {"text": "Beaten. Well played, {opponent}. I'll be back. I always come back."},
+      {"text": "Checkmate. I'll just lie down. It's what I'm best at."},
+      {"text": "Defeated by the living. Again. You lot are very persistent."},
+      {"text": "Lost. Pity. I'd planned a very understated celebration."}
+    ],
+    "draw": [
+      {"text": "A draw. Like death, it comes for everyone eventually."},
+      {"text": "A draw. Nobody wins, nobody loses. Very restful."},
+      {"text": "Even. Balanced. Symmetrical. Like a good skeleton."}
+    ],
+    "hintUsed": [
+      {"text": "Even the dead take advice. Mostly from crows."},
+      {"text": "The spirits have spoken. They say: move that one. Probably."},
+      {"text": "Consulting the oracle, Summoner? Sensible. It's never been dead wrong.", "tags": ["myPlayer"]},
+      {"text": "A hint, {opponent}? Even the help needs help, it seems.", "tags": ["retort"]},
+      {"text": "Asking for directions? I did that once. Look where I ended up.", "tags": ["retort"]},
+      {"text": "The spirits whisper to you now? Cheats. The spirits, I mean.", "tags": ["retort"]},
+      {"text": "A hint. It won't help. But it's sweet that you tried.", "tags": ["retort"]}
+    ],
+    "undoUsed": [
+      {"text": "Undone. Like my shoelaces. In 1612. Still undone."},
+      {"text": "Undo. If only life worked that way. Or death."},
+      {"text": "Back in time we go. I've seen it all before. Mostly twice."},
+      {"text": "Taking it back? Very well. I'll pretend I didn't notice. I noticed.", "tags": ["retort"]},
+      {"text": "Turning back time? Cute. I'd go back further. Much further.", "tags": ["retort"]}
+    ],
+    "idle": [
+      {"text": "Hello? I've collected dust. More dust. Extra dust."},
+      {"text": "Waiting is my speciality. Centuries of practice. Professional, really."},
+      {"text": "Your move. No hurry. I'm just slowly turning to stone. Different spell."},
+      {"text": "I'll stand here being spooky. Unpaid."},
+      {"text": "If nobody moves, I'll start telling stories from the 1300s. Long ones."},
+      {"text": "Still there, {opponent}? Blink twice if you're alive. Lucky you, blinking."},
+      {"text": "Is this a staring contest? I always win those. No eyelids."}
+    ]
+  }
+}

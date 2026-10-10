@@ -18,6 +18,19 @@
 //              there is no legal move.
 //     cancel(): resolves the promise with null (never with a move) and terminates the worker
 //              if it is busy with this request. Calling it after the promise settled is a no-op.
+//   requestAnalysis(state, { nodes = 300000, multiPv = 3 }) -> { promise, cancel }
+//     promise: resolves with ChessAI.analyze() output { eval, mate, bestMove, pv, alternatives:
+//              [{ move, eval, mate, pv }], depth, nodes, stoppedBy, terminal } (eval: White-POV
+//              centipawns), or null when cancelled or on error.
+//   requestThreats(state, { nodes = 100000, max = 3 }) -> { promise, cancel }
+//     promise: resolves with ChessAI.threats() output { threats: [{ move, gain, mate, motif, pv }],
+//              inCheck }: the opponent's best ideas if it were their move; null when cancelled.
+//   classifyMove(evalBefore, evalAfter, side) -> 'best'|'good'|'inaccuracy'|'mistake'|'blunder'
+//     synchronous (Lichess-style win% loss, see ChessAI.classifyMove).
+//   All requests are deterministic (same state and options give the same result). Coach requests
+//   (analysis, threats) run in their own worker, so they never delay or cancel AI moves; a
+//   cancelled request terminates its channel's worker and that channel's other requests are
+//   re-posted.
 //   getCurrentGameStateSnapshot() -> state object built from the live globals (deep copies),
 //     with positionHistory = getBoardPositionString() of gameHistory[0..currentMoveIndex].
 
@@ -68,11 +81,11 @@ function getAIWorker() {
         return null;
     }
     aiWorker.onmessage = (event) => {
-        const { id, move } = event.data || {};
+        const { id, move, result } = event.data || {};
         const request = aiWorkerRequests.get(id);
         if (!request) return; // cancelled or superseded
         aiWorkerRequests.delete(id);
-        request.finish(move || null);
+        request.finish(request.kind === 'move' ? (move || null) : (result || null));
     };
     aiWorker.onerror = (event) => {
         // Script failed to load or crashed: stop using workers and rerun pending requests here.
@@ -88,7 +101,70 @@ function getAIWorker() {
     return aiWorker;
 }
 
+// Coach channel: a second worker (same script) for analysis and threats, so coach requests
+// neither wait behind nor cancel AI moves. Falls back to the main thread like the move channel.
+const coachChannel = { worker: null, unavailable: false, requests: new Map() };
+
+function getCoachWorker() {
+    const ch = coachChannel;
+    if (ch.worker || ch.unavailable) return ch.worker;
+    if (typeof Worker === 'undefined' || aiWorkerUnavailable) {
+        ch.unavailable = true;
+        return null;
+    }
+    try {
+        ch.worker = new Worker(AI_WORKER_URL);
+    } catch (error) {
+        ch.unavailable = true;
+        return null;
+    }
+    ch.worker.onmessage = (event) => {
+        const { id, result } = event.data || {};
+        const request = ch.requests.get(id);
+        if (!request) return;
+        ch.requests.delete(id);
+        request.finish(result || null);
+    };
+    ch.worker.onerror = (event) => {
+        if (event && event.preventDefault) event.preventDefault();
+        ch.unavailable = true;
+        if (ch.worker) ch.worker.terminate();
+        ch.worker = null;
+        const pending = [...ch.requests.values()];
+        ch.requests.clear();
+        pending.forEach(runAIOnMainThread);
+    };
+    return ch.worker;
+}
+
+function dispatchCoachRequest(request) {
+    const worker = getCoachWorker();
+    if (!worker) {
+        runAIOnMainThread(request);
+        return;
+    }
+    coachChannel.requests.set(request.id, request);
+    try {
+        worker.postMessage({ id: request.id, kind: request.kind, state: request.state, opts: request.opts });
+    } catch (error) {
+        coachChannel.requests.delete(request.id);
+        runAIOnMainThread(request);
+    }
+}
+
+function restartCoachWorker() {
+    if (coachChannel.worker) coachChannel.worker.terminate();
+    coachChannel.worker = null;
+    const pending = [...coachChannel.requests.values()];
+    coachChannel.requests.clear();
+    pending.forEach(dispatchCoachRequest);
+}
+
 function dispatchAIRequest(request) {
+    if (request.kind !== 'move') {
+        dispatchCoachRequest(request);
+        return;
+    }
     const worker = getAIWorker();
     if (!worker) {
         runAIOnMainThread(request);
@@ -96,7 +172,11 @@ function dispatchAIRequest(request) {
     }
     aiWorkerRequests.set(request.id, request);
     try {
-        worker.postMessage({ id: request.id, state: request.state, elo: request.elo, timeMs: request.timeMs, hint: request.hint, seed: request.seed });
+        if (request.kind === 'move') {
+            worker.postMessage({ id: request.id, state: request.state, elo: request.elo, timeMs: request.timeMs, hint: request.hint, seed: request.seed });
+        } else {
+            worker.postMessage({ id: request.id, kind: request.kind, state: request.state, opts: request.opts });
+        }
     } catch (error) {
         aiWorkerRequests.delete(request.id);
         runAIOnMainThread(request);
@@ -117,6 +197,20 @@ function runAIOnMainThread(request) {
     request.timer = setTimeout(() => {
         request.timer = null;
         if (request.settled) return;
+        if (request.kind !== 'move') {
+            // ChessAI.analyze/threats load the state themselves and never touch the globals.
+            let result = null;
+            try {
+                const history = request.state.positionHistory;
+                result = request.kind === 'analysis'
+                    ? ChessAI.analyze(request.state, request.opts, history)
+                    : ChessAI.threats(request.state, request.opts, history);
+            } catch (error) {
+                console.error('AI main-thread ' + request.kind + ' failed:', error);
+            }
+            request.finish(result);
+            return;
+        }
         const saved = { board, currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber };
         let move = null;
         try {
@@ -137,22 +231,48 @@ function runAIOnMainThread(request) {
 }
 
 function requestAIMove(state, elo, options = {}) {
-    let resolvePromise;
-    const promise = new Promise(resolve => { resolvePromise = resolve; });
-    const request = {
-        id: ++aiRequestCounter,
-        state: cloneAIState(state),
+    return startAIClientRequest({
+        kind: 'move',
         elo,
         timeMs: options.timeMs > 0 ? options.timeMs : undefined,
         hint: !!options.hint,
         seed: Number.isFinite(options.seed) ? options.seed : undefined,
+    }, state);
+}
+
+function requestAnalysis(state, options = {}) {
+    return startAIClientRequest({
+        kind: 'analysis',
+        opts: { nodes: options.nodes > 0 ? options.nodes : 300000, multiPv: options.multiPv > 0 ? options.multiPv : 3 },
+    }, state);
+}
+
+function requestThreats(state, options = {}) {
+    return startAIClientRequest({
+        kind: 'threats',
+        opts: { nodes: options.nodes > 0 ? options.nodes : 100000, max: options.max > 0 ? options.max : 3 },
+    }, state);
+}
+
+function classifyMove(evalBefore, evalAfter, side) {
+    return ChessAI.classifyMove(evalBefore, evalAfter, side);
+}
+
+// Shared request plumbing: fields = { kind, ...kind-specific fields }.
+function startAIClientRequest(fields, state) {
+    let resolvePromise;
+    const promise = new Promise(resolve => { resolvePromise = resolve; });
+    const request = {
+        ...fields,
+        id: ++aiRequestCounter,
+        state: cloneAIState(state),
         settled: false,
         cancelled: false,
         timer: null,
-        finish(move) {
+        finish(value) {
             if (request.settled) return;
             request.settled = true;
-            resolvePromise(request.cancelled ? null : (move || null));
+            resolvePromise(request.cancelled ? null : (value || null));
         }
     };
 
@@ -168,6 +288,9 @@ function requestAIMove(state, elo, options = {}) {
         if (aiWorkerRequests.has(request.id)) {
             aiWorkerRequests.delete(request.id);
             restartAIWorker();
+        } else if (coachChannel.requests.has(request.id)) {
+            coachChannel.requests.delete(request.id);
+            restartCoachWorker();
         }
         request.finish(null);
     };

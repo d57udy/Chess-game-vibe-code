@@ -8,6 +8,7 @@ import { createFx, createHint } from './scene-fx.js';
 import { highlightTexture } from './scene-textures.js';
 import { createRig } from './scene-rig.js';
 import { createCinematic } from './cinematic.js';
+import { createBubbles } from './bubbles.js';
 
 const DEG = Math.PI / 180;
 const VIEW_PHI = 45 * DEG; // classic three-quarter view, measured from straight down (+y)
@@ -383,6 +384,26 @@ export async function createScene(container, { debug = false, renderer: injected
     },
   });
 
+  // ---- speech bubbles (talking kings) ----
+  const bubbles = createBubbles({
+    container, camera,
+    isLetterboxed: () => cine.isLetterboxed(),
+    reducedMotion: () => reduceMotion,
+  });
+  // say({ side, text, square | unitWorldPos | anchor | target, durationMs, name, showInCinematic }) -> Promise
+  function say(opts) {
+    noteActivity();
+    return bubbles.say(opts);
+  }
+  function sayClear(side) {
+    bubbles.clear(side);
+    requestRender();
+  }
+  function clearSpeech() {
+    bubbles.clearNow();
+    requestRender();
+  }
+
   function focusOn(points, { duration = 0.6, distance } = {}) {
     if (!points || !points.length) return Promise.resolve();
     beginScripted();
@@ -434,6 +455,7 @@ export async function createScene(container, { debug = false, renderer: injected
       }
     }
     noteActivity();
+    bubbles?.onResize();
     render();
   }
   applyView(defaultView('w'));
@@ -712,6 +734,7 @@ export async function createScene(container, { debug = false, renderer: injected
       shakeAmt = 0;
     }
 
+    bubbles.update(camDt); // after the camera settled for this frame
     if (hoverDirty) updateHover();
     if (doRender) {
       render();
@@ -721,7 +744,7 @@ export async function createScene(container, { debug = false, renderer: injected
 
   const hasActiveToken = () => [...tokens].some((t) => t !== 'idle');
   function wantsFullRate() {
-    return hasActiveToken() || renderRequested || !!camTween || rigMoving || rig.isDragging() || fx.busy()
+    return hasActiveToken() || renderRequested || !!camTween || rigMoving || rig.isDragging() || fx.busy() || bubbles.animating()
       || shakeAmt > 0 || cine.isSlow() || cine.isFading() || timers.length > 0 || nowMs() < fullUntil;
   }
 
@@ -753,8 +776,10 @@ export async function createScene(container, { debug = false, renderer: injected
   if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(loop);
 
   // Debug/test: advance n frames synchronously (works in hidden tabs, independent of rAF).
+  // n is rounded up to whole frames and the last one always renders (step(1 / 30) once left the canvas stale).
   function stepFrames(n = 1, dt = 1 / 60) {
-    for (let i = 0; i < n; i++) frame(dt, i === n - 1);
+    const count = Math.max(1, Math.ceil(Number(n) || 1));
+    for (let i = 0; i < count; i++) frame(dt, i === count - 1);
   }
 
   // Skip: finish every effect and any fight shot instantly; the camera snaps back to the player's
@@ -780,6 +805,7 @@ export async function createScene(container, { debug = false, renderer: injected
       activeTokens: [...tokens],
       fxAlive: fx.alive(),
       hint: hint.get(),
+      bubbles: bubbles.active(),
       camera: { position: camera.position.toArray(), target: v.target.toArray(), scripted, tweening: !!camTween },
       timeScale,
       slowFactor,
@@ -800,6 +826,7 @@ export async function createScene(container, { debug = false, renderer: injected
     document.removeEventListener('visibilitychange', onVisibility);
     rig.dispose();
     cine.dispose();
+    bubbles.dispose();
     renderer.dispose?.();
     canvas.remove();
     vignette.remove();
@@ -832,6 +859,12 @@ export async function createScene(container, { debug = false, renderer: injected
     setHighlights,
     clearHighlights, // extension
     setHint,
+    say,
+    sayClear,
+    clearSpeech,
+    // a fight shot owns the camera (between the first shot / focusOn and end / restoreView) or the letterbox is up
+    isCinematicActive: () => scripted || cine.isLetterboxed(),
+    getBubble: (side) => bubbles.get(side), // extension (tests)
     getHint: () => hint.get(), // extension (tests)
     setView,
     getViewSide: () => viewSide, // extension

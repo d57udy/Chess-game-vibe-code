@@ -156,7 +156,7 @@ describe('battle3d cast.js', () => {
         assert.equal(r.modelId, classic.w.p.modelId, 'unknown model -> preset model');
         assert.equal(r.loadout, classic.w.p.loadout, 'unknown loadout -> model default');
         assert.equal(r.scale, classic.w.p.scale, 'bad scale -> 1x');
-        assert.equal(r.recolor, null);
+        assert.deepEqual(r.recolor, classic.w.p.recolor, 'bad recolor -> the preset role\'s recolor');
         assert.equal(r.tint, null);
         assert.equal(cast.resolveRoles(manifest, bad[12]).w.p.modelId, classic.w.p.modelId, 'stale custom id -> preset model');
     });
@@ -254,16 +254,23 @@ describe('battle3d cast.js', () => {
             assert.equal(r.ok, true, 'still showable');
             assert.equal(r.animated, false);
             const msg = r.problems.join(' | ');
-            assert.match(msg, /missing bones/i);
-            for (const b of ['head', 'hand.r', 'handslot.r']) assert.ok(msg.includes(b), `${b} named in: ${msg}`);
+            assert.match(msg, /static pose/i, 'says it will stand still');
             assert.equal(cast.resolveRole(manifest, 'b', 'q', { model: r.id }).static, true);
+        });
+
+        test('the warning names the missing bones so the user can fix the rig', async () => {
+            const joints = KAYKIT_JOINTS.filter((n) => n !== 'head' && n !== 'hand.r' && n !== 'handslot.r');
+            const parents = joints.map((_, i) => (i === 0 ? -1 : 0));
+            const r = await cast.importCustomModel(fileOf(buildGlb({ joints, parents }), 'Broken2.glb'), THREE, GLTFLoader, { persist: false });
+            const msg = r.problems.join(' | ');
+            assert.ok(/head/.test(msg) && /hand/i.test(msg), `missing bones named: ${msg}`);
         });
 
         test('a static (unskinned) mesh is flagged', async () => {
             const r = await cast.importCustomModel(fileOf(buildGlb({ skinned: false }), 'Statue.glb'), THREE, GLTFLoader, { persist: false });
             assert.equal(r.ok, true);
             assert.equal(r.animated, false);
-            assert.match(r.problems.join(' '), /skinned/i);
+            assert.match(r.problems.join(' '), /skeleton|skinned/i);
         });
 
         test('garbage bytes, wrong extension and no file are rejected without throwing', async () => {

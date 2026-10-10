@@ -1,0 +1,422 @@
+{
+  "version": 1,
+  "id": "quaternius-farm",
+  "name": "Quaternius Farm Animals",
+  "author": "Quaternius",
+  "description": "A horse for mounted knights, plus a whole barnyard army.",
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "source": "https://opengameart.org/content/lowpoly-animated-farm-animal-pack",
+    "submitted": "2018-06-08",
+    "verified": "2026-10-08",
+    "note": "CC0 stated on the OpenGameArt page (uploaded by the author) and in the bundled License.txt."
+  },
+  "credit": "Quaternius Farm Animals by Quaternius (CC0), https://opengameart.org/content/lowpoly-animated-farm-animal-pack",
+  "rig": "quaternius-animal",
+  "kind": "animal",
+  "army": "animals",
+  "models": [
+    {
+      "id": "Horse",
+      "label": "Horse",
+      "file": "Horse.glb",
+      "thumb": "thumbs/Horse.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1228,
+      "nativeHeight": 6.924,
+      "height": 0.85,
+      "tris": 690,
+      "textures": [],
+      "bytes": 142164,
+      "walkSpeedNative": 2.496,
+      "runSpeedNative": 13.622,
+      "ranged": false,
+      "mountable": true,
+      "tags": [
+        "mount"
+      ],
+      "mount": {
+        "scale": 0.13,
+        "saddle": [
+          0,
+          4.75,
+          0.2
+        ],
+        "riderScale": 0.85
+      },
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Horse|Idle",
+        "walk": "Horse|Walk",
+        "run": "Horse|Run",
+        "attack": [
+          "Horse|Jump"
+        ],
+        "death": [
+          "Horse|Death"
+        ],
+        "hit": [
+          "Horse|Jump"
+        ],
+        "block": "Horse|Idle",
+        "cheer": "Horse|Jump",
+        "spawn": "Horse|Idle",
+        "jump": "Horse|Jump"
+      },
+      "impacts": {
+        "Horse|Jump": 0.888
+      },
+      "clipDurations": {
+        "Horse|Death": 1.083,
+        "Horse|Idle": 6.25,
+        "Horse|Jump": 1.5,
+        "Horse|Run": 0.833,
+        "Horse|Walk": 2.667,
+        "Horse|WalkSlow": 2
+      }
+    },
+    {
+      "id": "Zebra",
+      "label": "Zebra",
+      "file": "Zebra.glb",
+      "thumb": "thumbs/Zebra.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1202,
+      "nativeHeight": 7.074,
+      "height": 0.85,
+      "tris": 1354,
+      "textures": [],
+      "bytes": 160500,
+      "walkSpeedNative": 2.496,
+      "runSpeedNative": 13.622,
+      "ranged": false,
+      "mountable": true,
+      "tags": [
+        "mount"
+      ],
+      "mount": {
+        "scale": 0.1272,
+        "saddle": [
+          0,
+          4.75,
+          0.2
+        ],
+        "riderScale": 0.85
+      },
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Zebra|Idle",
+        "walk": "Zebra|Walk",
+        "run": "Zebra|Run",
+        "attack": [
+          "Zebra|Jump"
+        ],
+        "death": [
+          "Zebra|Death"
+        ],
+        "hit": [
+          "Zebra|Jump"
+        ],
+        "block": "Zebra|Idle",
+        "cheer": "Zebra|Jump",
+        "spawn": "Zebra|Idle",
+        "jump": "Zebra|Jump"
+      },
+      "impacts": {
+        "Zebra|Jump": 0.888
+      },
+      "clipDurations": {
+        "Zebra|Death": 1.083,
+        "Zebra|Idle": 6.25,
+        "Zebra|Jump": 1.5,
+        "Zebra|Run": 0.833,
+        "Zebra|Walk": 2.667,
+        "Zebra|WalkSlow": 2
+      }
+    },
+    {
+      "id": "Cow",
+      "label": "Cow",
+      "file": "Cow.glb",
+      "thumb": "thumbs/Cow.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1554,
+      "nativeHeight": 5.148,
+      "height": 0.8,
+      "tris": 796,
+      "textures": [],
+      "bytes": 159240,
+      "walkSpeedNative": 1.995,
+      "runSpeedNative": 8.046,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "animal"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Cow|Idle",
+        "walk": "Cow|Walk",
+        "run": "Cow|Run",
+        "attack": [
+          "Cow|Jump"
+        ],
+        "death": [
+          "Cow|Death"
+        ],
+        "hit": [
+          "Cow|Jump"
+        ],
+        "block": "Cow|Idle",
+        "cheer": "Cow|Jump",
+        "spawn": "Cow|Idle",
+        "jump": "Cow|Jump"
+      },
+      "impacts": {
+        "Cow|Jump": 0.538
+      },
+      "clipDurations": {
+        "Cow|Death": 1.25,
+        "Cow|Idle": 6.25,
+        "Cow|Jump": 1.708,
+        "Cow|Run": 1.417,
+        "Cow|Walk": 3.333,
+        "Cow|WalkSlow": 2.083
+      }
+    },
+    {
+      "id": "Llama",
+      "label": "Llama",
+      "file": "Llama.glb",
+      "thumb": "thumbs/Llama.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1536,
+      "nativeHeight": 5.858,
+      "height": 0.9,
+      "tris": 661,
+      "textures": [],
+      "bytes": 59344,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "animal"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Llama|Idle",
+        "walk": "Llama|Jump",
+        "run": "Llama|Jump",
+        "attack": [
+          "Llama|Jump"
+        ],
+        "death": [
+          "Llama|Idle"
+        ],
+        "hit": [
+          "Llama|Jump"
+        ],
+        "block": "Llama|Idle",
+        "cheer": "Llama|Jump",
+        "spawn": "Llama|Idle",
+        "jump": "Llama|Jump"
+      },
+      "impacts": {
+        "Llama|Jump": 0.379
+      },
+      "clipDurations": {
+        "Llama|Idle": 6.25,
+        "Llama|Jump": 1.125
+      }
+    },
+    {
+      "id": "Pig",
+      "label": "Pig",
+      "file": "Pig.glb",
+      "thumb": "thumbs/Pig.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.109,
+      "nativeHeight": 4.589,
+      "height": 0.5,
+      "tris": 562,
+      "textures": [],
+      "bytes": 57948,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "animal"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Pig|Idle",
+        "walk": "Pig|Jump",
+        "run": "Pig|Jump",
+        "attack": [
+          "Pig|Jump"
+        ],
+        "death": [
+          "Pig|Idle"
+        ],
+        "hit": [
+          "Pig|Jump"
+        ],
+        "block": "Pig|Idle",
+        "cheer": "Pig|Jump",
+        "spawn": "Pig|Idle",
+        "jump": "Pig|Jump"
+      },
+      "impacts": {
+        "Pig|Jump": 0.888
+      },
+      "clipDurations": {
+        "Pig|Idle": 6.25,
+        "Pig|Jump": 1.5
+      }
+    },
+    {
+      "id": "Sheep",
+      "label": "Sheep",
+      "file": "Sheep.glb",
+      "thumb": "thumbs/Sheep.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.126,
+      "nativeHeight": 4.365,
+      "height": 0.55,
+      "tris": 610,
+      "textures": [],
+      "bytes": 57080,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "animal"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Sheep|Idle",
+        "walk": "Sheep|Jump",
+        "run": "Sheep|Jump",
+        "attack": [
+          "Sheep|Jump"
+        ],
+        "death": [
+          "Sheep|Idle"
+        ],
+        "hit": [
+          "Sheep|Jump"
+        ],
+        "block": "Sheep|Idle",
+        "cheer": "Sheep|Jump",
+        "spawn": "Sheep|Idle",
+        "jump": "Sheep|Jump"
+      },
+      "impacts": {
+        "Sheep|Jump": 0.387
+      },
+      "clipDurations": {
+        "Sheep|Idle": 6.25,
+        "Sheep|Jump": 1.125
+      }
+    },
+    {
+      "id": "Pug",
+      "label": "Pug",
+      "file": "Pug.glb",
+      "thumb": "thumbs/Pug.webp",
+      "kind": "animal",
+      "rig": "quaternius-animal",
+      "native": true,
+      "forward": "+z",
+      "scale": 0.1504,
+      "nativeHeight": 2.66,
+      "height": 0.4,
+      "tris": 644,
+      "textures": [],
+      "bytes": 58552,
+      "walkSpeedNative": null,
+      "runSpeedNative": null,
+      "ranged": false,
+      "mountable": false,
+      "tags": [
+        "animal"
+      ],
+      "bones": {
+        "head": "Head",
+        "chest": "Torso",
+        "hips": "Hips"
+      },
+      "anims": {
+        "idle": "Pug|Idle",
+        "walk": "Pug|Jump",
+        "run": "Pug|Jump",
+        "attack": [
+          "Pug|Jump"
+        ],
+        "death": [
+          "Pug|Idle"
+        ],
+        "hit": [
+          "Pug|Jump"
+        ],
+        "block": "Pug|Idle",
+        "cheer": "Pug|Jump",
+        "spawn": "Pug|Idle",
+        "jump": "Pug|Jump"
+      },
+      "impacts": {
+        "Pug|Jump": 0.913
+      },
+      "clipDurations": {
+        "Pug|Idle": 6.25,
+        "Pug|Jump": 1.5
+      }
+    }
+  ]
+}

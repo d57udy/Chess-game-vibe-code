@@ -78,6 +78,22 @@ visit. In Chrome on Android, open the game menu (the three-line button at the to
 "Install app" section, or Chrome's own menu > "Add to Home screen" / "Install app". On iPhone and iPad, use
 Safari's Share button > "Add to Home Screen". The installed app opens full screen without the browser bar.
 
+**Talking kings.** The two kings comment on the game with speech bubbles, a small gesture and mumbled voice
+blips: captures, checks, blunders, promotions, long thinks and the final result, each from their own side's point
+of view (the Hero King pompous and chivalrous, the Skeleton King dry and deadpan). The roughly 300 lines are
+predefined in `battle3d/lines/` (no live AI, works offline); a shuffle bag avoids repeats and the other king
+sometimes answers. Menu, "Kings talk": Off, Occasional (default, a remark every few moves) or Chatty. What they say
+is also read out to screen readers.
+
+**Coach.** Turn on "Coach" in the menu (works against the AI and in Human vs Human). Your own king gives advice: before
+your move at most one hint about a threat, a hanging piece or opening principles; after the move, the engine rates
+it, and for inaccuracies, mistakes and blunders the king explains what went wrong in plain words with "Take it back"
+and "Show me better" (the better move as a board arrow). "Coach advice" chooses Every move (with occasional praise)
+or Mistakes only. At the end of the game a review shows the key moments and a small evaluation graph; click a moment
+to look at that position. All judgement comes from the engine's analysis (in the worker, independent of the
+opponent's strength); the wording comes from templates in `battle3d/lines/coach.json`. Click any move in the move list
+to look at that position too; Esc or "Back to game" returns.
+
 **Sound.** Every 3D sound is synthesized in the browser with WebAudio, so there are no audio files to license
 or download (the 2D page keeps its own mp3s). Each sound is a small recipe (filtered noise bursts, modal
 resonators for metal, wood and bone, low pitch-dropping "bodies" for thuds, envelopes) rendered into 2 to 4
@@ -91,10 +107,25 @@ while the tab is hidden. `battle3d/sound-test.html` (served like the game, e.g.
 http://localhost:8000/battle3d/sound-test.html) plays every sound and variation, walk cycles and fight
 sequences with level meters.
 
-**Cast customization.** "Cast..." opens the cast editor: choose a preset or pick the character model,
-weapon, scale and tint for each piece, or import your own `.glb` (it must use the KayKit rig bone
-names so the shared animations play on it). The cast is saved in the browser and the "Who's who"
-legend follows it.
+**Cast customization and model library.** "Cast..." opens the cast editor: choose a preset or set the character
+model, weapons, gear, size, cloth colour and tint for each piece, with a live 3D preview. Models come from three
+sources:
+
+- **Built-in:** the bundled KayKit heroes and skeletons (always available, offline too).
+- **More packs:** extra CC0 packs hosted with the game but downloaded only when a cast uses them (Quaternius RPG
+  characters, animated monsters, and farm animals including a horse for mounted knights). Presets such as
+  Monsters, Adventurers, Mounted knights and Barnyard use them; each shows its download size. Once used, a pack
+  stays cached for offline play. If a pack cannot be loaded (offline before it was ever downloaded), those pieces
+  fall back to the default characters with a short notice.
+- **Import your own:** `.glb`, `.gltf` (single file) or `.vrm`, stored in the browser. Humanoids with a KayKit,
+  Mixamo, Quaternius, VRM or similar rig are retargeted onto the game's animations; models that cannot be mapped
+  are used as static figures with a warning. Imports are checked for size (very detailed models are refused, large
+  ones get a performance warning), auto-scaled and turned to face the board. FBX is not supported in the browser:
+  open it in Blender and export as glTF (`.glb`) first. VRM avatars carry their own licence: the editor shows it,
+  and when it restricts use (only the author, no violence, which fights are) you have to confirm you have
+  permission before the model is used.
+
+The cast is saved in the browser and the "Who's who" legend follows it.
 
 **Files** (all in `battle3d/`, ES modules unless noted, three.js from a CDN via an import map, no build step):
 
@@ -106,7 +137,13 @@ legend follows it.
 | `scene*.js`, `cinematic.js` | Renderer, board and environment, camera, picking, highlights, effects. |
 | `units.js`, `fights.js` | Characters, animation, movement and fight choreography. |
 | `cast.js`, `cast-ui.js`, `unit-visuals.js` | Casting presets, cast editor, piece markers and labels. |
-| `audio.js` | Sound bank, mixing, stereo positioning and ambience (all synthesized with WebAudio). |
+| `audio.js` | Sound bank, mixing, stereo positioning, ambience and voice blips (all synthesized with WebAudio). |
+| `commentary.js` | Talking kings: event priorities, cooldowns, shuffle bags, retorts, bubbles and captions. |
+| `coach.js` | Coach mode: nudges, move explanations, "Take it back" / "Show me better", end-of-game review. |
+| `lines/` | The kings' lines and the coach templates (JSON), style guide and validator. |
+| `tactics.js` | Tactical motif detectors used by the coach (forks, pins, hanging pieces, missed mates...). |
+| `retarget.js`, `vrm.js` | Retargeting other humanoid rigs (Mixamo, Quaternius, VRM) onto the game's animations; VRM loading. |
+| `assets/library.json`, `assets/packs/` | The model library: optional packs with their models, thumbnails and licences. |
 | `sound-test.html` | Audition page: every sound and variation, walk cycles, fight sequences, level meters. |
 | `install.js` | Service worker registration and the "Install app" menu section. |
 | `assets/` | Optimized character, animation and weapon files, `manifest.json`, `CREDITS.md`. |
@@ -125,9 +162,12 @@ styles and assets come from the cache until `VERSION` changes. Both pages regist
 works offline too. While debugging, `?nosw=1` unregisters the worker and bypasses it; `?debug=1` skips
 registration but does not unregister an existing worker (DevTools > Application > Service workers can).
 
-**Credits.** Characters, animations and weapons are from KayKit Character Pack: Adventurers 1.0 and
-Skeletons 1.0 by Kay Lousberg (CC0 1.0), see `battle3d/assets/CREDITS.md`. 3D rendering uses
-three.js (MIT). All 3D sound is synthesized in code, so no audio files need licensing.
+**Credits.** Built-in characters, animations and weapons are from KayKit Character Pack: Adventurers 1.0 and
+Skeletons 1.0 by Kay Lousberg (CC0 1.0). The optional library packs (RPG Characters, Animated Monsters, Farm
+Animals) are by Quaternius (CC0 1.0, from the author's OpenGameArt uploads). Details, sources and modifications are
+in `battle3d/assets/CREDITS.md`. 3D rendering uses three.js (MIT); VRM avatars load with @pixiv/three-vrm (MIT)
+only when one is used. The kings' lines and coach texts were written for this game. All 3D sound is synthesized in
+code, so no audio files need licensing.
 
 ## Running locally
 

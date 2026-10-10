@@ -467,3 +467,78 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 @media (prefers-reduced-motion: reduce) {
     #hint .spinner { animation-duration: 2.4s; }
 }
+
+/* --- v6: review bar, coach card, game review --- */
+.move-list .mv { cursor: pointer; border-radius: 4px; padding: 0 3px; }
+.move-list .mv:hover { background: var(--hud-accent-bg); }
+.move-list .reviewed { outline: 1px solid var(--hud-gold); color: var(--hud-gold-strong); }
+#coach-frequency-row.disabled { opacity: 0.45; }
+
+.review-bar {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px 8px 14px;
+    font-size: 13px;
+}
+.review-bar[hidden] { display: none; }
+
+.coach-card {
+    position: fixed;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(400px, calc(100vw - 24px));
+    z-index: 16;
+    padding: 10px 12px 12px;
+    font-size: 14px;
+    animation: tip-in 0.3s ease both;
+}
+.coach-card[hidden] { display: none; }
+.coach-card.warn { border-color: rgba(255, 122, 107, 0.55); }
+.coach-head { display: flex; align-items: center; gap: 8px; }
+.coach-crown { color: var(--hud-gold); font-size: 18px; line-height: 1; }
+.coach-title { flex: 1; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-muted); }
+.coach-text { margin: 6px 0 0; line-height: 1.45; }
+.coach-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+.coach-actions[hidden] { display: none; }
+
+.review-card { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; text-align: left; }
+.eval-graph { width: 100%; height: 90px; margin: 8px 0; background: rgba(0, 0, 0, 0.25); border-radius: 8px; }
+.eval-graph .mid { stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; }
+.eval-graph .area { fill: rgba(243, 238, 226, 0.18); }
+.eval-graph .line { fill: none; stroke: var(--hud-gold); stroke-width: 1.8; }
+.eval-graph .dot.inaccuracy { fill: #e8c478; }
+.eval-graph .dot.mistake { fill: #f0a35a; }
+.eval-graph .dot.blunder { fill: var(--hud-danger); }
+.moments { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.moments .moment {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font: inherit;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--hud-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hud-text);
+    cursor: pointer;
+}
+.moments .moment:hover { background: var(--hud-accent-bg); }
+.moments .tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; min-width: 80px; }
+.moments .inaccuracy .tag { color: #e8c478; }
+.moments .mistake .tag { color: #f0a35a; }
+.moments .blunder .tag { color: var(--hud-danger); }
+.moments .best .tag { color: #8fd18f; }
+
+@media (max-width: 640px) {
+    .coach-card { bottom: max(8px, env(safe-area-inset-bottom)); font-size: 13px; }
+    .review-bar { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); }
+}

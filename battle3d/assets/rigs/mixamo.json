@@ -1,0 +1,27 @@
+{
+  "type": "mixamo",
+  "label": "Mixamo",
+  "notes": "Adobe Mixamo auto-rig. Names are compared after sanitizing (GLTFLoader drops ':'), lowercasing, removing non-alphanumerics and stripping the prefix (mixamorig, mixamorig1, ...). Candidates are in priority order; the first present bone wins.",
+  "strip": "^mixamorig[0-9]*",
+  "signature": ["hips", "leftupleg", "leftforearm", "rightforearm"],
+  "bones": {
+    "hips": ["Hips"],
+    "spine": ["Spine"],
+    "chest": ["Spine2", "Spine1"],
+    "head": ["Head"],
+    "upperarml": ["LeftArm"],
+    "lowerarml": ["LeftForeArm"],
+    "handl": ["LeftHand"],
+    "upperarmr": ["RightArm"],
+    "lowerarmr": ["RightForeArm"],
+    "handr": ["RightHand"],
+    "upperlegl": ["LeftUpLeg"],
+    "lowerlegl": ["LeftLeg"],
+    "footl": ["LeftFoot"],
+    "toesl": ["LeftToeBase"],
+    "upperlegr": ["RightUpLeg"],
+    "lowerlegr": ["RightLeg"],
+    "footr": ["RightFoot"],
+    "toesr": ["RightToeBase"]
+  }
+}

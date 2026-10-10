@@ -212,14 +212,32 @@ function visibleBox(THREE, root, filter = () => true) {
 }
 
 // Highest point of the head (helmet/hat/hood included), in head-local units.
-function headTop(THREE, model, head) {
-    const body = skinnedBox(THREE, model);
+// World height of the top of the head: skinned vertices mostly bound to the head bone (or its children),
+// plus helmets/hats parented to it. Works for any rig, whatever the bone axes.
+function headTopWorld(THREE, model, head) {
+    const set = new Set();
+    head.traverse(o => set.add(o));
+    let top = -Infinity;
+    const v = new THREE.Vector3();
+    model.updateMatrixWorld(true);
+    model.traverse(o => {
+        if (!o.isSkinnedMesh || !o.visible) return;
+        o.skeleton.update();
+        const inHead = o.skeleton.bones.map(b => set.has(b));
+        const g = o.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, n = g.attributes.position.count;
+        if (!si || !sw) return;
+        for (let i = 0; i < n; i++) {
+            let w = 0;
+            for (let c = 0; c < 4; c++) if (inHead[si.getComponent(i, c)]) w += sw.getComponent(i, c);
+            if (w < 0.5) continue;
+            o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
+            if (v.y > top) top = v.y;
+        }
+    });
     const gear = visibleBox(THREE, head, o => !o.userData.b3dAccessory);
-    let top = body.isEmpty() ? -Infinity : body.max.y;
     if (!gear.isEmpty()) top = Math.max(top, gear.max.y);
-    const hp = head.getWorldPosition(new THREE.Vector3());
-    const local = head.worldToLocal(new THREE.Vector3(hp.x, top, hp.z));
-    return Number.isFinite(local.y) ? local.y : 1.0;
+    if (!Number.isFinite(top)) top = head.getWorldPosition(v).y;
+    return top;
 }
 
 // --- accessories -------------------------------------------------------------------------------------
@@ -488,6 +506,8 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
     root.add(disc, rim, ring);
     owned.push(disc, rim, ring);
     for (const o of [disc, rim, ring, icon]) o.userData.b3dBase = true; // units.js shrinks these on death
+    const ringBase = role.mount ? 1.25 : 1;
+    if (role.mount) for (const o of [disc, rim, ring]) o.scale.set(1.25, 1, 1.25); // a horse needs a wider base
 
     // Role accessories.
     const wanted = new Set(Array.isArray(role.accessories) ? role.accessories : [...TYPE_ACCESSORIES[type] || [], ...(role.crown ? ['crown'] : [])]);
@@ -496,11 +516,25 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
     const chest = bones.chest || (model && findBone(THREE, model, 'chest'));
     const handR = bones.handR || (model && findBone(THREE, model, 'handslot.r'));
     const modelScale = model ? model.scale.x || 1 : 1;
+    // Accessory sizes are in KayKit model units. Other rigs (library packs, imports) can have scaled bones, so
+    // each accessory is rescaled to the bone it hangs on: k = model scale / bone world scale (1 for KayKit).
+    const ws = new THREE.Vector3();
+    // role.accScale (cast.js) keeps marks the same size across models of different native scale (a pig king
+    // gets a crown as big as a knight king's); without it the model's own scale is used.
+    const accScale = () => (Number.isFinite(role.accScale) && model ? role.accScale * (root.getWorldScale(ws).x || 1) : null);
+    const kOf = parent => {
+        if (!parent || !model) return 1;
+        model.updateMatrixWorld(true);
+        const m = accScale() ?? model.getWorldScale(ws).x, b = parent.getWorldScale(ws).x;
+        return b > 1e-6 ? m / b : 1;
+    };
+    let k = 1;
     const attach = (obj, parent, fallbackY) => {
         tag(obj);
-        if (parent) parent.add(obj);
+        k = kOf(parent);
+        if (parent) { obj.scale.multiplyScalar(k); parent.add(obj); }
         else { // no rig: put it above the model in root space, sized like model units
-            obj.scale.multiplyScalar(modelScale);
+            obj.scale.multiplyScalar(role.accScale ?? modelScale);
             obj.position.y = fallbackY;
             root.add(obj);
         }
@@ -509,37 +543,48 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
     };
     let topY = null;
     const modelTop = () => {
-        if (topY == null) { const b = new THREE.Box3().setFromObject(model || root); topY = b.isEmpty() ? 0.85 : b.max.y - root.position.y; }
+        if (topY == null) { const b = model ? skinnedBox(THREE, model).union(visibleBox(THREE, model)) : new THREE.Box3().setFromObject(root); topY = b.isEmpty() ? 0.85 : b.max.y - root.position.y; }
         return topY;
     };
-    const headY = head ? headTop(THREE, model, head) : 0;
+    // Place an accessory on a bone at an offset given in model axes (x right, y up, z forward) and KayKit units,
+    // oriented like the model itself, so rigs with rotated bone axes (packs, imports) look the same as KayKit.
+    const mws = accScale() ?? (model ? model.getWorldScale(new THREE.Vector3()).x : 1);
+    const modelQ = model ? model.getWorldQuaternion(new THREE.Quaternion()) : new THREE.Quaternion();
+    const placeOn = (obj, bone, worldPoint, offset, tilt = null) => {
+        const off = new THREE.Vector3(...offset).multiplyScalar(mws).applyQuaternion(modelQ);
+        obj.position.copy(bone.worldToLocal(worldPoint.clone().add(off)));
+        const q = bone.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(modelQ);
+        if (tilt) q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...tilt)));
+        obj.quaternion.copy(q);
+    };
+    const headPoint = head ? (() => { const p = head.getWorldPosition(new THREE.Vector3()); p.y = headTopWorld(THREE, model, head); return p; })() : null;
+    const chestPoint = chest ? chest.getWorldPosition(new THREE.Vector3()) : null;
 
     if (wanted.has('crown')) {
         const c = attach(makeCrown(THREE, true), head, modelTop());
-        if (head) c.position.y = headY - 0.14;
+        if (head) placeOn(c, head, headPoint, [0, -0.14, 0]);
         unit.crown = c;
     }
     if (wanted.has('tiara')) {
         const t = attach(makeTiara(THREE), head, modelTop());
-        if (head) t.position.set(0, headY - 0.2, 0.02);
+        if (head) placeOn(t, head, headPoint, [0, -0.2, 0.02]);
     }
     if (wanted.has('plume')) {
         const p = attach(makePlume(THREE, color), head, modelTop());
-        if (head) p.position.y = headY - 0.08;
+        if (head) placeOn(p, head, headPoint, [0, -0.08, 0]);
     }
     if (wanted.has('cape')) {
         let hasCape = false;
         if (model) model.traverse(o => { if (o.isMesh && /cape|cloak/i.test(o.name) && o.visible && o.parent?.visible !== false) hasCape = true; });
         if (!hasCape && chest) {
             const c = attach(makeCape(THREE, color), chest, 0);
-            c.position.set(0, 0.28, -0.36);
-            c.rotation.x = 0.12;
+            placeOn(c, chest, chestPoint, [0, 0.28, -0.36], [0.12, 0, 0]);
         }
     }
     if (wanted.has('banner')) {
         const b = attach(makeBanner(THREE, color), chest, 0.3);
         b.traverse(o => { o.userData.b3dTall = true; });
-        if (chest) { b.position.set(0.3, -0.45, -0.45); b.rotation.set(-0.08, 0, 0.06); }
+        if (chest) placeOn(b, chest, chestPoint, [0.3, -0.45, -0.45], [-0.08, 0, 0.06]);
     }
     if (wanted.has('glow')) {
         let tipY = null;
@@ -554,7 +599,8 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
             }
         }
         const g = attach(makeGlow(THREE, color), handR, modelTop() * 0.6);
-        if (handR) g.position.set(0, (tipY ?? 0.1) - 0.08, 0);
+        if (handR) g.position.set(0, (tipY ?? 0.1 * k) - 0.08 * k, 0);
+        g.userData.s0 = g.scale.x;
         pulses.push([g, null, 3.1]);
     }
     if (wanted.has('aura')) {
@@ -592,14 +638,14 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
         const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
         for (const [o, base, speed] of pulses) {
             const k = 0.75 + 0.25 * Math.sin(t * speed);
-            if (base == null) o.scale.setScalar(0.75 * (0.85 + 0.15 * k));
+            if (base == null) o.scale.setScalar((o.userData.s0 || 0.75) * (0.85 + 0.15 * k));
             else o.material.opacity = base * k;
         }
         if (ring.visible) {
             const k = 0.5 + 0.5 * Math.sin(t * (threatened ? 7 : 4));
             ringMat.opacity = 0.55 + 0.4 * k;
             const s = 1 + 0.04 * k;
-            ring.scale.set(s, 1, s);
+            ring.scale.set(s * ringBase, 1, s * ringBase);
         }
     };
 

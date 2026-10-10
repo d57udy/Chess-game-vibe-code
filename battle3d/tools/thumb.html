@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>thumb renderer</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
+</head><body style="margin:0;background:transparent">
+<script type="module">
+// Used by make_thumbs.mjs: window.renderThumb(url, opts) -> data URL (WebP, transparent background).
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+const SIZE = 192;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(SIZE, SIZE);
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+const YAW = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 };
+
+window.renderThumb = async (url, { forward = '+z', anim = null, time = 0.3, hide = [], show = [] } = {}) => {
+    const gltf = await loader.loadAsync(url);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xeef2ff, 0x3a3226, 1.6));
+    const key = new THREE.DirectionalLight(0xfff0dc, 2.4);
+    key.position.set(2, 4, 3);
+    scene.add(key);
+    const model = SkeletonUtils.clone(gltf.scene);
+    const byName = n => model.getObjectByName(n) || model.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n));
+    for (const n of hide) { const o = byName(n); if (o) o.visible = false; }
+    for (const n of show) { const o = byName(n); if (o) o.visible = true; }
+    model.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+    const holder = new THREE.Group();
+    holder.add(model);
+    model.rotation.y = YAW[forward] ?? 0;
+    holder.rotation.y = -0.45; // three-quarter view
+    scene.add(holder);
+    const clip = anim && gltf.animations.find(a => a.name === anim);
+    if (clip) {
+        const mixer = new THREE.AnimationMixer(model);
+        mixer.clipAction(clip).play();
+        mixer.update(Math.min(time, clip.duration * 0.5));
+    }
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    model.traverse(o => {
+        if (!o.isMesh || !o.visible) return;
+        if (o.isSkinnedMesh) { o.skeleton.update(); o.computeBoundingBox(); box.union(o.boundingBox.clone().applyMatrix4(o.matrixWorld)); }
+        else box.union(new THREE.Box3().setFromObject(o));
+    });
+    const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+    const r = Math.max(size.y * 0.55, size.x * 0.55, size.z * 0.45);
+    const camera = new THREE.PerspectiveCamera(30, 1, r * 0.1, r * 20);
+    const dist = r / Math.tan(THREE.MathUtils.degToRad(15)) * 1.05;
+    camera.position.set(center.x, center.y + r * 0.35, center.z + dist);
+    camera.lookAt(center);
+    renderer.render(scene, camera);
+    return renderer.domElement.toDataURL('image/webp', 0.86);
+};
+// Facing in the animated pose: direction from the hips/body bone to the head bone (creatures), or of the toes.
+window.measureFacing = async (url, anim) => {
+    const gltf = await loader.loadAsync(url);
+    const model = gltf.scene;
+    const clip = anim && gltf.animations.find(a => a.name === anim);
+    if (clip) { const mixer = new THREE.AnimationMixer(model); mixer.clipAction(clip).play(); mixer.update(0.1); }
+    model.updateMatrixWorld(true);
+    const bones = []; model.traverse(o => { if (o.isBone) bones.push(o); });
+    const find = re => bones.find(b => re.test(b.name));
+    const head = find(/^head$/i) || find(/head/i), base = find(/^hips$/i) || find(/^body$/i) || find(/^torso$/i) || find(/^root$/i);
+    if (!head || !base) return null;
+    const h = head.getWorldPosition(new THREE.Vector3()), b = base.getWorldPosition(new THREE.Vector3());
+    return { dx: +(h.x - b.x).toFixed(3), dz: +(h.z - b.z).toFixed(3), head: head.name, base: base.name };
+};
+window.thumbReady = true;
+</script>
+</body></html>

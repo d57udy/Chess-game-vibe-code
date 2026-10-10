@@ -1,0 +1,25 @@
+{
+  "type": "vrm",
+  "label": "VRM humanoid (0.x / 1.0)",
+  "notes": "Keys are our canonical (KayKit) bones, values are VRM humanoid bone names (same names in VRM 0.x and 1.0). The VRM file's own humanoid table (extensions.VRM / VRMC_vrm) says which node is which, so no name guessing is needed. Our 'chest' is the top of the spine: upperChest when the avatar has one.",
+  "bones": {
+    "hips": ["hips"],
+    "spine": ["spine"],
+    "chest": ["upperChest", "chest"],
+    "head": ["head"],
+    "upperarml": ["leftUpperArm"],
+    "lowerarml": ["leftLowerArm"],
+    "handl": ["leftHand"],
+    "upperarmr": ["rightUpperArm"],
+    "lowerarmr": ["rightLowerArm"],
+    "handr": ["rightHand"],
+    "upperlegl": ["leftUpperLeg"],
+    "lowerlegl": ["leftLowerLeg"],
+    "footl": ["leftFoot"],
+    "toesl": ["leftToes"],
+    "upperlegr": ["rightUpperLeg"],
+    "lowerlegr": ["rightLowerLeg"],
+    "footr": ["rightFoot"],
+    "toesr": ["rightToes"]
+  }
+}

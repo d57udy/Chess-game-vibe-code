@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "voices": {
+    "hero": {
+      "classification": {
+        "inaccuracy": [
+          { "text": "Not bad, Commander, but there was a sharper path. {bestMove} was a touch better." },
+          { "text": "A small wobble. Nothing lost but a little momentum. Consider {bestMove} next time." },
+          { "text": "Close! The idea is sound, but {bestMove} kept more pressure on." }
+        ],
+        "mistake": [
+          { "text": "Hmm, that costs us {loss}. {bestMove} would have kept things steady." },
+          { "text": "A misstep, Commander. Let me show you why {bestMove} was stronger." },
+          { "text": "That one lets {loss} slip away. Better to learn it now than in a real battle." }
+        ],
+        "blunder": [
+          { "text": "Ah. That move gives away {loss}. Shall we take it back and try {bestMove}?" },
+          { "text": "Steady, Commander. That one hurts. {bestMove} was the move to find." },
+          { "text": "A big slip! It happens to every hero. Undo, breathe, and look again." }
+        ],
+        "good": [
+          { "text": "Good move, Commander! Solid and sensible." },
+          { "text": "Nicely done. That keeps our position healthy." },
+          { "text": "A good, honest move. I approve heartily." },
+          { "text": "Well played. You're getting the hang of this." }
+        ],
+        "best": [
+          { "text": "That's exactly the move I'd have chosen. Eventually." },
+          { "text": "The best move on the board! Splendid work, Commander." },
+          { "text": "Perfect! There was nothing better to play." }
+        ],
+        "brilliant": [
+          { "text": "Brilliant! A move worthy of song. I'm composing it now." },
+          { "text": "Remarkable, Commander! Few would dare that, and it works!" },
+          { "text": "Oh, that's beautiful. A sacrifice with a real plan behind it. Bravo!" }
+        ]
+      },
+      "motif": {
+        "fork": [
+          { "text": "Careful! Their {attacker} can jump to {square} and attack two pieces at once." },
+          { "text": "That allows a fork: their {attacker} hits your {target} and another piece together." },
+          { "text": "Watch {square}. From there one enemy piece attacks two of ours, and we can only save one." },
+          { "text": "A fork! Your {piece} attacks two pieces at once. They can't save both.", "tags": ["praise"] }
+        ],
+        "pin": [
+          { "text": "Your {target} is pinned. If it moves, the piece behind it is exposed." },
+          { "text": "Their {attacker} pins your {target} against a bigger piece. It's stuck for now." },
+          { "text": "Mind the pin on {square}. That {target} can't move without losing something worse." },
+          { "text": "Lovely pin! Their piece can't move without exposing a more valuable one.", "tags": ["praise"] }
+        ],
+        "skewer": [
+          { "text": "A skewer! Their {attacker} hits your {target}, and when it moves, the piece behind falls." },
+          { "text": "Your {target} and the piece behind it are lined up. Their {attacker} can use that." },
+          { "text": "A skewer! The big piece must step aside, and the one behind is ours.", "tags": ["praise"] }
+        ],
+        "hanging": [
+          { "text": "Your {piece} on {square} is undefended. Their {attacker} can simply take it." },
+          { "text": "Nobody is guarding your {piece} on {square}. Let's give it a friend or move it." },
+          { "text": "That leaves your {piece} on {square} all alone. Free pieces are everyone's favourite." }
+        ],
+        "backRank": [
+          { "text": "Our back rank is weak! The king has no escape square, so a rook or queen could mate." },
+          { "text": "Watch the back rank. Give the king a little window, like a pawn step in front of it." },
+          { "text": "Back rank strike! Their king is trapped behind its own pawns.", "tags": ["praise"] }
+        ],
+        "missedCapture": [
+          { "text": "You could have taken their {target} on {square} for free. Always look for loose pieces!" },
+          { "text": "There was a free {target} on {square}. Before each move, check what you can capture." },
+          { "text": "{bestMove} would have won {loss}. Their {target} was unguarded." }
+        ],
+        "allowsMate": [
+          { "text": "Careful! After that, they can checkmate. {bestMove} keeps our king safe." },
+          { "text": "That move lets them mate us. Let's take it back and guard the king first." },
+          { "text": "Danger! Their {attacker} now has a checkmate coming. Shall we undo it?" }
+        ],
+        "missedMate": [
+          { "text": "You had a checkmate! It started with {bestMove}. Look at checks first!" },
+          { "text": "So close! {bestMove} led to mate. Next time, try every check." },
+          { "text": "Victory was there, starting with {bestMove}. Checks, captures, threats, in that order." }
+        ],
+        "trappedPiece": [
+          { "text": "Your {piece} on {square} has no safe squares left. They can win it now." },
+          { "text": "That {piece} is boxed in. Pieces need room to breathe, just like heroes." },
+          { "text": "You trapped their {target}! It has nowhere safe to go.", "tags": ["praise"] }
+        ],
+        "discovered": [
+          { "text": "Look out! When their piece moves, the {attacker} behind it attacks your {target}." },
+          { "text": "A hidden attack: one enemy piece steps aside and their {attacker} strikes." },
+          { "text": "A discovered attack! One piece moves and the one behind it strikes. Sneaky!", "tags": ["praise"] }
+        ]
+      },
+      "nudge": {
+        "threat": [
+          { "text": "Before you move: their {attacker} is eyeing your {target} on {square}." },
+          { "text": "Watch out, Commander. They're threatening your {target}. What shall we do?" },
+          { "text": "Their last move had an idea behind it. Can you spot what their {attacker} wants?" }
+        ],
+        "hangingPiece": [
+          { "text": "Your {piece} on {square} is unguarded. Maybe give it some company?" },
+          { "text": "Quick check: is your {piece} on {square} safe? I count no defenders." }
+        ],
+        "castleSoon": [
+          { "text": "Keep me in the middle much longer and I'll get nervous. Shall we castle?" },
+          { "text": "Castling tucks the king away and brings a rook into play. Two good deeds in one." }
+        ],
+        "developPieces": [
+          { "text": "Some of our knights and bishops are still at home. Let's bring them out!" },
+          { "text": "Every piece wants to join the adventure. Develop them before you attack." }
+        ],
+        "controlCentre": [
+          { "text": "The centre squares are prime real estate. A pawn or knight there helps a lot." },
+          { "text": "Pieces in the centre see more of the board. Try to claim it early." }
+        ],
+        "kingSafety": [
+          { "text": "My guard looks a little thin. Perhaps shore up the pawns around the king?" },
+          { "text": "Their pieces are gathering near our king. Be careful moving the pawns there." }
+        ],
+        "endgameKingActive": [
+          { "text": "It's the endgame! The king can fight now. Bring me forward. I'm ready. Mostly." },
+          { "text": "With fewer pieces about, the king is a strong piece. March it toward the centre." }
+        ]
+      },
+      "review": {
+        "wellPlayed": [
+          { "text": "A fine game, Commander! Your moves were clear and brave." },
+          { "text": "Well played! Few mistakes, plenty of good ideas. I'm proud of you." },
+          { "text": "Victory with style. Let's look at the moments that won it." }
+        ],
+        "closeGame": [
+          { "text": "A close one! A few small moments decided it. Let's look at them." },
+          { "text": "That was tight. You held your ground well. Here's where it turned." }
+        ],
+        "toughLoss": [
+          { "text": "A tough loss, but every hero falls before they rise. Let's learn from it." },
+          { "text": "Not our day. Still, I saw good ideas. Let's find the turning point together." },
+          { "text": "Losing hurts, but one lesson from this game makes the next one better." }
+        ],
+        "keyMoment": [
+          { "text": "This was the turning point. {bestMove} would have kept us on track." },
+          { "text": "Here's the key moment. Our {piece} on {square} needed more care." },
+          { "text": "Remember this one: {bestMove} was better by {loss}." }
+        ]
+      }
+    },
+    "skeleton": {
+      "classification": {
+        "inaccuracy": [
+          { "text": "Not bad, Summoner. A little loose, though. {bestMove} was tidier." },
+          { "text": "A small thing. Barely a scratch. {bestMove} would have kept more pressure." },
+          { "text": "Close enough for most, but you're better than most. Try {bestMove}." }
+        ],
+        "mistake": [
+          { "text": "Hm. That gives away {loss}. {bestMove} would have held things together." },
+          { "text": "A misstep. Don't fret, I've made worse for centuries. {bestMove} was better." },
+          { "text": "That costs {loss}. Let's look at why, calmly. I'm always calm." }
+        ],
+        "blunder": [
+          { "text": "Ah. That one drops {loss}. Shall we take it back and try {bestMove}?" },
+          { "text": "Oof. Even I flinched, and I have no nerves. Undo, and look again." },
+          { "text": "A big slip. The living do it all the time. {bestMove} was the move." }
+        ],
+        "good": [
+          { "text": "Good move. Sensible. My bones approve." },
+          { "text": "Nicely played, Summoner. Solid as a tombstone." },
+          { "text": "That's a good one. Keeps everything in order." },
+          { "text": "Well done. You're learning faster than I did. I had more time." }
+        ],
+        "best": [
+          { "text": "The best move available. I'd applaud, but it's very clattery." },
+          { "text": "Exactly right, Summoner. Nothing better on the board." },
+          { "text": "Perfect. I'm almost cheerful." }
+        ],
+        "brilliant": [
+          { "text": "Brilliant. A sacrifice with a purpose. I felt that one in my marrow." },
+          { "text": "Remarkable. In four hundred years I've seen few moves like that." },
+          { "text": "Oh, that's wicked. In the nicest way. Bravo, Summoner." }
+        ]
+      },
+      "motif": {
+        "fork": [
+          { "text": "Mind {square}. Their {attacker} can go there and attack two of our pieces at once." },
+          { "text": "This allows a fork. Their {attacker} hits your {target} and another piece together." },
+          { "text": "One attacker, two targets, and we can only save one. Let's avoid that." },
+          { "text": "A fork. Your {piece} attacks two pieces at once. They can only save one.", "tags": ["praise"] }
+        ],
+        "pin": [
+          { "text": "Your {target} is pinned. Move it, and something more valuable behind it falls." },
+          { "text": "Their {attacker} has your {target} stuck in place, like a bone in a museum case." },
+          { "text": "Careful on {square}. That {target} is pinned and can't help defend right now." },
+          { "text": "A pin. Their piece is frozen in place. I do enjoy a frozen piece.", "tags": ["praise"] }
+        ],
+        "skewer": [
+          { "text": "A skewer. Their {attacker} hits your {target}, and the piece behind it falls next." },
+          { "text": "Your {target} and the piece behind it share one line. Their {attacker} likes that." },
+          { "text": "A skewer. The big piece steps aside, and the one behind it is ours.", "tags": ["praise"] }
+        ],
+        "hanging": [
+          { "text": "Your {piece} on {square} is undefended. Their {attacker} can take it for free." },
+          { "text": "Nobody guards your {piece} on {square}. Lonely pieces don't last long." },
+          { "text": "That leaves your {piece} on {square} alone. Give it a friend or move it." }
+        ],
+        "backRank": [
+          { "text": "Our back rank is weak. The king has no escape square, so a rook could mate." },
+          { "text": "Give the king a window. One pawn step in front prevents a back rank surprise." },
+          { "text": "Back rank threat. Their king is boxed in by its own pawns. Cosy.", "tags": ["praise"] }
+        ],
+        "missedCapture": [
+          { "text": "Their {target} on {square} was free to take. Always look for loose pieces." },
+          { "text": "There was a free {target} on {square}. Before each move, check every capture." },
+          { "text": "{bestMove} would have won {loss}. Their {target} had no guard." }
+        ],
+        "allowsMate": [
+          { "text": "Careful. After that, they can checkmate us. {bestMove} keeps the king safe." },
+          { "text": "That move lets them mate. I'd rather not lie down just yet. Shall we undo?" },
+          { "text": "Danger. Their {attacker} has a checkmate coming. Let's take that back." }
+        ],
+        "missedMate": [
+          { "text": "You had a checkmate, starting with {bestMove}. Always look at checks first." },
+          { "text": "Nearly. {bestMove} led to mate. Next time, try every check before anything else." },
+          { "text": "A win was waiting after {bestMove}. Look at checks, then captures, then threats." }
+        ],
+        "trappedPiece": [
+          { "text": "Your {piece} on {square} has no safe squares. They can win it now." },
+          { "text": "That {piece} is boxed in. Even the dead need a little room." },
+          { "text": "You trapped their {target}. It has nowhere safe to go. Delightful.", "tags": ["praise"] }
+        ],
+        "discovered": [
+          { "text": "Look out. When their piece steps aside, the {attacker} behind it hits your {target}." },
+          { "text": "A hidden attack. One enemy piece moves and the {attacker} behind it strikes." },
+          { "text": "A discovered attack. One piece moves, the one behind strikes. Very sneaky.", "tags": ["praise"] }
+        ]
+      },
+      "nudge": {
+        "threat": [
+          { "text": "Before you move, Summoner: their {attacker} has its eye on your {target}." },
+          { "text": "They're threatening your {target} on {square}. What shall we do about it?" },
+          { "text": "Their last move had a purpose. Can you spot what their {attacker} wants?" }
+        ],
+        "hangingPiece": [
+          { "text": "Your {piece} on {square} has no defenders. Lonely. Maybe help it?" },
+          { "text": "Quick check: is your {piece} on {square} safe? I count nobody guarding it." }
+        ],
+        "castleSoon": [
+          { "text": "I'm still in the middle of the board. Draughty. Shall we castle soon?" },
+          { "text": "Castling tucks the king away and wakes up a rook. Two birds, one bone." }
+        ],
+        "developPieces": [
+          { "text": "Some of our knights and bishops are still in their coffins. Bring them out." },
+          { "text": "Every piece should join the party before anyone goes adventuring." }
+        ],
+        "controlCentre": [
+          { "text": "The centre is the best real estate. Better than a hillside crypt, even." },
+          { "text": "Pieces in the centre see more of the board. Claim it early." }
+        ],
+        "kingSafety": [
+          { "text": "My guard is thin. Perhaps shore up the pawns around me?" },
+          { "text": "Their pieces are gathering near me. Careful with the pawns in front." }
+        ],
+        "endgameKingActive": [
+          { "text": "Endgame now. The king can fight. Walk me forward. Slowly, mind my hips." },
+          { "text": "Few pieces left, so the king is strong. Bring it toward the centre." }
+        ]
+      },
+      "review": {
+        "wellPlayed": [
+          { "text": "A fine game, Summoner. Clear moves, few errors. Even I'm impressed." },
+          { "text": "Well played. If I had cheeks, they'd be glowing with pride." },
+          { "text": "A stylish win. Let's look back at the moments that sealed it." }
+        ],
+        "closeGame": [
+          { "text": "A close one. Small moments decided it. Let's dig them up." },
+          { "text": "Tight game. You held on well. Here's where it turned." }
+        ],
+        "toughLoss": [
+          { "text": "A tough loss. I've had many. They make the wins taste better." },
+          { "text": "Not our day. Still, there were good ideas. Let's find the turning point." },
+          { "text": "Losing stings. One lesson from this game will make the next one better." }
+        ],
+        "keyMoment": [
+          { "text": "Here the game turned. {bestMove} would have kept us on track." },
+          { "text": "The key moment. Our {piece} on {square} needed more care." },
+          { "text": "Worth remembering: {bestMove} was stronger here, by {loss}." }
+        ]
+      }
+    }
+  }
+}

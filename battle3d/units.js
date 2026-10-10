@@ -15,8 +15,9 @@ const log = (...a) => { if (DEBUG) console.log('[units]', ...a); };
 const FADE = 0.2;
 const TARGET_HEIGHT = 0.85;
 const MODEL_Y = 0.04;           // feet stand on the base disc
-const APPROACH = 0.6;
-const BOARD_EDGE = 4.0;         // playing surface half-size; dead bodies stay inside it           // melee standoff from the victim
+const APPROACH = 0.6;           // melee standoff from the victim
+const BOARD_EDGE = 4.0;         // playing surface half-size; dead bodies stay inside it
+const GROUND_REST = 0.12;       // safety net: lowest torso bone of a non-KayKit body lying on the board
 const FAST = 2;                 // fast mode speed multiplier
 const WALK_SPEED = 1.6;         // squares per second in full mode
 const GLYPHS = {
@@ -141,6 +142,16 @@ class Runner {
         }
     }
 
+    // Stops one task (and its children) without touching the others; onDone still runs.
+    cancel(t) {
+        if (!t || t.done) return;
+        t.parent = null;
+        for (const c of t.children || []) { c.parent = null; this.cancel(c); }
+        try { t.gen.return(); } catch (e) { /* ignore */ }
+        this.finish(t);
+        this.tasks = this.tasks.filter(x => x !== t);
+    }
+
     abortAll() {
         const all = this.tasks;
         this.tasks = [];
@@ -160,6 +171,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     const S = sceneAPI;
     const R = new Runner();
     const H = new Runner();   // hint gestures: separate so isBusy() stays false while a hint plays
+    const G = new Runner();   // king gestures (talk, taunt...): same idea, independent of hints
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -185,14 +197,17 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     async function loadAssets(roleTable) {
         const roles = [];
         for (const color of ['w', 'b']) for (const type of 'pnbrqk') roles.push(roleTable?.[color]?.[type] || {});
-        const modelPaths = [...new Set(roles.map(r => r.model).filter(p => p && !protos.has(p)))];
+        const modelPaths = [...new Set(roles.flatMap(r => [r.model, r.mount?.model]).filter(p => p && !protos.has(p)))];
+        // Mounts (horses) are native models: they play their own embedded clips.
+        // VRM: by extension, or by the cast flag for imported blob: URLs (role.vrm).
+        const vrmPaths = new Set(roles.filter(r => r.vrm || r.rig === 'vrm').map(r => r.model));
+        const nativePaths = new Set([...roles.filter(r => r.native).map(r => r.model), ...roles.map(r => r.mount?.model).filter(Boolean)]);
         const propPaths = [...new Set(roles.flatMap(r => (r.props || []).map(p => p.file)).filter(p => p && !propProtos.has(p)))];
         await Promise.all([
             ...modelPaths.map(async p => {
                 try {
-                    const g = await loader.loadAsync(resolve(p));
-                    addClips(g.animations);
-                    protos.set(p, prepareProto(g.scene));
+                    const g = vrmPaths.has(p) || /\.vrm(\?|#|$)/i.test(p) ? await loadVrm(resolve(p)) : await loader.loadAsync(resolve(p));
+                    protos.set(p, await protoFromGltf(g, p, nativePaths.has(p)));
                 } catch (e) { console.warn('[units] model failed, using placeholder:', p, e); }
             }),
             ...propPaths.map(async p => {
@@ -204,6 +219,52 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             })
         ]);
     }
+    // KayKit rigs take the fast path (shared clips bind by bone name). Other humanoids go through
+    // retarget.js (b3d-retarget) when present; anything it cannot map becomes a static model.
+    const isKayKitRig = scene => !!(byName(scene, 'hips') && byName(scene, 'handslot.r'));
+    let retargetMod;
+    async function getRetarget() {
+        if (retargetMod === undefined) {
+            try { retargetMod = await import('./retarget.js'); } catch (e) { retargetMod = null; log('retarget.js not available'); }
+        }
+        return retargetMod;
+    }
+    async function loadVrm(url) {
+        const m = await import('./vrm.js');
+        return m.loadVRM(url, { THREE, GLTFLoader, meshoptDecoder: MeshoptDecoder });
+    }
+    async function protoFromGltf(g, path, native = false) {
+        // Native pack models (b3d-assets) play only their own embedded clips (unique names).
+        if (native) {
+            addClips(g.animations);
+            const proto = prepareProto(g.scene);
+            proto.native = true;
+            proto.clipNames = new Set(g.animations.map(a => a.name));
+            return proto;
+        }
+        if (isKayKitRig(g.scene)) {
+            addClips(g.animations);
+            return prepareProto(g.scene);
+        }
+        const rt = await getRetarget();
+        if (rt?.prepare) {
+            try {
+                const prep = await rt.prepare(g, THREE, { sourceClips: clips });
+                if (prep && !prep.static && prep.ok !== false && prep.root) {
+                    for (const w of prep.warnings || []) log('retarget', path, w);
+                    const proto = prepareProto(prep.root);
+                    proto.retarget = prep;
+                    proto.clipCache = new Map();
+                    return proto;
+                }
+                console.warn('[units] cannot retarget', path, prep?.warnings || '');
+            } catch (e) { console.warn('[units] retarget failed for', path, e); }
+        }
+        const proto = prepareProto(g.scene);
+        proto.static = true;
+        return proto;
+    }
+
     await loadAssets(manifest.roles);
     log('loaded', protos.size, 'models,', clips.size, 'clips,', propProtos.size, 'props');
 
@@ -350,7 +411,8 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         if (proto) {
             model = SkeletonUtils.clone(proto.scene);
             u.model = model;
-            const get = n => byName(model, n);
+            u.proto = proto;
+            const get = n => boneOf(u, n);
             u.bones = { head: get('head'), hips: get('hips'), handR: get('handslot.r'), handL: get('handslot.l'), chest: get('chest'), legR: get('upperleg.r') };
             if (u.bones.legR) u.legRest = u.bones.legR.position.clone();
             applyVisibility(model, role, u.bones);
@@ -358,7 +420,10 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             u.scale = role.scale ?? (TARGET_HEIGHT / proto.height) * (role.heightScale ?? 1);
             if (role.crown && u.bones.head && !decorateUnit) addCrown(u, model, proto, role);
             // Static custom models (non-KayKit rigs) keep their pose: no mixer, no clips.
-            if (!role.static) u.mixer = new THREE.AnimationMixer(model);
+            if (!role.static && !proto.static) {
+                // retarget.js: mixerTarget === root, so the clone itself is the mixer root.
+                u.mixer = new THREE.AnimationMixer(model);
+            }
             u.labelY = Math.max(0.9, (proto.skinTop * u.scale) + MODEL_Y + 0.2 + (role.crown ? 0.12 : 0));
         } else {
             model = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.4, 4, 10),
@@ -369,10 +434,12 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         }
         model.scale.multiplyScalar(u.scale);
         model.position.y += MODEL_Y;
-        model.rotation.y = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }[role.forward || '+z'] ?? 0;
+        // Retargeted roots already face +z (retarget.js fixes facing inside its wrapper).
+        model.rotation.y = proto?.retarget ? 0 : { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }[role.forward || '+z'] ?? 0;
         u.model = model;
         u.modelPos0 = model.position.clone();
         root.add(model);
+        if (role.mount && proto) mountUnit(u, role.mount);
 
         u.proxy = new THREE.Mesh(proxyGeo, proxyMat);
         u.proxy.position.y = coarse ? 0.5 : 0.45;
@@ -530,6 +597,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         try { u.deco?.dispose(); } catch (e) { /* ignore */ }
         u.root.removeFromParent();
         if (u.mixer) { u.mixer.stopAllAction(); u.mixer.uncacheRoot(u.model); }
+        if (u.horse) { u.horse.mixer.stopAllAction(); u.horse.mixer.uncacheRoot(u.horse.model); }
         u.root.traverse(o => { if (o.isMesh && o.userData.ownMaterial) [].concat(o.material).forEach(m => m.dispose()); });
         if (!u.mixer && u.model.geometry) { u.model.geometry.dispose(); u.model.material.dispose(); }
     }
@@ -547,19 +615,77 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         u.square = { row: sq.row, col: sq.col };
         u.root.position.copy(sqPos(sq));
         u.root.rotation.set(0, TEAM[u.color].yaw, 0);
+        if (u.horse) u.horse.last.copy(u.root.position);
     }
 
-    function findClip(names) {
-        for (const n of [].concat(names)) if (n && clips.has(n)) return clips.get(n);
+    function findClip(names, u = null) {
+        if (u?.proto?.native) {
+            for (const n of [].concat(names)) { const m = nativeName(u, n); if (m) return clips.get(m); }
+            return null;
+        }
+        for (const n of [].concat(names)) {
+            if (!n || !clips.has(n)) continue;
+            if (!u?.proto?.retarget) return clips.get(n);
+            const c = retargetedClip(u.proto, n);
+            if (c) return c;
+        }
         return null;
     }
 
-    function play(u, names, { loop = false, fade = FADE, speed = 1, start = 0, fidget = false } = {}) {
+    // Shared clip converted for a retargeted rig, cached per model.
+    function retargetedClip(proto, name) {
+        if (!proto.clipCache.has(name)) {
+            let c = null;
+            const r = proto.retarget;
+            try { c = (r.clipMap ? r.clipMap(name) : r.retargetClip?.(clips.get(name))) || null; } catch (e) { log('retarget clip failed', name, e); }
+            proto.clipCache.set(name, c);
+        }
+        return proto.clipCache.get(name);
+    }
+
+    // A KayKit clip name requested by the choreography, mapped onto a native model's own clips by
+    // meaning (role.anims keys); unmapped requests fall back to its idle so nothing T-poses.
+    const NATIVE_KEYS = [
+        [/^Block_Hit$/, ['block', 'hit']], [/^Blocking$|^Block$/, ['block', 'idle']],
+        [/Attack|^Spellcast_Shoot$|^Throw$/, ['attack']], [/^Hit_/, ['hit']], [/^Death/, ['death']],
+        [/^Walking/, ['walk']], [/^Running/, ['run', 'walk']], [/^Jump/, ['jump', 'idle']],
+        [/^Cheer$|^Taunt|^Interact$|^Use_Item$|^Spellcast_Raise$/, ['cheer', 'idle']], [/^Spawn/, ['spawn', 'idle']],
+        [/Idle/, ['idle']]
+    ];
+    function nativeName(u, n) {
+        if (!n) return null;
+        const own = u.proto.clipNames;
+        if (own.has(n)) return n;
+        const keys = (NATIVE_KEYS.find(([re]) => re.test(n)) || [null, ['idle']])[1];
+        for (const key of keys) {
+            const list = [].concat(u.role.anims?.[key] ?? u.role[key] ?? []).filter(x => own.has(x));
+            // Stable per requested name (play and impactOf must agree), still varied across names.
+            if (list.length) return list[[...n].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % list.length];
+        }
+        const idle = [].concat(u.role.anims?.idle ?? []).find(x => own.has(x));
+        return idle || own.values().next().value || null;
+    }
+
+    // Bone by our canonical (KayKit) name: native role.bones, the retarget map, or the name itself.
+    const NATIVE_BONE_KEYS = { head: 'head', chest: 'chest', hips: 'hips', 'handslot.r': 'handR', 'handslot.l': 'handL' };
+    function boneOf(u, n) {
+        const nb = u.role?.bones?.[NATIVE_BONE_KEYS[n]];
+        if (nb) { const b = byName(u.model, nb); if (b) return b; }
+        const mapped = u.proto?.retarget?.bones?.[n];
+        return (mapped && byName(u.model, mapped)) || byName(u.model, n);
+    }
+
+    function play(u, names, { loop = false, fade = FADE, speed = 1, start = 0, fidget = false, fullBody = false } = {}) {
         if (!fidget && u.fidget) { u.fidget = null; fidgeting--; }
         u.look = fidget ? u.look : null;
         if (!u.mixer) return null;
-        const clip = findClip(names) || findClip(anim(u, 'idle', ['Idle']));
+        let clip = findClip(names, u) || findClip(anim(u, 'idle', ['Idle']), u);
         if (!clip) return null;
+        // A mounted rider keeps its seated legs: everything but deaths plays on the upper body only.
+        if (u.horse) {
+            if (fullBody) u.horse.seat?.stop();
+            else { clip = upperBody(clip); if (!u.horse.seat?.isRunning()) startSeat(u); }
+        }
         const a = u.mixer.clipAction(clip);
         const prev = u.current;
         a.reset();
@@ -641,10 +767,129 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     function speedMul() { return mode === 'fast' ? FAST : 1; }
 
     // Pick walk or run for a ground speed (world units/s) and the playback rate that keeps feet planted.
+    // ===========================================================================================
+    // Mounted units: the role model rides a native mount model (b3d-assets role.mount). The horse's
+    // clips follow the unit root's motion (walk/run by ground speed, jump while airborne, death while
+    // dying), so every choreography works unchanged; the rider plays upper-body clips on a seated base.
+
+    const FACING = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 };
+    const LOWER_BODY = /^(root|hips|upperleg|lowerleg|foot|toes)/;
+    const upperCache = new WeakMap(), lowerCache = new WeakMap();
+    function filterClip(clip, keepLower, cache) {
+        if (!cache.has(clip)) {
+            const tracks = clip.tracks.filter(t => LOWER_BODY.test(t.name.split('.')[0]) === keepLower);
+            cache.set(clip, new THREE.AnimationClip(clip.name + (keepLower ? '#lower' : '#upper'), clip.duration, tracks));
+        }
+        return cache.get(clip);
+    }
+    const upperBody = clip => filterClip(clip, false, upperCache);
+
+    function startSeat(u) {
+        const sit = findClip([u.role.mount.riderAnim, 'Sit_Chair_Idle', 'Idle'], u);
+        if (!sit) return;
+        const a = u.mixer.clipAction(filterClip(sit, true, lowerCache));
+        a.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+        u.horse.seat = a;
+    }
+
+    function mountUnit(u, m) {
+        const proto = protos.get(m.model);
+        if (!proto) return;
+        const horse = SkeletonUtils.clone(proto.scene);
+        horse.scale.setScalar(m.scale ?? 1);
+        if (m.tint) {
+            const tint = new THREE.Color(m.tint);
+            horse.traverse(o => {
+                if (!o.isMesh) return;
+                o.material = [].concat(o.material).map(mt => { const c = mt.clone(); c.color?.multiply(tint); return c; });
+                if (o.material.length === 1) o.material = o.material[0];
+                o.userData.ownMaterial = true;
+            });
+        }
+        horse.rotation.y = FACING[m.forward || '+z'] ?? 0;
+        horse.position.y = MODEL_Y;
+        u.root.add(horse);
+        // The rider sits at the saddle (horse-local, unscaled units) and keeps its world size.
+        const rider = u.model;
+        rider.removeFromParent();
+        horse.add(rider);
+        rider.position.fromArray(m.saddle || [0, 1, 0]);
+        rider.scale.setScalar(u.scale * (m.riderScale ?? 1) / (m.scale ?? 1));
+        rider.rotation.y = (u.proto?.retarget ? 0 : FACING[u.role.forward || '+z'] ?? 0) - horse.rotation.y;
+        u.modelPos0 = rider.position.clone();
+        u.horse = { model: horse, proto, m, mixer: new THREE.AnimationMixer(horse), current: null, key: null, last: u.root.position.clone(), dead: false, stepT: 0, fitted: false };
+        horseSet(u, 'idle', 1, true);
+        if (u.mixer) startSeat(u);
+    }
+
+    function horseClip(h, key) {
+        const own = h.proto.clipNames || new Set();
+        return [].concat(h.m.anims?.[key] ?? []).map(n => clips.get(n)).find(c => c && own.has(c.name)) || null;
+    }
+
+    function horseSet(u, key, rate, loop) {
+        const h = u.horse;
+        if (h.key === key) { if (h.current) h.current.timeScale = rate; return; }
+        const clip = horseClip(h, key) || (key === 'run' ? horseClip(h, 'walk') : null) || horseClip(h, 'idle');
+        h.key = key;
+        if (!clip) return;
+        const a = h.mixer.clipAction(clip);
+        a.reset().setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+        a.clampWhenFinished = true;
+        a.timeScale = rate;
+        a.play();
+        if (h.current && h.current !== a) a.crossFadeFrom(h.current, 0.2, false);
+        h.current = a;
+    }
+
+    function updateHorse(u, dt) {
+        const h = u.horse;
+        const p = u.root.position;
+        const speed = dt > 0 ? Math.hypot(p.x - h.last.x, p.z - h.last.z) / dt : 0;
+        h.last.copy(p);
+        if (u.dying || u.dead) { if (!h.dead) { h.dead = true; horseSet(u, 'death', 1, false); } }
+        else if (p.y > 0.03) horseSet(u, 'jump', 1, false);
+        else if (speed > 0.05) {
+            const walk = h.m.walkSpeed || 1.2, run = h.m.runSpeed || 3;
+            // Hysteresis so turns and lunges don't flicker between walk and run.
+            const running = (h.key === 'run' ? speed > walk * 1.3 : speed > walk * 1.7) && horseClip(h, 'run');
+            horseSet(u, running ? 'run' : 'walk', clamp(speed / (running ? run : walk), 0.6, 2.2), true);
+            // Hoofbeats: four per cycle, quieter than a rook's step.
+            h.stepT += dt;
+            const dur = h.current?.getClip().duration || 1;
+            if (h.stepT >= dur / 4 / Math.max(0.1, h.current?.timeScale || 1)) {
+                h.stepT = 0;
+                sfxAt('step', u, { variant: 'heavy', volume: (mode === 'fast' ? 0.25 : 0.35) * sizeOf(u), rate: rand(1.05, 1.2) });
+            }
+        } else horseSet(u, 'idle', 1, true);
+        h.mixer.update(dt);
+        if (!h.fitted && u.mixer && u.bones.hips && h.seat) fitSaddle(u);
+    }
+
+    // Once, with the seated pose applied: shift the rider so its hips sit on the saddle point.
+    function fitSaddle(u) {
+        const h = u.horse;
+        h.fitted = true;
+        const rider = u.model;
+        h.model.updateMatrixWorld(true);
+        const hipsInHorse = h.model.worldToLocal(u.bones.hips.getWorldPosition(new THREE.Vector3()));
+        rider.position.add(new THREE.Vector3().fromArray(h.m.saddle || [0, 1, 0]).sub(hipsInHorse));
+        u.modelPos0 = rider.position.clone();
+    }
+
     function startLocomotion(u, v, { quiet = false } = {}) {
+        if (u.horse) { play(u, anim(u, 'idle', ['Idle']), { loop: true, fade: 0.15 }); u.loco = null; return; }
+        if (u.proto?.native) {
+            // No stride measurement on unknown bones: rate from the role's walk speed (world units/s at rate 1).
+            const runOk = (u.role.anims?.run || []).length !== 0 && v > (u.role.walkSpeed || 1.2) * 1.6;
+            const base = runOk ? (u.role.runSpeed || 3) : (u.role.walkSpeed || 1.2);
+            const a = play(u, runOk ? 'Running_A' : 'Walking_A', { loop: true, fade: 0.15, speed: clamp(v / base, 0.6, 2.2) });
+            u.loco = a ? { action: a, contacts: [0, 0.5], prev: a.time, quiet, last: -1 } : null;
+            return;
+        }
         const walk = anim(u, 'walk', [])[0] || (u.isSkeleton && u.type === 'p' ? 'Walking_D_Skeletons' : 'Walking_A');
         const run = anim(u, 'run', [])[0] || 'Running_A';
-        const nat = n => (clipStats(n).speed || 0.9) * u.scale;
+        const nat = n => (clipStats(n).speed || 0.9) * u.scale * (u.proto?.retarget?.scale || 1);
         const walkRate = v / nat(walk);
         const a = walkRate <= 1.7 || !clips.has(run)
             ? play(u, [walk, 'Walking_A'], { loop: true, fade: 0.15, speed: clamp(walkRate, 0.6, 2.2) })
@@ -928,7 +1173,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     // Plays the death clip with the hips pinned on the square.
     function fall(u, names, { speed = 1 } = {}) {
         startPin(u);
-        play(u, names, { speed, fade: 0.1 });
+        play(u, names, { speed, fade: 0.1, fullBody: true });
     }
 
     function shrinkBase(u, dur) {
@@ -980,8 +1225,13 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function impactOf(u, name) {
         if (!name) return 0.3;
+        if (u?.proto?.native) name = nativeName(u, name);
         const f = manifest.fight?.[u.color + u.type] || manifest.fight?.[u.type] || {};
-        return f.impact?.[name] ?? manifest.impacts?.[name] ?? clipStats(name).impact;
+        const known = u?.role?.impacts?.[name] ?? f.impact?.[name] ?? manifest.impacts?.[name];
+        if (known != null) return known;
+        // Native clips can't be sampled on the KayKit measurement rig: assume the blow lands at 45%.
+        if (u?.proto?.native) return (clips.get(name)?.duration ?? 1) * 0.45;
+        return clipStats(name).impact;
     }
 
     function attackList(u) {
@@ -1008,6 +1258,8 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         impactOf, attackList,
         hitStop, later: (d, fn) => later(d, fn),
         sfx, sfxAt, sizeOf,
+        // Melee standoff: mounted units need room for the horse.
+        reach: (A, V) => 0.65 + (A.horse ? 0.3 : 0) + (V.horse ? 0.25 : 0),
         fx: {
             burst, shake, impact: impactFx, debris: debrisFx, decal: decalFx, trail: trailFx, bolt,
             get hasImpact() { return !!fxAPI.impact; }
@@ -1116,7 +1368,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     // Render-on-demand tokens: 'idle' while units exist (scene throttles it), 'units-fight' while animating.
     function syncTokens() {
         if (!S.keepAlive) return;
-        const busy = R.busy || H.busy;
+        const busy = R.busy || H.busy || G.busy;
         if (busy !== fightToken) { fightToken = busy; try { S.keepAlive('units-fight', busy); } catch (e) { /* ignore */ } }
         const want = units.size > 0;
         if (want !== idleToken) { idleToken = want; try { S.keepAlive('idle', want); } catch (e) { /* ignore */ } }
@@ -1125,6 +1377,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     function update(dt) {
         R.update(dt);
         if (H.busy) H.update(dt);
+        if (G.busy) G.update(dt);
         syncTokens();
         for (const u of units) {
             if (!u.mixer) continue;
@@ -1132,6 +1385,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             if (head && u.lookApplied) { head.quaternion.copy(u.headPre); u.lookApplied = false; }
             u.mixer.update(dt);
             if (u.loco) trackSteps(u);
+            if (u.horse) updateHorse(u, dt);
             if (u.pin) {
                 // Death_C_Skeletons detaches the right leg and leaves it standing; keep it on the body.
                 if (u.bones.legR) u.bones.legR.position.copy(u.legRest);
@@ -1143,18 +1397,21 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     const _q = new THREE.Quaternion();
     const _up = new THREE.Vector3(0, 1, 0);
+    const _side = new THREE.Vector3(1, 0, 0);
     const _v = new THREE.Vector3();
 
     // Death clips move the hips (and Death_C_Skeletons the root) sideways; counter-shift the model so
     // the body stays centred on its square.
     function startPin(u) {
-        if (!u.bones.hips || u.pin) return;
+        if (!u.bones.hips || u.pin || u.horse) return;
         u.model.updateMatrixWorld(true);
         const p = u.model.worldToLocal(u.bones.hips.getWorldPosition(_v));
         u.pin = { x: p.x, z: p.z };
-        const get = n => byName(u.model, n);
+        const get = n => boneOf(u, n);
         u.pinBones = [['head', 0.4], ['handslot.r', 0.3], ['handslot.l', 0.3], ['foot.l', 0.1], ['foot.r', 0.1]]
             .map(([n, m]) => [get(n), m]).filter(([b]) => b);
+        u.torsoBones = ['hips', 'chest', 'head'].map(get).filter(Boolean);
+        u.pin.upright = (u.bones.head ? u.bones.head.getWorldPosition(new THREE.Vector3()).y : 0) - u.bones.hips.getWorldPosition(new THREE.Vector3()).y;
     }
 
     function pinHips(u) {
@@ -1176,6 +1433,22 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             _v.set(-minX - maxX, 0, -minZ - maxZ).applyQuaternion(_q.copy(u.root.quaternion).invert());
             u.model.position.x += _v.x;
             u.model.position.z += _v.z;
+        }
+        // Non-KayKit bodies: retargeted death clips keep the hips higher on long-legged rigs, so the
+        // corpse would float. Lower the body (never above its own pose) until its lowest bone rests on the board.
+        // Feet are ignored: on long-legged rigs the lying body rests on pointed toes. The clamp fades in
+        // as the torso goes horizontal, so a falling body is not pushed into the board.
+        if ((u.proto?.retarget || u.proto?.native) && u.torsoBones.length) {
+            let low = Infinity;
+            for (const b of u.torsoBones) low = Math.min(low, b.getWorldPosition(_v).y - u.root.position.y);
+            const head = u.bones.head?.getWorldPosition(_v).y ?? 0;
+            const hips = u.bones.hips.getWorldPosition(_v).y;
+            const lying = u.pin.upright > 0.05 ? clamp(1 - (head - hips) / u.pin.upright, 0, 1) : 1;
+            const drop = u.pin.drop || 0;
+            const target = Math.max(0, drop + (low - GROUND_REST) * lying);
+            const step = 3 * R.dt;
+            u.pin.drop = clamp(target, drop - step, drop + step);
+            u.model.position.y = u.modelPos0.y - u.pin.drop;
         }
     }
 
@@ -1200,6 +1473,18 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
                 u.lookApplied = true;
             }
         }
+        if (u.nod && u.bones.head) {
+            const n = u.nod;
+            n.t += dt;
+            const k = Math.min(1, n.t / n.dur);
+            // talk: quick bobbing with an envelope; facepalm: one slow drop of the head
+            const pitch = n.kind === 'facepalm' ? n.amp * Math.sin(Math.PI * k) : n.amp * Math.sin(2 * Math.PI * n.freq * n.t) * Math.sin(Math.PI * k);
+            if (!u.lookApplied) u.headPre.copy(u.bones.head.quaternion);
+            u.bones.head.quaternion.multiply(_q.setFromAxisAngle(_side, pitch));
+            u.lookApplied = true;
+            if (k >= 1) u.nod = null;
+        }
+        if (u.nod || gestureUnits.has(u)) return;
         if (R.busy || u === hintUnit || u.dead || u.dying || u.fidget || u.look || R.time < u.nextFidget) return;
         u.nextFidget = R.time + rand(9, 26);
         if (Math.random() < 0.5 || fidgeting >= 2) {
@@ -1207,7 +1492,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             return;
         }
         const names = u.isSkeleton ? [pick(['Idle_B', 'Taunt', 'Idle_B'])] : [pick(['Interact', '2H_Melee_Idle'])];
-        if (!findClip(names)) return;
+        if (!findClip(names, u)) return;
         const a = play(u, names, { fade: 0.35, fidget: true });
         if (a) { u.fidget = a; fidgeting++; }
     }
@@ -1217,6 +1502,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function syncBoard(board) {
         cancelHint();
+        cancelGestures();
         R.abortAll();
         stopTrails();
         finalizers.length = 0;
@@ -1252,7 +1538,17 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         u.dead = false;
         u.dying = false;
         u.look = null;
+        u.nod = null;
         clearPin(u);
+        if (u.horse) {
+            u.horse.dead = false;
+            u.horse.key = null;
+            u.horse.mixer.stopAllAction();
+            u.horse.current = null;
+            u.horse.last.set(sqPos(sq).x, 0, sqPos(sq).z);
+            horseSet(u, 'idle', 1, true);
+            u.horse.seat = null;
+        }
         for (const b of u.base) b.scale.setScalar(1);
         restoreMaterials(u);
         if (u.mixer) { u.mixer.timeScale = 1; u.mixer.stopAllAction(); u.current = null; }
@@ -1296,8 +1592,72 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         });
     }
 
+    // King gestures for the commentary: short, interruptible, never during the unit's own animation.
+    const GESTURES = {
+        talk: { clips: null, dur: 1.6, amp: 0.1, freq: 2.6 },
+        taunt: { clips: ['Taunt', 'Cheer', 'Interact'], dur: 1.2, amp: 0.08, freq: 1.5 },
+        cheer: { clips: ['Cheer'], dur: 1.3, amp: 0.06, freq: 1.2 },
+        shrug: { clips: ['Interact', 'Idle'], dur: 1.1, amp: 0.05, freq: 1 },
+        facepalm: { clips: ['Use_Item', 'Interact'], dur: 1.2, amp: 0.35, freq: 1 }
+    };
+    const gestureUnits = new Set();
+    function cancelGesture(u) {
+        if (!gestureUnits.has(u)) return;
+        const clip = u.gestureClip;
+        gestureUnits.delete(u);
+        G.cancel(u.gestureTask);
+        u.gestureTask = null;
+        u.nod = null;
+        u.gestureClip = null;
+        if (units.has(u) && !u.dying && !u.dead && clip && u.current === clip) idle(u, 0.2);
+    }
+
+    function cancelGestures() {
+        // Capture the clips first: aborting runs the tasks' onDone, which clears gestureClip.
+        const list = [...gestureUnits].map(u => [u, u.gestureClip]);
+        gestureUnits.clear();
+        G.abortAll();
+        for (const [u, clip] of list) {
+            u.nod = null;
+            u.gestureClip = null;
+            if (units.has(u) && !u.dying && !u.dead && clip && u.current === clip) idle(u, 0.2);
+        }
+    }
+
+    function playGesture(square, kind = 'talk') {
+        const g = GESTURES[kind] || GESTURES.talk;
+        const u = square ? unitAtSq(square) : null;
+        if (!u || u.dying || u.dead) return Promise.resolve();
+        // A new gesture on the same unit replaces the old one; the other king keeps going.
+        cancelGesture(u);
+        // The nod is applied after the mixer each frame, so only units with a mixer and a head get one.
+        u.nod = u.mixer && u.bones.head ? { kind, t: 0, dur: g.dur, amp: g.amp, freq: g.freq } : null;
+        gestureUnits.add(u);
+        const seq = function* () {
+            // Clips only while the unit is idle; during a move the head nod alone carries the line.
+            const a = g.clips && !R.busy && u !== hintUnit ? play(u, g.clips, { speed: 1.1, fade: 0.2 }) : null;
+            u.gestureClip = a;
+            if (a) yield untilClip(u, a, Math.min(a.getClip().duration * 0.95, g.dur));
+            else yield g.dur;
+            if (a && u.current === a && !R.busy) idle(u, 0.3);
+            // Resolve only once the head nod has settled too, so nothing is left running.
+            if (u.nod) yield () => !u.nod || !units.has(u);
+        };
+        return new Promise(res => {
+            let task = null;
+            task = G.spawn(seq(), () => {
+                if (!task || u.gestureTask === task) { gestureUnits.delete(u); u.gestureClip = null; u.gestureTask = null; }
+                res();
+            });
+            if (!task.done) u.gestureTask = task;
+            S.requestRender?.();
+            syncTokens();
+        });
+    }
+
     function playMove(ev) {
         cancelHint();
+        cancelGestures();
         if (R.busy) fastForward();
         const color = ev.color;
         const type = String(ev.piece).toLowerCase();
@@ -1344,6 +1704,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function playCheck(kingSquare) {
         cancelHint();
+        cancelGestures();
         const K = unitAtSq(kingSquare);
         if (!K) return Promise.resolve();
         if (R.busy) fastForward();
@@ -1356,6 +1717,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function playGameOver({ result, loser, kingSquare } = {}) {
         cancelHint();
+        cancelGestures();
         if (R.busy) fastForward();
         const all = [...units].filter(u => !u.dying);
         return run((function* () {
@@ -1377,7 +1739,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
                 const cheer = function* (u, delay) {
                     yield delay;
                     const names = anim(u, 'cheer', ['Cheer', 'Spellcast_Raise']);
-                    const clip = findClip(names);
+                    const clip = findClip(names, u);
                     const reps = clip && clip.duration > 2 ? 1 : 2;
                     for (let i = 0; i < reps; i++) yield* playOnce(u, names, { speed: rand(0.9, 1.1) });
                     idle(u, 0.3);
@@ -1396,6 +1758,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
 
     function skip() {
         cancelHint();
+        cancelGestures();
         if (R.busy) fastForward();
         stopTrails();
         cam.close(0);
@@ -1448,6 +1811,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         setCast,
         getLegend,
         playHint,
+        playGesture,
         lastFightPlan: () => kit.lastPlan,
         // debug
         _clips: clips,

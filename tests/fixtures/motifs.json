@@ -1,0 +1,133 @@
+{
+  "_comment": "Positions with known motifs for tactics.detect(stateBefore, move, stateAfter). expect: motifs that must be reported. A 'negative' entry (expect []) must report nothing: any motif there is a false positive. Moves are long algebraic from the side to move.",
+  "cases": [
+    {
+      "name": "knight fork king+rook (Nc7+)",
+      "fen": "r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1",
+      "move": "b5c7",
+      "expect": [
+        "fork"
+      ]
+    },
+    {
+      "name": "royal fork king+queen (Nc7+)",
+      "fen": "q3k3/ppp5/8/1N6/8/8/PPP5/4K3 w - - 0 1",
+      "move": "b5c7",
+      "expect": [
+        "fork"
+      ]
+    },
+    {
+      "name": "pin knight to king (Bb4)",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/3PP3/2N5/PPP2PPP/R1BQKBNR b KQkq d3 0 2",
+      "move": "f8b4",
+      "expect": [
+        "pin"
+      ]
+    },
+    {
+      "name": "skewer king then queen (Ra8+)",
+      "fen": "4k2q/8/8/8/8/8/8/R3K3 w - - 0 1",
+      "move": "a1a8",
+      "expect": [
+        "skewer"
+      ]
+    },
+    {
+      "name": "hangs a bishop (Ba6?)",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+      "move": "f1a6",
+      "expect": [
+        "hanging"
+      ]
+    },
+    {
+      "name": "back-rank mate (Ra8#)",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+      "move": "a1a8",
+      "expect": [
+        "backRank"
+      ]
+    },
+    {
+      "name": "missed free queen (Kf1 instead of Rxd5)",
+      "fen": "4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1",
+      "move": "e1f1",
+      "expect": [
+        "missedCapture"
+      ]
+    },
+    {
+      "name": "allows fool's mate (2.g4?? Qh4#)",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq e6 0 2",
+      "move": "g2g4",
+      "expect": [
+        "allowsMate"
+      ]
+    },
+    {
+      "name": "missed mate in 1 (Ra2 instead of Ra8#)",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+      "move": "a1a2",
+      "expect": [
+        "missedMate"
+      ]
+    },
+    {
+      "name": "discovered check (Nc5 unmasks Re1)",
+      "fen": "4k3/8/8/8/4N3/8/8/K3R3 w - - 0 1",
+      "move": "e4c5",
+      "expect": [
+        "discovered"
+      ]
+    },
+    {
+      "name": "negative: 1.e4",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "move": "e2e4",
+      "expect": []
+    },
+    {
+      "name": "negative: 1...e5",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+      "move": "e7e5",
+      "expect": []
+    },
+    {
+      "name": "negative: Nf3 developing",
+      "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+      "move": "g1f3",
+      "expect": []
+    },
+    {
+      "name": "negative: castling",
+      "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 6 5",
+      "move": "e1g1",
+      "expect": []
+    },
+    {
+      "name": "negative: safe recapture",
+      "fen": "rnbqkbnr/ppp2ppp/8/3pp3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+      "move": "e4d5",
+      "expect": []
+    },
+    {
+      "name": "negative: quiet king move in a pawn ending",
+      "fen": "8/5k2/8/3p4/3P4/8/5K2/8 w - - 0 1",
+      "move": "f2e3",
+      "expect": []
+    },
+    {
+      "name": "negative: defended piece is not hanging (Nc3 developing)",
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq d6 0 2",
+      "move": "b1c3",
+      "expect": []
+    },
+    {
+      "name": "negative: rook lift with no tactics",
+      "fen": "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+      "move": "a1a4",
+      "expect": []
+    }
+  ]
+}
