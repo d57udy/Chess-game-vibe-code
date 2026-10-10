@@ -103,6 +103,7 @@ describe('battle3d coach journeys (real page)', { skip }, () => {
             await ai('g8f6');
             const f = await warningSince(before);
             assert.ok(f.ok, `a warning appears (card: "${f.text}")`);
+            assert.match(f.warn, /queen/i, `names the piece in danger: "${f.warn}"`);
             assert.doesNotMatch(f.warn, /\b(e5|f3|e2|g4|h4)\b/, `no answer given away: "${f.warn}"`);
             assert.equal(st().hint, null);
         });
