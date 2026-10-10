@@ -487,3 +487,85 @@ auto-scale and facing, team tint. Update sw.js precache for built-in assets only
 
 units.js (`b3d-units`): load models through `retarget.prepare` when a role uses a non-KayKit rig; mounted knight
 support (rider + horse, both animated, or the horse alone) if a horse model is added.
+
+# v6.1 coach journeys (owner feedback after playing v6)
+
+Owner: "I've enabled the coach, but I'm not getting suggestions every move. The game review seems interesting, but
+when I click on a special move in the past and then go back to the game the game review modal is no longer there."
+
+Journeys were mapped on the real page: `main.js` booted in jsdom (real scene with a fake renderer, real units, coach,
+controller and engine; only `requestAIMove` answered by the script) and in headless Chrome on a local server
+(1280x800 and 390x780, driven with `__b3d.step`). "Was" is v6.0 (commit 601a61f), "Now" is v6.1.
+
+## Journey table
+
+| # | Journey | Expected | Was (v6.0) | Now (v6.1) |
+|---|---|---|---|---|
+| A1 | Coach on, "Every move", 10 quiet moves as White vs AI | Feedback after every move of the player | 4 of 10 moves got a card, and each vanished when the AI replied | 10 of 10: thinking state at once, then a verdict (Best / Good / ...) with one sentence; it stays through the AI's reply |
+| A2 | Same as Black vs AI | Same | 5 of 10 | 10 of 10 |
+| A3 | Same in Human vs Human | Feedback for both players | White 5 of 10, Black 4 of 10 | 10 of 10 for each side, labelled "White: ..." / "Black: ..." |
+| A4 | Analysis slow, missing or cancelled | Thinking state, then a result, never nothing | Analysis later than 1.5 s, or a missing "before" analysis: card silently hidden | The coach waits for the analysis itself (no time cap), requests a missing "before" analysis from the history, retries a cancelled one up to 3 times, and otherwise says it could not analyse the move |
+| A5 | "Mistakes only" | Only inaccuracy / mistake / blunder cards | Correct for verdicts, but threat and king-safety nudges still appeared | Card only for inaccuracy, mistake, blunder; no warnings, no praise, no thinking state |
+| A6 | Settings persist over reload and new game | Yes | Yes | Yes (`coach`, `coachFrequency` in `battle3d.settings`) |
+| A7 | Card after the user dismissed one | Next move shows a card again | Yes | Yes (dismissed only until the next content) |
+| B | Advice before the move at "Every move" | A non-spoiling warning about a real danger; Hint stays the way to get a move | A nudge existed but only showed when no card was visible | One warning line in the card ("Before you move: ...") from, in order: opponent threats (mate, or 250+ centipawns), a hanging piece worth 3+, an exposed king, opening principles, endgame king. Never the best move |
+| C1 | "Take it back" on a mistake card, vs AI, after the AI replied | Both plies undone, player to move | Worked only when nothing was animating; during the AI's reply animation the button did nothing | `controller.undoTo(ply - 1)`: works while the AI thinks or animates and after it replied; card then says "Taken back..." |
+| C2 | "Show me better" | Undo, then the engine's move as an arrow | Same limitation as C1 | Same undo, then the hint arrow with the piece pre-selected; repeatable |
+| C3 | Both in Human vs Human | One ply undone | Worked | Works |
+| D1 | Open review mid-game | Possible | Only after game over, or via a button that existed only while the coach was on | "Review game" is always in the menu; opens any time, coach on or off |
+| D2 | Click a flagged move | Board shows it; review stays reachable | The modal closed (`closeReview()` before `enterReview`), no way back | Docked panel stays open; flagged moves show the position before the move with the played move highlighted and the better move as the arrow |
+| D3 | Step through moves | Prev / next, prev / next flagged | Not possible | Buttons and Left / Right keys; "next" past the last move returns to the game |
+| D4 | Return to game | Live position restored exactly, AI resumes | Via Esc / "Back to game" only, with the review gone | "Return to game" in the panel (also Esc, or closing the panel): same FEN, arrow cleared, AI asked again |
+| D5 | AI while reviewing | Must not move | Correct | Correct (request cancelled on entering review, re-issued on return) |
+| D6 | Minimise / reopen | Scroll and selection kept | n/a | Minimise to a "Back to review" chip; reopening keeps the selection and scroll (the list is updated in place) |
+| D7 | Moves without analysis (coach was off, commentary budget only) | Review still useful | Review said nothing was analysed | Missing verdicts are computed in the background while the panel is open, with a progress line |
+| E1 | Review with 0 moves | Clear message | Empty modal | "No moves yet..." |
+| E2 | Review while the AI is thinking | AI stops, resumes on return | Worked through the move list only | Works from the panel |
+| E3 | Review during a capture animation | Works | `enterReview` refused while a move animated | The animation is skipped and the review opens right after (`enterReview` returns `'pending'`) |
+| E4 | After undo / new game | No stale data | Stale card possible until the next move | Undo truncates the records, new game clears them, the card and the selection |
+| E5 | Talk off / coach off | Review independent | Review button hidden with the coach off | Review works with both off |
+| E6 | Phone width (390x780) | Card and review must not cover the board or the install banner | Card overlapped the install toast | Card sits above the toast; the review is a bottom sheet (38 % of the height) that can be minimised; the card hides while the panel is open |
+| E7 | Keyboard and screen reader | Focus, Escape, live region | Modal with focus on close | Panel is a labelled region; focus goes to its title; Left / Right step; Escape returns to the game, a second Escape closes the panel; verdicts and review steps are announced through the live region |
+
+## Root causes (v6.0, `git show 601a61f:<file>`)
+
+1. Random praise: `battle3d/coach.js:18` and `:233` showed a card for good moves only with probability 0.45 (best) / 0.15 (good).
+2. The AI's reply hid the player's card: `coach.js:206`.
+3. Fade after 12 s: `coach.js:20`, `:154`.
+4. No verdict when the analysis was late: the controller waited at most 1.5 s (`controller.js:17`) and the coach hid the card without a classification (`coach.js:210`). A missing "before" analysis (coach enabled mid-game, analysis cancelled) had the same effect.
+5. Nudges needed an empty card: `coach.js:285`.
+6. The review closed itself before showing a position: `coach.js:437`; it was a modal, so nothing could stay beside the board.
+7. Undo refused during animations: `controller.js:972`; review refused during animations: `controller.js:878`.
+8. The review button was hidden with the coach off: `coach.js:495`.
+
+## Fixes
+
+- `controller.js`: `judgePly(index, opts)` (waits for both analyses of a move, requesting missing ones from the
+  history; same classification, tactics and brilliancy code for live moves and review), `plyInfo(index)`,
+  `undoTo(index)`, `enterReview(index, { lastMove, arrow, text, force })` (queues behind a running animation),
+  `exitReview` clears the arrow. Analysis stays in the coach worker and never delays the AI's move.
+- `coach.js`: rewritten around one record per move; the card renders the record of the last coached move; the review
+  panel renders all records.
+- `index.html`, `hud.css`: card with badge / move / spinner / warning; docked review panel, chip, phone layout.
+
+## Measured analysis time (default coach budget: 200 000 nodes, multiPv 3)
+
+| Where | Time per position |
+|---|---|
+| node, main thread, 6 middlegame / endgame positions (Mac) | median 185 ms, max 190 ms |
+| headless Chrome, coach worker (same Mac, under load) | about 305 ms |
+| Phone estimate (3 to 5 times slower) | about 0.6 to 1.0 s |
+
+A verdict needs the positions before and after the move; the "before" one is normally already cached from the
+previous move, so one analysis per move. Commentary alone uses 80 000 nodes (about 70 ms on the Mac).
+
+## DOM ids and APIs (for tests)
+
+Card: `#coach-card`, `#coach-badge`, `#coach-move`, `#coach-spinner`, `#coach-text`, `#coach-warning`, `#coach-actions`,
+`#coach-undo`, `#coach-better`, `#coach-close`. Review: `#coach-review-open`, `#coach-review` (aside, not a modal),
+`#coach-review-intro`, `#coach-review-graph`, `#coach-review-prev`, `#coach-review-next`, `#coach-review-prev-flag`,
+`#coach-review-next-flag`, `#coach-review-return`, `#coach-review-detail`, `#coach-review-list`
+(`button.review-move[data-ply]`), `#coach-review-min`, `#coach-review-close`, `#coach-review-chip`; `body.review-open`.
+`coach.state()`: `{ enabled, frequency, cardVisible, cardText, cardBadge, cardWarning, cardPly, cardPending, reviewOpen,
+reviewMinimised, reviewSelected, records, moments }`; `coach.openReview / closeReview / minimiseReview / returnToGame /
+select(ply) / step(delta, flaggedOnly)`.

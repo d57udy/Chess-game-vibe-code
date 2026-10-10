@@ -85,14 +85,28 @@ predefined in `battle3d/lines/` (no live AI, works offline); a shuffle bag avoid
 sometimes answers. Menu, "Kings talk": Off, Occasional (default, a remark every few moves) or Chatty. What they say
 is also read out to screen readers.
 
-**Coach.** Turn on "Coach" in the menu (works against the AI and in Human vs Human). Your own king gives advice: before
-your move at most one hint about a threat, a hanging piece or opening principles; after the move, the engine rates
-it, and for inaccuracies, mistakes and blunders the king explains what went wrong in plain words with "Take it back"
-and "Show me better" (the better move as a board arrow). "Coach advice" chooses Every move (with occasional praise)
-or Mistakes only. At the end of the game a review shows the key moments and a small evaluation graph; click a moment
-to look at that position. All judgement comes from the engine's analysis (in the worker, independent of the
-opponent's strength); the wording comes from templates in `battle3d/lines/coach.json`. Click any move in the move list
-to look at that position too; Esc or "Back to game" returns.
+**Coach.** Turn on "Coach" in the menu (works against the AI and in Human vs Human). Your own king watches your moves:
+
+- **Every move** (default): after every move you make, the coach card shows a verdict (Best, Good, Inaccuracy,
+  Mistake, Blunder, sometimes Brilliant) with one sentence. It appears at once in a "thinking" state and fills in
+  when the engine has looked at the move (about a quarter of a second on a laptop, up to a second on a phone); it
+  stays through the opponent's reply. Before you move, the coach may add one warning: a real threat against you, an
+  unguarded piece, an exposed king, or an opening principle. It never tells you the best move; the Hint button
+  does that.
+- **Mistakes only**: the coach stays quiet unless a move is an inaccuracy, mistake or blunder. No praise, no warnings.
+- On a mistake card, **Take it back** returns to the position before your move (also after the AI has replied),
+  and **Show me better** does the same and shows the engine's move as an arrow.
+
+**Game review.** "Review game" in the menu (during or after a game, with the coach on or off) opens a panel beside
+the board with every move and its verdict, an evaluation graph and a summary of what was flagged; moves that were
+not analysed yet are analysed in the background. Click a move or step with the arrows (also to the previous or
+next flagged move). For a flagged move the board shows the position before it, with the played move highlighted
+and the better move as an arrow. The panel stays open while you look around; you can minimise it to a "Back to
+review" chip, and "Return to game" brings the live position back exactly (the AI waits while you review). Click
+any move in the menu's move list to look at that position too; Esc returns to the game.
+
+All judgement comes from the engine's analysis (in its own worker, independent of the opponent's strength, never
+delaying the AI's move); the wording comes from templates in `battle3d/lines/coach.json`.
 
 **Sound.** Every 3D sound is synthesized in the browser with WebAudio, so there are no audio files to license
 or download (the 2D page keeps its own mp3s). Each sound is a small recipe (filtered noise bursts, modal
@@ -139,7 +153,7 @@ The cast is saved in the browser and the "Who's who" legend follows it.
 | `cast.js`, `cast-ui.js`, `unit-visuals.js` | Casting presets, cast editor, piece markers and labels. |
 | `audio.js` | Sound bank, mixing, stereo positioning, ambience and voice blips (all synthesized with WebAudio). |
 | `commentary.js` | Talking kings: event priorities, cooldowns, shuffle bags, retorts, bubbles and captions. |
-| `coach.js` | Coach mode: nudges, move explanations, "Take it back" / "Show me better", end-of-game review. |
+| `coach.js` | Coach mode (a verdict on every move, warnings, "Take it back" / "Show me better") and the game review panel. |
 | `lines/` | The kings' lines and the coach templates (JSON), style guide and validator. |
 | `tactics.js` | Tactical motif detectors used by the coach (forks, pins, hanging pieces, missed mates...). |
 | `retarget.js`, `vrm.js` | Retargeting other humanoid rigs (Mixamo, Quaternius, VRM) onto the game's animations; VRM loading. |

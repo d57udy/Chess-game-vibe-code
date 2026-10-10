@@ -161,7 +161,14 @@ describe('battle3d hint (v5)', () => {
 
     for (const [name, act] of [
         ['selecting another piece', async (C) => { await C.click('b1'); }],
-        ['deselecting the hinted piece', async (C) => { await C.click('g1'); }],
+        // v6.1: the hinted piece is already selected; the first click on it picks it up (hint kept), the second puts it down
+        ['deselecting the hinted piece', async (C) => {
+            const shown = !!C.state().hint;
+            await C.click('g1');
+            if (!shown) return; // a pending hint: any board click cancels it
+            assert.ok(C.state().hint && C.state().selected, 'first click on the suggested piece keeps it selected and the arrow shown');
+            await C.click('g1');
+        }],
         ['Esc', async (C) => { C.key('Escape', 'Escape'); await C.flush(); }],
         ['undo', async (C) => { C.controller.undo(); await C.flush(); }],
         ['new game', async (C) => { C.controller.newGame(); await C.flush(); }],
