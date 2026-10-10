@@ -134,7 +134,8 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
     }
 
     // Picks a template whose slots can all be filled (STYLE.md); motif lines tagged "praise" only when praising
-    function template(path, slots, { color = 'w', praise = false } = {}) {
+    // prefer: slot names a line should use when possible (e.g. a threat warning that names the attacked piece)
+    function template(path, slots, { color = 'w', praise = false, prefer = null } = {}) {
         const [section, key] = path.split('.');
         const fromFile = voices?.[voiceFor(color)]?.[section]?.[key];
         const filter = (list) => (Array.isArray(list) ? list : []).filter(l => typeof l?.text === 'string' &&
@@ -142,6 +143,10 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
             [...l.text.matchAll(SLOT_RE)].every(m => slots[m[1]]));
         let usable = filter(fromFile);
         if (!usable.length) usable = filter(FALLBACK[section]?.[key]);
+        if (prefer) {
+            const specific = usable.filter(l => prefer.every(k => slots[k] && l.text.includes(`{${k}}`)));
+            if (specific.length) usable = specific;
+        }
         const line = pick(usable);
         return line ? line.text.replace(SLOT_RE, (m, k) => slots[k]).replace(/\s+/g, ' ').trim() : null;
     }
@@ -460,7 +465,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
                         attacker: attacker ? PIECE_NAMES[attacker.toLowerCase()] : '',
                         target: target ? PIECE_NAMES[target.toLowerCase()] : '',
                         square: squareName(to)
-                    }, { color: side });
+                    }, { color: side, prefer: ['target'] });
                     if (text) return text;
                 }
             } catch (e) { threatHandle = null; log('threats failed', e); }
