@@ -468,7 +468,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
     #hint .spinner { animation-duration: 2.4s; }
 }
 
-/* --- v6: review bar, coach card, game review --- */
+/* --- v6.1: review bar, coach card, docked game review --- */
 .move-list .mv { cursor: pointer; border-radius: 4px; padding: 0 3px; }
 .move-list .mv:hover { background: var(--hud-accent-bg); }
 .move-list .reviewed { outline: 1px solid var(--hud-gold); color: var(--hud-gold-strong); }
@@ -487,58 +487,163 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
     font-size: 13px;
 }
 .review-bar[hidden] { display: none; }
+body.review-open .review-bar { display: none; } /* the review panel has its own "Return to game" */
+body.review-open .coach-card { display: none; }  /* the panel shows the verdicts while it is open */
 
+/* Coach card: verdict on the last move, a warning before the next */
 .coach-card {
     position: fixed;
     left: 50%;
     bottom: max(16px, env(safe-area-inset-bottom));
     transform: translateX(-50%);
-    width: min(400px, calc(100vw - 24px));
+    width: min(420px, calc(100vw - 24px));
     z-index: 16;
-    padding: 10px 12px 12px;
+    padding: 8px 12px 10px;
     font-size: 14px;
-    animation: tip-in 0.3s ease both;
 }
 .coach-card[hidden] { display: none; }
 .coach-card.warn { border-color: rgba(255, 122, 107, 0.55); }
-.coach-head { display: flex; align-items: center; gap: 8px; }
+body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); } /* clear the install / update toast */
+.coach-head { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .coach-crown { color: var(--hud-gold); font-size: 18px; line-height: 1; }
-.coach-title { flex: 1; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-muted); }
-.coach-text { margin: 6px 0 0; line-height: 1.45; }
-.coach-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+.coach-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-muted); }
+.coach-move { flex: 1; min-width: 0; font-size: 12px; color: var(--hud-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.coach-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    color: var(--hud-muted);
+}
+.coach-badge[hidden], .coach-spinner[hidden], .coach-text[hidden], .coach-warning[hidden] { display: none; }
+.coach-badge.best, .coach-badge.brilliant { color: #8fd18f; }
+.coach-badge.good { color: #b9d7a0; }
+.coach-badge.inaccuracy { color: #e8c478; }
+.coach-badge.mistake { color: #f0a35a; }
+.coach-badge.blunder { color: var(--hud-danger); }
+.coach-spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--hud-gold);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.coach-text { margin: 4px 0 0; line-height: 1.4; }
+.coach-warning { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: rgba(232, 196, 120, 0.12); color: var(--hud-gold-strong); line-height: 1.4; font-size: 13px; }
+.coach-warning::before { content: 'Before you move: '; font-weight: 600; }
+.coach-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
 .coach-actions[hidden] { display: none; }
+.coach-actions .btn[hidden] { display: none; }
 
-.review-card { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; text-align: left; }
-.eval-graph { width: 100%; height: 90px; margin: 8px 0; background: rgba(0, 0, 0, 0.25); border-radius: 8px; }
+/* Game review: docked on the right, stays open while the board shows earlier positions */
+.review-panel {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    max-height: calc(100% - 24px);
+    width: min(320px, calc(100vw - 24px));
+    z-index: 14;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px 12px;
+    font-size: 13px;
+}
+.review-panel[hidden] { display: none; }
+.review-head { display: flex; align-items: center; gap: 6px; }
+.review-head h2 { flex: 1; margin: 0; font-family: var(--hud-title-font); font-size: 17px; color: var(--hud-gold-strong); outline: none; }
+.review-head .icon-btn { width: 30px; height: 30px; font-size: 20px; line-height: 1; }
+.review-panel p { margin: 0; line-height: 1.4; }
+.eval-graph { width: 100%; height: 70px; flex: none; background: rgba(0, 0, 0, 0.25); border-radius: 8px; cursor: pointer; }
 .eval-graph .mid { stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; }
 .eval-graph .area { fill: rgba(243, 238, 226, 0.18); }
 .eval-graph .line { fill: none; stroke: var(--hud-gold); stroke-width: 1.8; }
+.eval-graph .marker { stroke: var(--hud-gold-strong); stroke-width: 1.5; stroke-dasharray: 3 2; }
 .eval-graph .dot.inaccuracy { fill: #e8c478; }
 .eval-graph .dot.mistake { fill: #f0a35a; }
 .eval-graph .dot.blunder { fill: var(--hud-danger); }
-.moments { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.moments .moment {
+.eval-graph .dot.brilliant { fill: #8fd18f; }
+.review-nav { display: flex; gap: 6px; align-items: center; }
+.review-nav .btn { flex: none; min-width: 34px; padding: 6px 8px; font-size: 15px; line-height: 1; }
+.review-nav #coach-review-return { flex: 1; font-size: 13px; }
+.review-detail { min-height: 58px; padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); line-height: 1.4; }
+.review-detail strong { color: var(--hud-gold-strong); }
+.review-detail p { margin-top: 4px; }
+.review-detail .better { color: var(--hud-gold); }
+.review-moves {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1;
+    min-height: 60px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px 6px;
+    align-content: start;
+}
+.review-move {
     width: 100%;
     display: flex;
-    gap: 10px;
     align-items: center;
+    gap: 5px;
     font: inherit;
     text-align: left;
-    padding: 8px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--hud-border);
-    background: rgba(255, 255, 255, 0.04);
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.03);
     color: var(--hud-text);
     cursor: pointer;
+    font-variant-numeric: tabular-nums;
 }
-.moments .moment:hover { background: var(--hud-accent-bg); }
-.moments .tag { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; min-width: 80px; }
-.moments .inaccuracy .tag { color: #e8c478; }
-.moments .mistake .tag { color: #f0a35a; }
-.moments .blunder .tag { color: var(--hud-danger); }
-.moments .best .tag { color: #8fd18f; }
+.review-move:hover { background: var(--hud-accent-bg); }
+.review-move.selected { border-color: var(--hud-gold); background: var(--hud-accent-bg); }
+.review-move .no { color: var(--hud-muted); min-width: 2.2em; text-align: right; }
+.review-move .mv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-move .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--hud-muted); }
+.review-move.ai .mv { color: var(--hud-muted); }
+.review-move.inaccuracy .tag { color: #e8c478; }
+.review-move.mistake .tag { color: #f0a35a; }
+.review-move.blunder .tag { color: var(--hud-danger); font-weight: 700; }
+.review-move.best .tag, .review-move.brilliant .tag { color: #8fd18f; }
+.review-move.flagged { border-left: 3px solid currentColor; }
+.review-move.flagged.inaccuracy { border-left-color: #e8c478; }
+.review-move.flagged.mistake { border-left-color: #f0a35a; }
+.review-move.flagged.blunder { border-left-color: var(--hud-danger); }
+.review-move.flagged.brilliant { border-left-color: #8fd18f; }
+
+.review-chip {
+    position: fixed;
+    right: max(12px, env(safe-area-inset-right));
+    top: max(12px, env(safe-area-inset-top));
+    z-index: 14;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    color: var(--hud-gold-strong);
+    cursor: pointer;
+}
+.review-chip[hidden] { display: none; }
+.review-chip:hover { background: var(--hud-bg-solid); }
 
 @media (max-width: 640px) {
-    .coach-card { bottom: max(8px, env(safe-area-inset-bottom)); font-size: 13px; }
+    .coach-card { bottom: max(8px, env(safe-area-inset-bottom)); font-size: 13px; padding: 6px 10px 8px; }
     .review-bar { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); }
+    /* Bottom sheet: the board stays visible above it; the coach card yields to it */
+    .review-panel { top: auto; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: 38vh; max-height: 38dvh; padding: 8px 10px 10px; gap: 6px; }
+    .eval-graph { height: 44px; }
+    .review-detail { min-height: 0; }
+    .review-moves { grid-template-columns: 1fr 1fr 1fr; }
+    .review-move .tag { display: none; }
+    .review-chip { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); }
+    body:has(.b3d-toast) .review-panel, body:has(.b3d-toast) .review-chip { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .coach-spinner { animation-duration: 2.4s; }
 }

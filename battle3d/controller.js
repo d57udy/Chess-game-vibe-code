@@ -81,6 +81,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         version: 0,              // bumped whenever the position changes underneath async work
         resets: 0,               // bumped by new game / undo / loadFen (drops late analysis results)
         reviewIndex: null,       // history index shown in review mode (input locked), null = live
+        reviewNote: null,        // status text while reviewing (from the coach's review panel)
+        pendingReview: null,     // [index, options] requested while a move was animating
         turnStartedAt: 0,        // performance.now() when the side to move got the turn
         bigSide: null,           // 'w' | 'b' after a winningBig event, until the eval comes back
         endgameAnnounced: false,
@@ -414,6 +416,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         updateHud();
         try { onMoveEnd?.(ev); } catch (e) { log('onMoveEnd failed', e); }
 
+        // A review requested during the animation opens now (the AI then waits until the player returns)
+        if (st.pendingReview) {
+            const [index, opts] = st.pendingReview;
+            st.pendingReview = null;
+            enterReview(index, opts);
+        }
         // The analysis runs in its own worker, so the AI starts right away
         maybeStartAI();
 
@@ -515,6 +523,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         }
         const own = piece && g.getPlayerForPiece(piece) === gs().currentPlayer;
         const sameSquare = st.selected && st.selected.row === row && st.selected.col === col;
+        // A suggested piece (hint, "Show me better") is already selected: clicking it is "pick it up", not "put it down"
+        if (sameSquare && st.hint && st.hint.from.row === row && st.hint.from.col === col && !st.hint.picked) {
+            st.hint.picked = true;
+            sfx('select', { row, col });
+            return;
+        }
         if (own && !sameSquare) {
             st.selected = { row, col };
             st.moves = g.generateLegalMoves(row, col);
@@ -830,12 +844,16 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
 
     function analyzeCurrent() {
         const opts = analysisOptions();
-        if (!opts || typeof g.requestAnalysis !== 'function') return null;
-        const key = g.battle3dFen();
+        return opts ? analyzeState(g.getCurrentGameStateSnapshot(), g.battle3dFen(), opts) : null;
+    }
+
+    // Analysis of any position (current or from the history), cached under its FEN key
+    function analyzeState(state, key, opts) {
+        if (!opts || !state || typeof g.requestAnalysis !== 'function') return null;
         const cached = analysisCache.get(key);
         if (cached && cached.nodes >= opts.nodes && cached.multiPv >= opts.multiPv) return cached;
         let handle;
-        try { handle = g.requestAnalysis(g.getCurrentGameStateSnapshot(), opts); } catch (e) { log('analysis failed to start', e); return null; }
+        try { handle = g.requestAnalysis(state, opts); } catch (e) { log('analysis failed to start', e); return null; }
         const entry = { ...opts, handle, result: null, promise: null };
         entry.promise = Promise.resolve(handle?.promise).then(result => {
             entry.handle = null;
@@ -865,18 +883,94 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         return analysisCache.get(key) || null;
     }
 
+    // --- Per-ply judgement (coach verdicts, game review) ---
+    // Same key format as battle3dFen(), so live analyses and history lookups share the cache
+    const historyKey = (entry) => `${g.getBoardPositionString(entry)} ${entry.halfmoveClock} ${entry.fullmoveNumber}`;
+
+    function historyState(index) {
+        const hist = gs().gameHistory, e = hist[index];
+        if (!e) return null;
+        return {
+            board: e.board.map(row => row.slice()),
+            currentPlayer: e.currentPlayer,
+            castlingRights: JSON.parse(JSON.stringify(e.castlingRights)),
+            enPassantTarget: e.enPassantTarget ? { ...e.enPassantTarget } : null,
+            halfmoveClock: e.halfmoveClock,
+            fullmoveNumber: e.fullmoveNumber,
+            positionHistory: hist.slice(0, index + 1).map(h => g.getBoardPositionString(h))
+        };
+    }
+
+    // Facts about the move that led to history entry `index` (no engine needed)
+    function plyInfo(index) {
+        const hist = gs().gameHistory, prev = hist[index - 1], cur = hist[index];
+        if (!prev || !cur?.lastMove) return null;
+        const { from, to } = cur.lastMove;
+        const piece = prev.board[from.row][from.col];
+        const placed = cur.board[to.row][to.col];
+        const promotion = piece && placed && piece.toLowerCase() === 'p' && placed.toLowerCase() !== 'p' ? placed.toUpperCase() : null;
+        return {
+            ply: index, mover: prev.currentPlayer, piece, from: { ...from }, to: { ...to }, promotion,
+            captured: prev.board[to.row][to.col] || null, notation: cur.moveNotation, moveNumber: cur.moveNumber,
+            human: !isAIColor(prev.currentPlayer)
+        };
+    }
+
+    // Engine verdict on the move that led to history entry `index`: waits for the analyses of the positions
+    // before and after it (requesting them when missing), however long they take. Resolves null when the
+    // engine is unavailable, the request was cancelled (new game, undo) or the move no longer exists.
+    async function judgePly(index, opts = analysisOptions() || { nodes: 200000, multiPv: 1 }) {
+        const hist = gs().gameHistory, prev = hist[index - 1], cur = hist[index];
+        const info = plyInfo(index);
+        if (!info) return null;
+        const stateBefore = historyState(index - 1), stateAfter = historyState(index);
+        const entryBefore = analyzeState(stateBefore, historyKey(prev), opts);
+        const entryAfter = analyzeState(stateAfter, historyKey(cur), opts);
+        if (!entryBefore || !entryAfter) return null;
+        const [before, after] = await Promise.all([entryBefore.promise, entryAfter.promise]);
+        if (!before || !after || gs().gameHistory[index] !== cur) return null;
+        const evalBefore = evalCp(before), evalAfter = evalCp(after);
+        const played = { from: info.from, to: info.to, promotionPiece: info.promotion };
+        const classification = classify(evalBefore, evalAfter, info.mover, played, before.bestMove);
+        let motifs = [], brilliant = false;
+        const tactics = await loadTactics();
+        try {
+            motifs = tactics?.detect?.(stateBefore, played, stateAfter, { before, after }) || [];
+            // Brilliant: a best move that really leaves a piece (not a pawn) to be taken
+            const moved = (info.promotion || info.piece || '').toLowerCase();
+            const square = squareName(info.to);
+            brilliant = classification === 'best' && !after.terminal && PIECE_VALUES[moved] >= 3 &&
+                (tactics?.hangingPieces?.(stateAfter, info.mover) || []).some(h => h.square === square);
+        } catch (e) { log('tactics failed', e); }
+        return {
+            ...info, evalBefore, evalAfter, classification, motifs, brilliant, stateBefore,
+            bestBefore: before.bestMove || null, playedBest: sameMove(before.bestMove, played), mateAfter: after.mate ?? null
+        };
+    }
+
     // --- Review mode: look at an earlier position without changing the game ---
     function reviewText(i) {
+        if (st.reviewNote) return st.reviewNote;
         const entry = gs().gameHistory[i];
         if (!entry || i === 0) return 'Reviewing the start position. Esc returns to the game.';
         const mover = gs().gameHistory[i - 1].currentPlayer;
         return `Reviewing ${entry.moveNumber}${mover === 'w' ? '.' : '...'} ${entry.moveNotation}. Esc returns to the game.`;
     }
 
-    function enterReview(index) {
+    // Shows history position `index`. Options: lastMove (squares to highlight instead of the move that led
+    // there), arrow ({ from, to, capture }: a suggested move drawn with the hint arrow), text (status line).
+    // While a move animates the animation is skipped and the review opens right after (returns 'pending').
+    function enterReview(index, { lastMove, arrow = null, text = null, force = false } = {}) {
         const hist = gs().gameHistory;
-        if (st.moving || !Number.isInteger(index) || index < 0 || index >= hist.length) return false;
-        if (index === gs().currentMoveIndex && st.reviewIndex === null) return false;
+        if (!Number.isInteger(index) || index < 0 || index >= hist.length) return false;
+        if (st.pendingPromotion) cancelPromotion();
+        if (st.moving) {
+            st.pendingReview = [index, { lastMove, arrow, text, force }];
+            try { units.skip(); sceneAPI.skipEffects?.(); } catch (e) { /* ignore */ }
+            return 'pending';
+        }
+        if (index === gs().currentMoveIndex && st.reviewIndex === null && !force && !arrow) return false;
+        st.reviewNote = text;
         cancelAI();
         clearHint();
         closePromotion();
@@ -885,7 +979,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         st.reviewIndex = index;
         try { units.syncBoard(hist[index].board); } catch (e) { log('review sync failed', e); }
         clearRings({ forget: true });
-        sceneAPI.setHighlights({ selected: null, moves: [], lastMove: hist[index].lastMove || null, check: null, hover: null });
+        sceneAPI.setHighlights({ selected: null, moves: [], lastMove: lastMove !== undefined ? lastMove : (hist[index].lastMove || null), check: null, hover: null });
+        try { sceneAPI.setHint?.(arrow ? { from: arrow.from, to: arrow.to, capture: !!arrow.capture } : null); } catch (e) { log('setHint failed', e); }
         sceneAPI.requestRender?.();
         el.reviewBar && (el.reviewBar.hidden = false);
         renderMoveList();
@@ -896,8 +991,11 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     function exitReview({ quiet = false } = {}) {
+        st.pendingReview = null;
         if (st.reviewIndex === null) return;
         st.reviewIndex = null;
+        st.reviewNote = null;
+        try { sceneAPI.setHint?.(null); } catch (e) { /* ignore */ }
         el.reviewBar && (el.reviewBar.hidden = true);
         safeSync();
         refreshHighlights();
@@ -916,6 +1014,9 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         clearHint();
         cancelAnalyses();
         st.resets++;
+        st.pendingReview = null;
+        st.reviewNote = null;
+        if (st.reviewIndex !== null) { try { sceneAPI.setHint?.(null); } catch (e) { /* ignore */ } }
         st.reviewIndex = null;
         if (el.reviewBar) el.reviewBar.hidden = true;
         cancelAI();
@@ -980,6 +1081,20 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         emit('undoUsed', { color: gs().currentPlayer });
         startTurn();
         maybeStartAI();
+    }
+
+    // Takes the game back to history position `index` (coach "Take it back"), also during an animation
+    function undoTo(index) {
+        const plies = gs().currentMoveIndex - index;
+        if (!Number.isInteger(index) || index < 0 || plies <= 0) return false;
+        abortInFlight();
+        g.battle3dUndo(plies);
+        resyncView();
+        emit('reset', { reason: 'undo', plies });
+        emit('undoUsed', { color: gs().currentPlayer });
+        startTurn();
+        maybeStartAI();
+        return true;
     }
 
     function setMode(mode) {
@@ -1183,14 +1298,15 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             pendingPromotion: st.pendingPromotion,
             hint: st.hint ? { from: st.hint.from, to: st.hint.to, capture: st.hint.capture } : null,
             hintPending: !!st.hintHandle,
-            reviewIndex: st.reviewIndex
+            reviewIndex: st.reviewIndex,
+            ply: gs().currentMoveIndex
         };
     }
 
     return {
         newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
         hint: requestHint, clearHint,
-        onEvent, setAnalysisNeed, showSuggestion, analyzeCurrent, analysisFor, enterReview, exitReview,
+        onEvent, setAnalysisNeed, showSuggestion, judgePly, plyInfo, undoTo, analyzeCurrent, analysisFor, enterReview, exitReview,
         isHumanColor: (c) => !isAIColor(c),
         viewSide,
         clickSquare: onSquareClick,
