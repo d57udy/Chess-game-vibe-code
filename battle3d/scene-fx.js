@@ -653,6 +653,9 @@ const HINT_FRAG = /* glsl */ `
   uniform vec3 uTargetColor;
   uniform float uTime;
   uniform float uPulse;
+  uniform float uDash; // 1 = dashed shaft, hollow head, rim-only squares (the 'played' arrow)
+  uniform float uLen; // shaft length in world units (dash size stays constant)
+  uniform float uAlpha;
   varying vec2 vUv;
   varying float vKind;
   void main() {
@@ -667,23 +670,32 @@ const HINT_FRAG = /* glsl */ `
       vec3 core = mix(body, vec3(1.0, 0.97, 0.85), (1.0 - smoothstep(0.0, 0.35, v)) * 0.7);
       col = mix(core * flow, vec3(0.18, 0.1, 0.03), smoothstep(0.62, 0.78, v));
       a = (1.0 - smoothstep(0.88, 1.0, v)) * 0.95 * smoothstep(0.0, 0.1, vUv.x);
+      // dashes: 0.22 on, 0.14 off
+      a *= mix(1.0, step(fract(vUv.x * uLen / 0.36), 0.61), uDash);
     } else if (vKind < 1.5) {
       // arrowhead (vUv.y runs -1..1 across the base): same outline treatment
       float v = abs(vUv.y) / max(1.0 - vUv.x, 0.001);
       col = mix(uTargetColor, vec3(0.18, 0.1, 0.03), smoothstep(0.7, 0.9, v));
-      a = 0.95;
+      // hollow head when dashed: keep the two slanted edges and the base
+      a = 0.95 * mix(1.0, max(smoothstep(0.5, 0.6, v), 1.0 - smoothstep(0.12, 0.2, vUv.x)), uDash);
     } else {
       // square glow: soft fill plus a brighter rim, source in uColor, target in uTargetColor
       float d = max(abs(vUv.x), abs(vUv.y));
-      a = (1.0 - smoothstep(0.55, 1.0, d)) * 0.28 + smoothstep(0.72, 0.84, d) * (1.0 - smoothstep(0.9, 1.0, d)) * 0.75;
+      a = (1.0 - smoothstep(0.55, 1.0, d)) * 0.28 * (1.0 - uDash) + smoothstep(0.72, 0.84, d) * (1.0 - smoothstep(0.9, 1.0, d)) * 0.75;
       col = vKind < 2.5 ? uColor : uTargetColor;
     }
-    gl_FragColor = vec4(col, a * beat);
+    gl_FragColor = vec4(col, a * beat * uAlpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
 
-export function createHint(scene) {
+// style: { name, yOffset, halfW, headW, glow, dashed, color, captureColor, alpha, pulse, order }
+export function createHint(scene, style = {}) {
+  const {
+    name = 'hint', yOffset = 0, halfW = 0.11, headW = 0.26, glow = 0.5, dashed = false,
+    color = '#ffc83d', captureColor = '#ff4a2e', alpha = 1, pulse = true, order = 8,
+  } = style;
+  const Y = HINT_Y + yOffset;
   const pos = new Float32Array(HINT_VERTS * 3);
   const uv = new Float32Array(HINT_VERTS * 2);
   const kind = new Float32Array(HINT_VERTS);
@@ -703,10 +715,13 @@ export function createHint(scene) {
   geo.setIndex(index);
   const mat = new THREE.ShaderMaterial({
     uniforms: {
-      uColor: { value: new THREE.Color('#ffc83d') },
-      uTargetColor: { value: new THREE.Color('#ffc83d') },
+      uColor: { value: new THREE.Color(color) },
+      uTargetColor: { value: new THREE.Color(color) },
       uTime: { value: 0 },
-      uPulse: { value: 1 },
+      uPulse: { value: pulse ? 1 : 0 },
+      uDash: { value: dashed ? 1 : 0 },
+      uLen: { value: 1 },
+      uAlpha: { value: alpha },
     },
     vertexShader: HINT_VERT,
     fragmentShader: HINT_FRAG,
@@ -716,18 +731,18 @@ export function createHint(scene) {
     toneMapped: false,
   });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.name = 'hint';
+  mesh.name = name;
   mesh.frustumCulled = false;
-  mesh.renderOrder = 8;
+  mesh.renderOrder = order;
   mesh.visible = false;
   scene.add(mesh);
 
   const P = new THREE.Vector3();
   const T = new THREE.Vector3();
-  const sqCenter = (s) => new THREE.Vector3(s.col - 3.5, HINT_Y, s.row - 3.5);
+  const sqCenter = (s) => new THREE.Vector3(s.col - 3.5, Y, s.row - 3.5);
   let current = null;
 
-  function setVert(i, x, z, u, v, k, y = HINT_Y) {
+  function setVert(i, x, z, u, v, k, y = Y) {
     pos[i * 3] = x;
     pos[i * 3 + 1] = y;
     pos[i * 3 + 2] = z;
@@ -736,8 +751,9 @@ export function createHint(scene) {
     kind[i] = k;
   }
 
-  // set({ from, to, capture } | null)
-  function set(h) {
+  // set({ from, to, capture } | null, { offset }): offset shifts the arrow sideways (world units, to
+  // its own left) so two arrows sharing a square stay apart; the square outlines do not move.
+  function set(h, { offset = 0 } = {}) {
     const valid = (s) => s && Number.isInteger(s.row) && Number.isInteger(s.col) && s.row >= 0 && s.row < 8 && s.col >= 0 && s.col < 8;
     if (!h || !valid(h.from) || !valid(h.to)) {
       current = null;
@@ -745,18 +761,21 @@ export function createHint(scene) {
       return;
     }
     current = { from: { ...h.from }, to: { ...h.to }, capture: !!h.capture };
-    const a = sqCenter(h.from);
-    const b = sqCenter(h.to);
+    const a0 = sqCenter(h.from);
+    const b0 = sqCenter(h.to);
+    const side = new THREE.Vector3(-(b0.z - a0.z), 0, b0.x - a0.x).normalize().multiplyScalar(-offset);
+    const a = a0.clone().add(side);
+    const b = b0.clone().add(side);
     const dr = h.to.row - h.from.row;
     const dc = h.to.col - h.from.col;
     const knight = (Math.abs(dr) === 2 && Math.abs(dc) === 1) || (Math.abs(dr) === 1 && Math.abs(dc) === 2);
     // knights bend through their L corner (long leg first); others go straight
     const ctrl = knight
-      ? (Math.abs(dr) === 2 ? new THREE.Vector3(a.x, HINT_Y, b.z) : new THREE.Vector3(b.x, HINT_Y, a.z))
+      ? (Math.abs(dr) === 2 ? new THREE.Vector3(a.x, Y, b.z) : new THREE.Vector3(b.x, Y, a.z))
       : a.clone().lerp(b, 0.5);
     const curve = (t, out) => out.set(
       (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * ctrl.x + t * t * b.x,
-      HINT_Y,
+      Y,
       (1 - t) * (1 - t) * a.z + 2 * (1 - t) * t * ctrl.z + t * t * b.z,
     );
     // the shaft starts at the piece's edge and stops where the arrowhead begins
@@ -764,9 +783,8 @@ export function createHint(scene) {
     const t0 = 0.28 / len;
     const headLen = 0.42;
     const t1 = 1 - (headLen + 0.12) / len;
-    const halfW = 0.11;
     // knights jump: the arc rises over the pieces in between (ends stay on the board)
-    const lift = (t) => (knight ? HINT_Y + 0.85 * Math.sin(Math.PI * Math.min(1, t / (t1 + 0.02))) : HINT_Y);
+    const lift = (t) => (knight ? Y + 0.85 * Math.sin(Math.PI * Math.min(1, t / (t1 + 0.02))) : Y);
     for (let i = 0; i <= HINT_SEGS; i++) {
       const t = t0 + (t1 - t0) * (i / HINT_SEGS);
       curve(t, P);
@@ -781,12 +799,12 @@ export function createHint(scene) {
     const dir = curve(1, new THREE.Vector3()).sub(base).normalize();
     const tip = base.clone().addScaledVector(dir, headLen);
     const hy = lift(t1);
-    setVert(head, base.x - dir.z * 0.26, base.z + dir.x * 0.26, 0, -1, 1, hy);
-    setVert(head + 1, base.x + dir.z * 0.26, base.z - dir.x * 0.26, 0, 1, 1, hy);
+    setVert(head, base.x - dir.z * headW, base.z + dir.x * headW, 0, -1, 1, hy);
+    setVert(head + 1, base.x + dir.z * headW, base.z - dir.x * headW, 0, 1, 1, hy);
     setVert(head + 2, tip.x, tip.z, 1, 0, 1);
     // glow quads on both squares (kind 2 = source, 3 = target)
-    for (const [q, c, k] of [[head + 3, a, 2], [head + 7, b, 3]]) {
-      const s = 0.5;
+    for (const [q, c, k] of [[head + 3, a0, 2], [head + 7, b0, 3]]) {
+      const s = glow;
       setVert(q, c.x - s, c.z - s, -1, -1, k);
       setVert(q + 1, c.x + s, c.z - s, 1, -1, k);
       setVert(q + 2, c.x + s, c.z + s, 1, 1, k);
@@ -795,14 +813,15 @@ export function createHint(scene) {
     geo.attributes.position.needsUpdate = true;
     geo.attributes.aUv.needsUpdate = true;
     geo.attributes.aKind.needsUpdate = true;
-    mat.uniforms.uTargetColor.value.set(h.capture ? '#ff4a2e' : '#ffc83d');
+    mat.uniforms.uTargetColor.value.set(h.capture ? captureColor : color);
+    mat.uniforms.uLen.value = (t1 - t0) * len;
     mesh.visible = true;
   }
 
   function update(t, reducedMotion) {
     if (!mesh.visible) return;
     mat.uniforms.uTime.value = t;
-    mat.uniforms.uPulse.value = reducedMotion ? 0 : 1;
+    mat.uniforms.uPulse.value = reducedMotion || !pulse ? 0 : 1;
   }
 
   return { set, update, get: () => current, mesh };

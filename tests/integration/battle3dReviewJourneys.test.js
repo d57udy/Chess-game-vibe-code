@@ -246,4 +246,134 @@ describe('battle3d review journeys (real page)', { skip }, () => {
             }
         });
     });
+
+    // v6.2: in review the played move and the better move are both drawn as arrows.
+    describe('F. review arrows (played and better move)', () => {
+        const at = (s) => { const [row, col] = sq(s); return { row, col }; };
+        const arrows = () => P.B.sceneAPI.getArrows().map((a) => ({ kind: a.kind, from: a.from, to: a.to }));
+        const drawn = () => ['played', 'better'].filter((k) => P.B.sceneAPI.scene.getObjectByName(`arrow-${k}`)?.visible);
+        const hintArrow = () => P.B.sceneAPI.getHint();
+        const byPly = (n) => listed().find((b) => b.dataset.ply === String(n)) || listed()[n - 1];
+        const legend = () => [...$('coach-review-detail').querySelectorAll('.arrow-legend li, [class*="legend"] li')].filter(visible).map((li) => li.textContent.replace(/\s+/g, ' ').trim());
+        const select = async (b, what) => { b.click(); await settle(() => st().reviewIndex !== null && arrows().length > 0, { label: `arrows for ${what}` }); };
+        const noArrows = (what) => { assert.deepEqual(arrows(), [], `${what}: no review arrows`); assert.deepEqual(drawn(), [], `${what}: no arrow meshes shown`); };
+
+        test('a flagged move shows two arrows of different kinds on the right squares, with a legend; the scene draws at once', async () => {
+            await reviewGame();
+            noArrows('live game before the review');
+            await openReview();
+            noArrows('review open on the live position');
+            const renders = P.renderer.renders;
+            momentFor('Nxe5').click(); // 3.Nxe5, a knight move
+            assert.ok(P.renderer.renders > renders, 'drawn inside the click, without waiting for an animation frame');
+            await settle(() => arrows().length === 2, { label: 'two arrows' });
+            const [played, better] = arrows();
+            assert.equal(played.kind, 'played');
+            assert.equal(better.kind, 'better');
+            assert.deepEqual([played.from, played.to], [at('f3'), at('e5')], 'the played arrow is the move that was made');
+            assert.notDeepEqual([better.from, better.to], [played.from, played.to], 'the better arrow is another move');
+            const piece = P.B.units.unitAt(better.from.row, better.from.col);
+            assert.ok(piece && piece.color === 'w', 'the better arrow starts on one of the player\'s pieces in the position shown');
+            assert.deepEqual(drawn(), ['played', 'better'], 'both arrows are on the board');
+            assert.equal(hintArrow(), null, 'the hint arrow is not used for the review');
+            const L = legend();
+            assert.equal(L.length, 2, `legend with two entries: ${L.join(' | ')}`);
+            assert.match(L[0], /your move|played/i);
+            assert.match(L[1], /better/i);
+            assert.deepEqual(P.errors, []);
+        });
+
+        test('an unflagged move and the last move show only the played arrow', async () => {
+            await reviewGame();
+            await openReview();
+            await select(byPly(2), '1...e5');
+            assert.deepEqual(arrows(), [{ kind: 'played', from: at('e7'), to: at('e5') }]);
+            assert.deepEqual(drawn(), ['played']);
+            assert.equal(legend().length, 1, legend().join(' | '));
+            assert.doesNotMatch(legend()[0], /better/i);
+            await select(byPly(10), '5...Kxf7');
+            assert.deepEqual(arrows(), [{ kind: 'played', from: at('e8'), to: at('f7') }]);
+            assert.equal(hintArrow(), null);
+            // stepping follows: Previous lands on 5.Qxf7+ (flagged, two arrows)
+            prevBtn().click();
+            await settle(() => arrows().some((a) => a.from.row === 3 && a.from.col === 7), { label: 'arrows follow Previous' });
+            assert.deepEqual([arrows()[0].from, arrows()[0].to], [at('h5'), at('f7')]);
+            assert.deepEqual(P.errors, []);
+        });
+
+        test('arrows clear on Return to game, Close, Escape, Undo and New game, and never show in live play', async () => {
+            await reviewGame();
+            await openReview();
+            await select(momentFor('Nxe5'), '3.Nxe5');
+            backToGame().click();
+            await settle(() => st().reviewIndex === null, { label: 'return' });
+            noArrows('after Return to game');
+            await human('d2d3');
+            noArrows('after a live move');
+            await ai('d7d6');
+            noArrows('after the AI reply');
+
+            await select(momentFor('Nxe5'), '3.Nxe5 again');
+            button(/close review/i).click();
+            await settle(() => st().reviewIndex === null && !visible(reviewDialog()), { label: 'close' });
+            noArrows('after closing the review');
+
+            await openReview();
+            await select(momentFor('Qxf7'), '5.Qxf7+');
+            for (let i = 0; i < 2 && st().reviewIndex !== null; i++) { P.key('Escape'); await pause(10); }
+            assert.equal(st().reviewIndex, null);
+            noArrows('after Escape');
+
+            await select(momentFor('Qxf7'), '5.Qxf7+ again');
+            backToGame().click();
+            await settle(() => st().reviewIndex === null, { label: 'return before undo' });
+            $('undo').click();
+            await idle();
+            noArrows('after Undo');
+
+            await select(momentFor('Nxe5'), '3.Nxe5 before New game');
+            $('new-game').click();
+            await idle();
+            noArrows('after New game');
+            assert.equal(hintArrow(), null);
+            assert.deepEqual(P.errors, []);
+        });
+
+        test('minimising keeps the arrows with the position; coming back shows the same two', async () => {
+            await reviewGame();
+            await openReview();
+            await select(momentFor('Nxe5'), '3.Nxe5');
+            const shown = arrows();
+            button(/minimi[sz]e/i).click();
+            await settle(() => !visible(reviewDialog()), { label: 'minimised' });
+            assert.deepEqual(arrows(), shown, 'the board still shows the reviewed position with its arrows');
+            backToReview().click();
+            await settle(() => visible(reviewDialog()), { label: 'back to review' });
+            assert.deepEqual(arrows(), shown);
+        });
+
+        test('Hint and "Show me better" still show one arrow, and no review arrows', async () => {
+            await fresh({ side: 'w' });
+            await play(['e2e4', 'e7e5'], ['w']);
+            $('hint').click();
+            await settle(() => !!pendingAI(), { label: 'hint request' });
+            const call = pendingAI();
+            call.done = true;
+            call.resolve({ from: at('g1'), to: at('f3') });
+            await settle(() => !!hintArrow(), { label: 'hint arrow' });
+            assert.deepEqual([hintArrow().from, hintArrow().to], [at('g1'), at('f3')]);
+            noArrows('Hint button');
+            await play(['d1h5', 'b8c6'], ['w']);
+            assert.equal(hintArrow(), null, 'the hint is gone once a move is played');
+            const before = J.shows();
+            await human('h5f7');
+            const f = await feedbackSince(before);
+            assert.ok(f.ok && f.better, 'blunder card');
+            $('coach-better').click();
+            await settle(() => !!hintArrow(), { label: 'Show me better arrow' });
+            noArrows('Show me better');
+            assert.equal(P.B.sceneAPI.scene.getObjectByName('hint').visible, true);
+            assert.deepEqual(P.errors, []);
+        });
+    });
 });
