@@ -100,8 +100,9 @@ is also read out to screen readers.
 **Game review.** "Review game" in the menu (during or after a game, with the coach on or off) opens a panel beside
 the board with every move and its verdict, an evaluation graph and a summary of what was flagged; moves that were
 not analysed yet are analysed in the background. Click a move or step with the arrows (also to the previous or
-next flagged move). For a flagged move the board shows the position before it, with the played move highlighted
-and the better move as an arrow. The panel stays open while you look around; you can minimise it to a "Back to
+next flagged move). Every move you step to shows the played move as an arrow. For a flagged move the board
+shows the position before it with two arrows, the move that was played and the engine's better move, in
+different styles, and a small legend in the panel ("Your move" / "Better move") says which is which. The panel stays open while you look around; you can minimise it to a "Back to
 review" chip, and "Return to game" brings the live position back exactly (the AI waits while you review). Click
 any move in the menu's move list to look at that position too; Esc returns to the game.
 

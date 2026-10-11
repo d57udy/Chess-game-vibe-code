@@ -335,30 +335,46 @@ describe('battle3d coach (v6.1)', { skip: !have && 'coach.js not present' }, () 
         assert.ok(!/[{}]/.test(panel.textContent), 'no unfilled slots');
     });
 
-    test('review selection: a flagged move with a better move shows the position before it with the arrow; others the position after; the last move is the live game', async () => {
+    test('review selection: a flagged move with a better move shows the position before it with two arrows (played, better); every other move the position after it with the played arrow; a legend explains them', async () => {
         const C = setup({ settings: ON });
         await game(C);
         C.coach.openReview();
+        const PLAYED = { from: { row: 7, col: 5 }, to: { row: 4, col: 2 } }; // what the fake game "played" on every ply
+        const kinds = (opts) => (opts.arrows || []).map((a) => a.kind);
+        const legend = () => [...C.$('coach-review-detail').querySelectorAll('.arrow-legend li')].map((li) => `${['played', 'better'].find((k) => li.classList.contains(k))}: ${li.textContent.replace(/\s+/g, ' ').trim()}`);
         C.moves()[2].click(); // 2.Qh5, blunder with a better move
         let [index, opts] = C.calls.review.pop();
         assert.equal(index, 2, 'the position before ply 3');
-        assert.deepEqual([opts.arrow.from, opts.arrow.to], [BEST.from, BEST.to]);
-        assert.ok(opts.lastMove && opts.lastMove.from && opts.lastMove.to, 'the played move is highlighted');
+        assert.deepEqual(kinds(opts), ['played', 'better'], 'two arrows of different kinds');
+        assert.deepEqual([opts.arrows[0].from, opts.arrows[0].to], [PLAYED.from, PLAYED.to], 'played arrow on the played squares');
+        assert.deepEqual([opts.arrows[1].from, opts.arrows[1].to], [BEST.from, BEST.to], 'better arrow on the better move');
+        assert.deepEqual([opts.lastMove.from, opts.lastMove.to], [PLAYED.from, PLAYED.to], 'the played move is highlighted');
         assert.equal(C.$('coach-review').hidden, false, 'the panel stays open');
         assert.deepEqual(C.moves().filter((b) => b.classList.contains('selected') && b.getAttribute('aria-current') === 'true').map((b) => b.dataset.ply), ['3']);
         assert.match(C.$('coach-review-detail').textContent, /Blunder/);
-        assert.match(C.$('coach-review-detail').textContent, /knight to f3/i);
+        assert.equal(legend().length, 2, legend().join(' | '));
+        assert.match(legend()[0], /^played: Your move/);
+        assert.match(legend()[1], /^better: Better move.*knight to f3/i);
         C.moves()[4].click(); // 3.Qxf7+, a mistake without a better move
         [index, opts] = C.calls.review.pop();
         assert.equal(index, 5, 'the position after ply 5');
-        assert.equal(opts.arrow, undefined);
+        assert.deepEqual(kinds(opts), ['played'], 'only the played arrow');
+        assert.equal(opts.arrows[0].capture, true, 'a capture is marked on the arrow');
+        assert.deepEqual(legend().map((l) => l.split(':')[0]), ['played']);
         C.moves()[1].click(); // an AI move
-        assert.equal(C.calls.review.pop()[0], 2);
-        const exits = C.calls.exits;
-        C.moves()[5].click(); // the last move
-        assert.equal(C.calls.exits, exits + 1, 'the last move is the live position');
+        [index, opts] = C.calls.review.pop();
+        assert.equal(index, 2);
+        assert.deepEqual(kinds(opts), ['played']);
+        assert.match(legend()[0], /^played: Played move/, 'the opponent\'s move is not called "Your move"');
+        C.moves()[5].click(); // the last move: a reviewed position like any other, not the live game
+        [index, opts] = C.calls.review.pop();
+        assert.equal(index, 6);
+        assert.deepEqual(kinds(opts), ['played']);
+        assert.equal(C.state.reviewIndex, 6);
+        assert.equal(C.$('coach-review-return').disabled, false, '"Return to game" is available');
+        C.$('coach-review-return').click();
         assert.equal(C.state.reviewIndex, null);
-        assert.equal(C.$('coach-review-return').disabled, true, '"Return to game" is disabled while live');
+        assert.equal(C.$('coach-review-return').disabled, true, 'disabled while live');
     });
 
     test('review stepping: prev / next, flagged prev / next, arrows keys; Next past the end returns to the game', async () => {

@@ -540,6 +540,44 @@ export async function createScene(container, { debug = false, renderer: injected
     requestRender();
   }
 
+  // Review arrows: several at once, told apart by colour AND shape. 'better' looks like the hint
+  // (solid gold, pulsing); 'played' is a dimmer, thinner, dashed steel-blue arrow with a hollow head
+  // and a smaller square outline. Arrows that share a square are shifted sideways so neither hides
+  // the other. Independent of setHint. Renders synchronously (no rAF needed).
+  const ARROW_STYLES = {
+    better: { name: 'arrow-better', yOffset: 0.004, order: 9 },
+    played: {
+      name: 'arrow-played', yOffset: -0.004, order: 7, dashed: true, pulse: false, alpha: 0.85,
+      color: '#6ea8e6', captureColor: '#6ea8e6', halfW: 0.085, headW: 0.22, glow: 0.42,
+    },
+  };
+  const arrowPools = { better: [], played: [] };
+  let arrowState = [];
+  const sameSq = (p, q) => p.row === q.row && p.col === q.col;
+  function setArrows(list) {
+    const arrows = (Array.isArray(list) ? list : [])
+      .filter((a) => a && validSq(a.from) && validSq(a.to) && !sameSq(a.from, a.to))
+      .map((a) => ({ from: { row: a.from.row, col: a.from.col }, to: { row: a.to.row, col: a.to.col }, kind: a.kind === 'played' ? 'played' : 'better', capture: !!a.capture }));
+    const used = { better: 0, played: 0 };
+    arrows.forEach((a, i) => {
+      const shares = arrows.some((o, j) => j !== i && (sameSq(o.from, a.from) || sameSq(o.to, a.to)));
+      // better goes left of its line, played right; a second arrow of the same kind alternates
+      const sign = (a.kind === 'better' ? 1 : -1) * (used[a.kind] % 2 ? -1 : 1);
+      const pool = arrowPools[a.kind];
+      const mesh = pool[used[a.kind]] || (pool[used[a.kind]] = createHint(scene, ARROW_STYLES[a.kind]));
+      used[a.kind]++;
+      mesh.set(a, { offset: shares ? 0.16 * sign : 0 });
+      mesh.update(time, reduceMotion);
+    });
+    for (const kind of Object.keys(arrowPools)) {
+      for (let i = used[kind]; i < arrowPools[kind].length; i++) arrowPools[kind][i].set(null);
+    }
+    arrowState = arrows;
+    requestRender();
+    render(); // show it now, also in a background tab where rAF is throttled
+  }
+  const clearArrows = () => setArrows([]);
+
   function clearHighlights() {
     setHighlights({ selected: null, moves: [], lastMove: null, check: null, hover: null });
   }
@@ -718,6 +756,7 @@ export async function createScene(container, { debug = false, renderer: injected
     fx.update(dt);
     updateHighlights(time);
     hint.update(time, reduceMotion);
+    for (const pool of Object.values(arrowPools)) for (const a of pool) a.update(time, reduceMotion);
     updateTimers(camDt);
     updateCameraTween(camDt);
     rigMoving = !camTween && !scripted ? rig.update(camDt) : false;
@@ -805,6 +844,7 @@ export async function createScene(container, { debug = false, renderer: injected
       activeTokens: [...tokens],
       fxAlive: fx.alive(),
       hint: hint.get(),
+      arrows: arrowState,
       bubbles: bubbles.active(),
       camera: { position: camera.position.toArray(), target: v.target.toArray(), scripted, tweening: !!camTween },
       timeScale,
@@ -866,6 +906,14 @@ export async function createScene(container, { debug = false, renderer: injected
     isCinematicActive: () => scripted || cine.isLetterboxed(),
     getBubble: (side) => bubbles.get(side), // extension (tests)
     getHint: () => hint.get(), // extension (tests)
+    setArrows,
+    clearArrows,
+    getArrows: () => arrowState.map((a) => ({ ...a })), // tests
+    // colours and shape of an arrow kind, for a matching legend in the UI
+    arrowStyle(kind) {
+      const st = ARROW_STYLES[kind === 'played' ? 'played' : 'better'];
+      return { color: st.color || '#ffc83d', captureColor: st.captureColor || '#ff4a2e', dashed: !!st.dashed, hollowHead: !!st.dashed };
+    },
     setView,
     getViewSide: () => viewSide, // extension
     resetView,

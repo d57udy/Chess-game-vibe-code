@@ -661,17 +661,18 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         review.selected = ply;
         const label = moveLabel(record);
         const verdict = record.status === 'done' ? LABEL[verdictKey(record)] : '';
+        const played = { from: record.from, to: record.to, kind: 'played', capture: /x/.test(record.notation) };
         let result;
         if (isBad(record) && record.best) {
+            // Decision view: the position before the move, the played move and the better move as two arrows
             result = controller.enterReview?.(ply - 1, {
-                lastMove: { from: record.from, to: record.to }, arrow: record.best, force: true,
+                lastMove: { from: record.from, to: record.to }, force: true,
+                arrows: [played, { from: record.best.from, to: record.best.to, kind: 'better', capture: !!record.best.capture }],
                 text: `Before ${label} (${verdict.toLowerCase()}): played ${record.playedText}, better was ${record.bestText}. Esc returns to the game.`
             });
-        } else if (ply === last) {
-            if (controller.state().reviewIndex !== null) controller.exitReview?.();
-            result = true;
         } else {
-            result = controller.enterReview?.(ply, { force: true, text: `After ${label}${verdict ? ` (${verdict.toLowerCase()})` : ''}. Esc returns to the game.` });
+            // The position after the move with the played move as an arrow (also for the last move)
+            result = controller.enterReview?.(ply, { force: true, arrows: [played], text: `After ${label}${verdict ? ` (${verdict.toLowerCase()})` : ''}. Esc returns to the game.` });
         }
         renderReview();
         const li = el.reviewList?.querySelector(`[data-ply="${ply}"]`);
@@ -748,12 +749,24 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
             const body = document.createElement('p');
             body.textContent = sel.status === 'done' ? sel.text : sel.status === 'pending' || sel.status === 'new' ? 'Analysing this move...' : 'No verdict for this move.';
             el.reviewDetail.append(head, body);
-            if (sel.status === 'done' && sel.best && BAD.includes(sel.classification)) {
-                const better = document.createElement('p');
-                better.className = 'better';
-                better.textContent = `Played ${sel.playedText}. Better: ${sel.bestText} (the arrow on the board).`;
-                el.reviewDetail.append(better);
-            }
+            // Legend matching the arrows on the board
+            const legend = document.createElement('ul');
+            legend.className = 'arrow-legend';
+            const item = (kind, label, text) => {
+                const li = document.createElement('li');
+                li.className = kind;
+                li.innerHTML = '<span class="swatch" aria-hidden="true"></span><span class="what"></span> <span class="mv"></span>';
+                li.querySelector('.what').textContent = `${label}:`;
+                li.querySelector('.mv').textContent = text;
+                const style = arrowStyle(kind);
+                if (style.color) li.style.setProperty('--arrow', style.color);
+                li.classList.toggle('dashed', !!style.dashed);
+                legend.append(li);
+            };
+            const mine = sel.human && !bothHuman();
+            item('played', mine ? 'Your move' : 'Played move', sel.playedText || sel.notation);
+            if (sel.status === 'done' && sel.best && BAD.includes(sel.classification)) item('better', 'Better move', sel.bestText);
+            el.reviewDetail.append(legend);
         } else if (last >= 1) {
             el.reviewDetail.textContent = 'Pick a move, or use the arrows to step through the game.';
         }
@@ -786,6 +799,13 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         svg.innerHTML = `<line class="mid" x1="0" y1="${H / 2}" x2="${W}" y2="${H / 2}"/>` +
             (pts.length ? `<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}` : '') + marker;
         svg.setAttribute('aria-label', pts.length ? `Evaluation graph over ${last} moves, ${pts.filter(isFlagged).length} flagged` : 'No evaluation data yet');
+    }
+
+    // Legend styles match scene.js setArrows: 'played' is a dashed steel-blue arrow, 'better' solid gold
+    // (the scene's own arrowStyle() wins if it ever provides one)
+    const ARROW_LEGEND = { played: { color: '#6ea8e6', dashed: true }, better: { color: '', dashed: false } };
+    function arrowStyle(kind) {
+        try { return sceneAPI.arrowStyle?.(kind) || ARROW_LEGEND[kind] || {}; } catch (e) { return ARROW_LEGEND[kind] || {}; }
     }
 
     function onGraphClick(event) {

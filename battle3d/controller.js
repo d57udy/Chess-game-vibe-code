@@ -958,18 +958,19 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     // Shows history position `index`. Options: lastMove (squares to highlight instead of the move that led
-    // there), arrow ({ from, to, capture }: a suggested move drawn with the hint arrow), text (status line).
+    // there), arrows ([{ from, to, kind: 'played' | 'better', capture }] drawn with sceneAPI.setArrows; without
+    // that API the 'better' arrow falls back to the hint arrow), arrow (a single suggested move), text (status).
     // While a move animates the animation is skipped and the review opens right after (returns 'pending').
-    function enterReview(index, { lastMove, arrow = null, text = null, force = false } = {}) {
+    function enterReview(index, { lastMove, arrow = null, arrows = null, text = null, force = false } = {}) {
         const hist = gs().gameHistory;
         if (!Number.isInteger(index) || index < 0 || index >= hist.length) return false;
         if (st.pendingPromotion) cancelPromotion();
         if (st.moving) {
-            st.pendingReview = [index, { lastMove, arrow, text, force }];
+            st.pendingReview = [index, { lastMove, arrow, arrows, text, force }];
             try { units.skip(); sceneAPI.skipEffects?.(); } catch (e) { /* ignore */ }
             return 'pending';
         }
-        if (index === gs().currentMoveIndex && st.reviewIndex === null && !force && !arrow) return false;
+        if (index === gs().currentMoveIndex && st.reviewIndex === null && !force && !arrow && !arrows) return false;
         st.reviewNote = text;
         cancelAI();
         clearHint();
@@ -980,7 +981,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         try { units.syncBoard(hist[index].board); } catch (e) { log('review sync failed', e); }
         clearRings({ forget: true });
         sceneAPI.setHighlights({ selected: null, moves: [], lastMove: lastMove !== undefined ? lastMove : (hist[index].lastMove || null), check: null, hover: null });
-        try { sceneAPI.setHint?.(arrow ? { from: arrow.from, to: arrow.to, capture: !!arrow.capture } : null); } catch (e) { log('setHint failed', e); }
+        showReviewArrows(arrows, arrow);
         sceneAPI.requestRender?.();
         el.reviewBar && (el.reviewBar.hidden = false);
         renderMoveList();
@@ -990,12 +991,27 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         return true;
     }
 
+    // Review arrows: the multi-arrow layer when the scene has it, else the single hint arrow for the better move
+    function showReviewArrows(arrows, arrow = null) {
+        const list = (arrows || []).filter(a => a?.from && a?.to).map(a => ({ from: { ...a.from }, to: { ...a.to }, kind: a.kind === 'better' ? 'better' : 'played', capture: !!a.capture }));
+        let single = arrow;
+        try {
+            if (typeof sceneAPI.setArrows === 'function') sceneAPI.setArrows(list.length ? list : null);
+            else single = single || list.find(a => a.kind === 'better') || null;
+            sceneAPI.setHint?.(single ? { from: single.from, to: single.to, capture: !!single.capture } : null);
+        } catch (e) { log('review arrows failed', e); }
+    }
+
+    function clearReviewArrows() {
+        try { sceneAPI.setArrows?.(null); sceneAPI.setHint?.(null); } catch (e) { /* ignore */ }
+    }
+
     function exitReview({ quiet = false } = {}) {
         st.pendingReview = null;
         if (st.reviewIndex === null) return;
         st.reviewIndex = null;
         st.reviewNote = null;
-        try { sceneAPI.setHint?.(null); } catch (e) { /* ignore */ }
+        clearReviewArrows();
         el.reviewBar && (el.reviewBar.hidden = true);
         safeSync();
         refreshHighlights();
@@ -1016,7 +1032,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         st.resets++;
         st.pendingReview = null;
         st.reviewNote = null;
-        if (st.reviewIndex !== null) { try { sceneAPI.setHint?.(null); } catch (e) { /* ignore */ } }
+        if (st.reviewIndex !== null) clearReviewArrows();
         st.reviewIndex = null;
         if (el.reviewBar) el.reviewBar.hidden = true;
         cancelAI();

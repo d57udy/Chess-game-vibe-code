@@ -574,6 +574,13 @@ body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bo
 .review-detail strong { color: var(--hud-gold-strong); }
 .review-detail p { margin-top: 4px; }
 .review-detail .better { color: var(--hud-gold); }
+.arrow-legend { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.arrow-legend li { display: flex; align-items: center; gap: 6px; }
+.arrow-legend .what { color: var(--hud-muted); }
+.arrow-legend .swatch { flex: none; width: 26px; height: 0; border-top: 4px solid var(--arrow, #6ea8e6); border-radius: 2px; position: relative; }
+.arrow-legend .swatch::after { content: ''; position: absolute; right: -2px; top: -8px; border: 6px solid transparent; border-left-color: var(--arrow, #6ea8e6); border-right-width: 0; }
+.arrow-legend .dashed .swatch { border-top-style: dashed; }
+.arrow-legend .better { --arrow: var(--hud-gold); }
 .review-moves {
     list-style: none;
     margin: 0;

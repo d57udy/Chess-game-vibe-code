@@ -569,3 +569,26 @@ Card: `#coach-card`, `#coach-badge`, `#coach-move`, `#coach-spinner`, `#coach-te
 `coach.state()`: `{ enabled, frequency, cardVisible, cardText, cardBadge, cardWarning, cardPly, cardPending, reviewOpen,
 reviewMinimised, reviewSelected, records, moments }`; `coach.openReview / closeReview / minimiseReview / returnToGame /
 select(ply) / step(delta, flaggedOnly)`.
+
+# v6.2: review arrows (played move and better move at once)
+
+Scene (`b3d-scene`, `scene.js` / `scene-fx.js`). `setHint` is unchanged (Hint button, "Show me better").
+
+```js
+sceneAPI.setArrows([{ from: {row,col}, to: {row,col}, kind: 'played' | 'better', capture? }])  // replaces all review arrows
+sceneAPI.clearArrows()                       // same as setArrows([])
+sceneAPI.getArrows() -> [{ from, to, kind, capture }]   // tests; also stats().arrows
+sceneAPI.arrowStyle(kind) -> { color, captureColor, dashed, hollowHead }   // for a matching legend in the UI
+```
+
+- `better`: the hint look (solid gold arrow, dark outline, gentle pulse, gold square outlines with a soft fill; red
+  toward the target when `capture`).
+- `played`: told apart by colour and shape: steel blue, dashed shaft, hollow arrowhead, thinner, dimmer (85%), no
+  pulse, smaller square outlines without fill. Both read on light and dark squares and from either side.
+- Arrows that share a from or to square are shifted sideways (0.16 units, `better` to its left, `played` to its
+  right) and `better` is drawn on top; the square outlines are concentric, so neither hides the other.
+- Knight moves bend through the L corner and rise over the pieces in between, for both kinds.
+- Invalid entries (off-board squares, from equal to to) are dropped; unknown `kind` counts as `better`.
+- `setArrows` renders synchronously, so it shows without rAF (background tabs, paused loop). The arrows are separate
+  from `setHint` and `setHighlights`, survive camera moves and view changes, and are cleared only by the caller: the
+  controller/coach calls `clearArrows()` on Return to game, new game, undo and leaving review.

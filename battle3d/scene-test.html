@@ -40,6 +40,7 @@
     <button data-a="decal">Decals</button>
     <button data-a="stats">Stats</button>
     <button data-a="hint">Hint (cycle)</button>
+    <button data-a="arrows">Review arrows (cycle)</button>
     <button data-a="sayw">Say (White king)</button>
     <button data-a="sayb">Say (Skeleton king)</button>
     <button data-a="sayclear">Clear bubbles</button>
@@ -99,6 +100,16 @@
 
     const e4 = api.squareToWorld(4, 4);
     const d5 = api.squareToWorld(3, 3);
+    let arrowIdx = -1;
+    const sq = (name) => ({ row: 8 - Number(name[1]), col: 'abcdefgh'.indexOf(name[0]) });
+    const mv = (uci, kind, capture = false) => ({ from: sq(uci.slice(0, 2)), to: sq(uci.slice(2, 4)), kind, capture });
+    const ARROW_CASES = {
+      arrows: [mv('e2e4', 'played'), mv('g1f3', 'better')], // unrelated moves
+      arrowsfrom: [mv('g1h3', 'played'), mv('g1f3', 'better')], // same knight, two targets
+      arrowsto: [mv('d2d4', 'played'), mv('c1f4', 'better'), mv('e2e4', 'played')].slice(0, 2).concat([]), // different pieces
+      arrowssame: [mv('c1g5', 'played'), mv('c1h6', 'better', true)], // same line, shared from
+      arrowstarget: [mv('g1f3', 'played'), mv('e2f3', 'better')], // shared target square
+    };
 
     // ?auto=b|focus|fx scripted states driven by stepFrames (for headless screenshots)
     const auto = new URLSearchParams(location.search).get('auto');
@@ -200,6 +211,12 @@
         const bb = api.getBubble('b');
         document.title = `SAY w=${bw && bw.opacity}:${bw && bw.shown.length} b=${bb && bb.opacity}:${bb && bb.shown.length}`;
       }
+      // review arrows: ?auto=arrows | arrowsfrom | arrowsto | arrowssame | arrowstarget (+ &side=b)
+      if (auto && ARROW_CASES[auto]) {
+        api.clearHighlights();
+        if (qs.get('side') === 'b') api.setView('b', { animate: false });
+        api.setArrows(ARROW_CASES[auto]); // no stepFrames on purpose: must render by itself
+      }
       if (auto === 'pick') {
         // project square centers (and a unit's head) to screen and pick them back
         const rect = api.renderer.domElement.getBoundingClientRect();
@@ -262,6 +279,14 @@
         hintIdx = (hintIdx + 1) % hints.length;
         api.setHint(hints[hintIdx]);
         info.textContent = `hint ${JSON.stringify(api.getHint())}`;
+        return;
+      }
+      if (a === 'arrows') {
+        const keys = [...Object.keys(ARROW_CASES), null];
+        arrowIdx = (arrowIdx + 1) % keys.length;
+        if (keys[arrowIdx]) api.setArrows(ARROW_CASES[keys[arrowIdx]]);
+        else api.clearArrows();
+        info.textContent = `arrows ${keys[arrowIdx]}: ${JSON.stringify(api.getArrows().map((x) => x.kind))}`;
         return;
       }
       if (a === 'sayw' || a === 'sayb') {
