@@ -148,6 +148,23 @@ function parseFen(fen) {
          console.error("Invalid player turn in FEN:", currentPlayer);
          return false;
     }
+    // An en passant target is only real right after a double push: the target and the start square
+    // behind it are empty and the pawn that just moved stands in front of it.
+    if (enPassantTarget && !isEnPassantTargetConsistent(enPassantTarget)) {
+         console.warn("Ignoring en passant target without a double-pushed pawn:", enPassantFen);
+         enPassantTarget = null;
+    }
+    // Castling rights need the king and the rook on their home squares
+    for (const [player, row, king, rook] of [['w', BOARD_SIZE - 1, 'K', 'R'], ['b', 0, 'k', 'r']]) {
+         const rights = castlingRights[player];
+         const kingside = rights.K && board[row][4] === king && board[row][BOARD_SIZE - 1] === rook;
+         const queenside = rights.Q && board[row][4] === king && board[row][0] === rook;
+         if (kingside !== rights.K || queenside !== rights.Q) {
+              console.warn(`Ignoring castling rights of ${player} without king and rook on their home squares:`, castlingFen);
+              rights.K = kingside;
+              rights.Q = queenside;
+         }
+    }
     // Validate clocks
     if (isNaN(halfmoveClock) || halfmoveClock < 0) {
          console.warn("Invalid halfmove clock in FEN, resetting to 0:", parts[4]);
@@ -193,6 +210,15 @@ function getPlayerForPiece(piece) {
 
 function getOpponent(player) {
     return player === 'w' ? 'b' : 'w';
+}
+
+// True when `target` can be the en passant target of the current position (currentPlayer to move):
+// it is empty, so is the start square behind it, and an enemy pawn stands in front of it.
+function isEnPassantTargetConsistent(target) {
+    const towardsPawn = currentPlayer === 'w' ? 1 : -1; // rows from the target to the pawn that just moved
+    if (target.row !== (currentPlayer === 'w' ? 2 : 5)) return false;
+    return !getPieceAt(target.row, target.col) && !getPieceAt(target.row - towardsPawn, target.col) &&
+        getPieceAt(target.row + towardsPawn, target.col) === (currentPlayer === 'w' ? 'p' : 'P');
 }
 
 // --- Move Generation (The Core Logic) ---
@@ -347,9 +373,9 @@ function getPawnMoves(r, c, piece) {
             if (targetPiece && !isPlayerPiece(targetPiece, player)) {
                  addMoveIfValid(moves, r, c, oneStep, captureCol, piece, { mustCapture: true, isPromotion: isPromotion });
             }
-            // En Passant
-            if (enPassantTarget && oneStep === enPassantTarget.row && captureCol === enPassantTarget.col) {
-                // Need to ensure the captured pawn exists for validation, but move is valid regardless for generation
+            // En Passant: onto the empty target square, taking the enemy pawn that stands beside this one
+            if (enPassantTarget && oneStep === enPassantTarget.row && captureCol === enPassantTarget.col &&
+                !targetPiece && getPieceAt(r, captureCol) === (player === 'w' ? 'p' : 'P')) {
                 addMoveIfValid(moves, r, c, oneStep, captureCol, piece, { mustCapture: true, isEnPassant: true });
             }
         }
@@ -422,8 +448,9 @@ function getKingMoves(r, c, piece) {
     // Check castling rights BEFORE checking if attacked (simplifies)
     const canCastleK = castlingRights[player]?.K; // Optional chaining for safety
     const canCastleQ = castlingRights[player]?.Q;
+    const onHomeSquare = c === 4 && r === (player === 'w' ? BOARD_SIZE - 1 : 0);
 
-    if (canCastleK || canCastleQ) {
+    if ((canCastleK || canCastleQ) && onHomeSquare) {
         // Can't castle if currently in check
         if (!isSquareAttacked(r, c, getOpponent(player))) {
             // Kingside (O-O)
@@ -642,24 +669,61 @@ function getEnPassantString(epTarget) {
     return `${file}${rank}`;
 }
 
+// True when the side to move in `state` has a legal en passant capture.
+function hasLegalEnPassantCapture(state) {
+    const target = state.enPassantTarget;
+    if (!target) return false;
+    const saved = { board, currentPlayer, castlingRights, enPassantTarget };
+    board = state.board;
+    currentPlayer = state.currentPlayer;
+    castlingRights = state.castlingRights || saved.castlingRights;
+    enPassantTarget = target;
+    try {
+        const row = currentPlayer === 'w' ? target.row + 1 : target.row - 1;
+        return [target.col - 1, target.col + 1].some(col =>
+            getPieceAt(row, col) === (currentPlayer === 'w' ? 'P' : 'p') &&
+            generateLegalMoves(row, col).some(move => move.isEnPassant));
+    } finally {
+        ({ board, currentPlayer, castlingRights, enPassantTarget } = saved);
+    }
+}
+
+// Position identity for the repetition rule (FIDE 9.2): piece placement, side to move, castling
+// rights and the possible moves. The en passant square therefore only counts when an en passant
+// capture is legal; a double push nobody can answer en passant leaves the same position as the
+// same placement reached later. Takes a state like getBoardPositionString() and returns the same
+// format.
+function getRepetitionKey(state) {
+    const enPassant = hasLegalEnPassantCapture(state) ? state.enPassantTarget : null;
+    return getBoardPositionString({ board: state.board, currentPlayer: state.currentPlayer, castlingRights: state.castlingRights, enPassantTarget: enPassant });
+}
+
+// getRepetitionKey() of gameHistory[index]. History entries are immutable snapshots, so their keys are cached.
+const historyRepetitionKeys = new WeakMap();
+function getHistoryRepetitionKey(index) {
+    const entry = gameHistory[index];
+    let key = historyRepetitionKeys.get(entry);
+    if (key === undefined) {
+        key = getRepetitionKey(entry);
+        historyRepetitionKeys.set(entry, key);
+    }
+    return key;
+}
+
 function checkThreefoldRepetition() {
     // Needs gameHistory access
     if (currentMoveIndex < 8) return false; // Not possible before move 4 by black
 
-    const currentState = { board, currentPlayer, castlingRights, enPassantTarget };
-    const currentPositionString = getBoardPositionString(currentState);
+    const currentKey = getRepetitionKey({ board, currentPlayer, castlingRights, enPassantTarget });
     let repetitionCount = 0;
 
-    // Check past states in gameHistory
+    // Check past states in gameHistory (the current position is its last entry)
     for (let i = 0; i <= currentMoveIndex; i++) {
-        const pastState = gameHistory[i];
-        // Check if board/player/castling/ep match (use helper to generate string)
-        const pastPositionString = getBoardPositionString(pastState);
-        if (pastPositionString === currentPositionString) {
+        if (getHistoryRepetitionKey(i) === currentKey) {
             repetitionCount++;
         }
     }
-    // console.log(`Repetition check for ${currentPositionString}: count = ${repetitionCount}`);
+    // console.log(`Repetition check for ${currentKey}: count = ${repetitionCount}`);
     return repetitionCount >= 3;
 }
 

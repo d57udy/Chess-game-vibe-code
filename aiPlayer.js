@@ -169,6 +169,14 @@ const ChessAI = (() => {
         castle = castleBitsFrom(state.castlingRights);
         const e = state.enPassantTarget;
         ep = (e && typeof e.row === 'number' && typeof e.col === 'number') ? e.row * 8 + e.col : -1;
+        // Keep the target only when it is real (like gameLogic.js isEnPassantTargetConsistent): on the
+        // side to move's sixth rank, empty, with the double-pushed pawn in front and its start square
+        // empty. genMoves and makeMove rely on it: an en passant move always takes a pawn there.
+        if (ep >= 0) {
+            const towardsPawn = side === WHITE ? 8 : -8;
+            if (e.col < 0 || e.col > 7 || e.row !== (side === WHITE ? 2 : 5) || sq[ep] !== 0 ||
+                sq[ep - towardsPawn] !== 0 || sq[ep + towardsPawn] !== -PAWN * side) ep = -1;
+        }
         halfmove = Math.max(0, state.halfmoveClock | 0);
         fullmove = Math.max(1, state.fullmoveNumber | 0);
         [hashLo, hashHi] = hashOf(sq, side, castle, ep);
@@ -461,6 +469,29 @@ const ChessAI = (() => {
             unmakeMove();
         }
         return nodes;
+    }
+
+    // Perft with the per-category leaf counts of the chessprogramming.org perft tables (tests).
+    function perftCounts(depth, acc = { nodes: 0, captures: 0, ep: 0, castles: 0, promotions: 0, checks: 0, checkmates: 0 }) {
+        for (const m of legalMoves()) {
+            const capture = isCapture(m);
+            makeMove(m);
+            if (depth > 1) {
+                perftCounts(depth - 1, acc);
+            } else {
+                acc.nodes++;
+                if (capture) acc.captures++;
+                if ((m >> 15) & FLAG_EP) acc.ep++;
+                if ((m >> 15) & FLAG_CASTLE) acc.castles++;
+                if ((m >> 12) & 7) acc.promotions++;
+                if (inCheck()) {
+                    acc.checks++;
+                    if (legalMoves().length === 0) acc.checkmates++;
+                }
+            }
+            unmakeMove();
+        }
+        return acc;
     }
 
     // --- Draw detection ---
@@ -1527,6 +1558,7 @@ const ChessAI = (() => {
         loadState,
         loadFromGlobals,
         perft,
+        perftCounts,
         makeMove,
         unmakeMove,
         legalMoves,
@@ -1544,8 +1576,8 @@ const ChessAI = (() => {
  * Does not modify any global state and does not use the DOM.
  * @param {number} elo - 300..2500.
  * @param {number} [timeMs] - optional safety time cap in milliseconds (strength comes from the node budget).
- * @param {string[]} [positionHistory] - getBoardPositionString() of earlier positions for
- *        repetition detection. Defaults to gameHistory[0..currentMoveIndex] when available.
+ * @param {string[]} [positionHistory] - getRepetitionKey() (or getBoardPositionString()) of earlier
+ *        positions for repetition detection. Defaults to gameHistory[0..currentMoveIndex] when available.
  * @param {object} [options] - { hint: true } for full strength with the hint node budget,
  *        { seed } for a reproducible move.
  * @returns {object|null} move in the getAllLegalMoves shape, or null if there is no legal move.
@@ -1555,7 +1587,7 @@ function calculateBestMove(elo, timeMs, positionHistory, options) {
     if (!Array.isArray(history)) {
         history = [];
         if (typeof gameHistory !== 'undefined' && Array.isArray(gameHistory) && currentMoveIndex >= 0) {
-            history = gameHistory.slice(0, currentMoveIndex + 1).map(getBoardPositionString);
+            history = gameHistory.slice(0, currentMoveIndex + 1).map((entry, i) => getHistoryRepetitionKey(i));
         }
     }
     const state = { board, currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber };

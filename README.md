@@ -17,6 +17,8 @@ The site opens the 3D game (`index.html`, see [Chess Battle 3D](#chess-battle-3d
   While reviewing, the AI waits. Use "Resume from here" to continue from that position (later moves are
   discarded) or "Back to live" to return to the current position. Undo/Redo step back to your own turn.
 - Last move highlight, check highlight, sounds (can be muted).
+- The game is kept in the browser and comes back when you reopen the page; Save / Load and Export Moves are
+  under Controls (see [Save, load and export](#save-load-and-export)).
 - Battle animations for captures (see below).
 
 ## Battle animations
@@ -53,15 +55,26 @@ camera shots, sound and effects. Rules, AI and draw detection are the same code 
   ends or in AI vs AI.
 - Battles: Full (cinematic fights, about 3 to 5 s) or Fast (about 1 s, no camera moves). Skip ends the
   current fight right away.
+- En passant: the pawn first makes its real move, diagonally onto the empty square, and strikes the pawn it
+  passed from there (it never steps sideways). The move list shows it as e.g. "axb3 e.p." (display only; the
+  stored notation stays standard), the last-move highlight also frames the square the captured pawn stood on
+  (in red), and the status line names it while it plays. The first three times it happens on a device, whoever
+  captures, one line explains the rule, e.g. when the AI does it: "En passant: your pawn moved two squares and
+  landed beside their pawn, so it can be taken as if it had moved one." The capturing king remarks on it, and
+  the hint text and the review say "en passant" too.
+- If the AI ever answers with a move that is not legal, the move is refused and logged with the position, the AI
+  is asked once more, and if that fails too the rules play a legal move for it (with a short notice), so the game
+  never stops on an AI error.
 - Piece labels on or off, sound on or off, torch ambience on or off, a "Who's who" legend and the move list.
-- Settings are saved in the browser (localStorage).
+- Settings are saved in the browser (localStorage). So is the game: it comes back when you reopen the app, and
+  the menu has Save / Load and Export moves (see [Save, load and export](#save-load-and-export)).
 - Needs WebGL2. Without it the page offers the 2D game instead.
 
 Controls:
 
 | Input | Action |
 |---|---|
-| Click or tap a unit, then a highlighted square | Move |
+| Click or tap a unit, then a highlighted square | Move. The gold dot of a square is drawn over anything standing in front of it and always plays; anywhere else on the marked square counts too, except on a figure itself, which means that unit (a capture if it can be taken). For en passant you can also click the pawn that is taken (framed in red) |
 | Touch: 1 finger drag | Rotate the view |
 | Touch: 2 fingers | Zoom (pinch), move the view (drag) and turn it (twist) |
 | Touch: double-tap | Zoom to that spot (double-tap again to zoom back out) |
@@ -92,7 +105,9 @@ is also read out to screen readers.
   when the engine has looked at the move (about a quarter of a second on a laptop, up to a second on a phone); it
   stays through the opponent's reply. Before you move, the coach may add one warning: a real threat against you, an
   unguarded piece, an exposed king, or an opening principle. It never tells you the best move; the Hint button
-  does that.
+  does that. "Best" means the engine's own choice or a move level with it (within half a pawn), not just any move
+  that keeps a won game won. When your pawn's two-square move can be answered by en passant the verdict says so,
+  and when the opponent does take en passant the card explains what happened.
 - **Mistakes only**: the coach stays quiet unless a move is an inaccuracy, mistake or blunder. No praise, no warnings.
 - On a mistake card, **Take it back** returns to the position before your move (also after the AI has replied),
   and **Show me better** does the same and shows the engine's move as an arrow.
@@ -161,6 +176,7 @@ The cast is saved in the browser and the "Who's who" legend follows it.
 | `assets/library.json`, `assets/packs/` | The model library: optional packs with their models, thumbnails and licences. |
 | `sound-test.html` | Audition page: every sound and variation, walk cycles, fight sequences, level meters. |
 | `install.js` | Service worker registration and the "Install app" menu section. |
+| `saves.js` | Save / Load for the 3D game: wires `savegame.js` and `savepanel.js` (repo root) to the controller and the coach. |
 | `assets/` | Optimized character, animation and weapon files, `manifest.json`, `CREDITS.md`. |
 | `CONTRACT.md` | Interfaces between the modules. |
 
@@ -183,6 +199,43 @@ Animals) are by Quaternius (CC0 1.0, from the author's OpenGameArt uploads). Det
 in `battle3d/assets/CREDITS.md`. 3D rendering uses three.js (MIT); VRM avatars load with @pixiv/three-vrm (MIT)
 only when one is used. The kings' lines and coach texts were written for this game. All 3D sound is synthesized in
 code, so no audio files need licensing.
+
+## Save, load and export
+
+Both games keep your game on the device, in the browser's storage. Nothing is sent anywhere.
+
+- **Resume.** The current game (moves, mode, side, AI strength, result) is saved after every move, in 3D
+  already before the fight animation starts. Closing the tab or the installed app and opening it again
+  brings the game back, including en passant and castling rights. New game clears it. The 3D game and the
+  2D game each keep their own current game. If the stored game cannot be read, a new game starts and one
+  line says so.
+- **Save / Load** (3D: in the menu; 2D: under Controls). Save the game under a name (the default is the date
+  plus the opponent, like "12 Oct, vs AI 1200"), then load, rename or delete it from the list, which shows
+  the date, the number of moves and the result. Up to 30 saves; the panel says when all are used. Saving
+  under an existing name asks before replacing it. Loading asks first when the game on the board is not
+  saved yet. Saves are shared between the 2D and the 3D game.
+- **Export moves** opens the same panel on its Export tab: the game as standard PGN (works in Lichess,
+  chess.com and any chess program) with Copy moves, Share (the system share sheet, on phones) and
+  Download .pgn, plus Copy position (FEN). When the browser refuses the clipboard or the share sheet, the
+  text is copied the old way or selected so it can be copied by hand.
+- **Import.** Paste PGN (or just the moves) or pick a .pgn file, then "Load and play" to continue from the
+  final position or "Load and review" (2D: "Load and step through") to walk through the game. Every move
+  is checked with the game's own rules; at the first move that is illegal or unreadable the import stops,
+  names the move ("Move 8 for Black ...") and loads nothing. Comments, variations, annotations, "e.p." and
+  0-0 for castling are fine; of a file with several games the first is loaded. A game that starts from a
+  position (FEN tag) is loaded from that position; castling rights or an en passant square that do not fit
+  the board are ignored, and the notice says so.
+
+PGN tags: Event ("Chess Battle 3D" or "Chess (2D)"), Site (the page's origin), Date (the day the game
+started), Round "-", White and Black ("Human" or "AI (ELO 1200)"), Result, plus SetUp and FEN when the game
+did not start from the usual position. The moves are standard SAN on one line, ending with the result. The
+3D move list marks en passant as "exd6 e.p."; the PGN and the saved games have plain "exd6".
+
+Code: `savegame.js` (records, storage, PGN, clipboard / share / download, no DOM building), `savepanel.js`
+(the panel) and one small wiring file per view (`battle3d/saves.js`, `saves2d.js`). The storage format and
+the module API are in `battle3d/CONTRACT.md` ("v6.3"). The two shared files are plain scripts that define
+a global (`SaveGame`, `SavePanel`) and contain no `import` / `export`, so the 2D page loads them with script
+tags and the 3D page imports them from `battle3d/saves.js` for their side effect.
 
 ## Running locally
 
@@ -218,6 +271,12 @@ and units, units and assets). They run as part of `npm test`; to run only them:
 node --test tests/unit/battle3d*.test.js tests/integration/battle3d*.test.js
 ```
 
+Save, load and export: `tests/unit/savegame.test.js` (PGN against chess.js on seeded random games, storage,
+fallbacks), `tests/integration/saves2d.test.js` and `battle3dSaves*.test.js` (both real pages: autosave,
+reopen, the panel, the reported game exported and imported). With `npm run test:slow`:
+`savegamePgnSweep.test.js` (240 random games) and `savesBrowser.test.js` (both pages in headless Chrome at phone
+size: layout, on-screen keyboard, clipboard, reload).
+
 Tests live in `tests/` (`unit/`, `integration/`, `slow/`); `tests/helpers/` loads the classic
 scripts into a `node:vm` context (`loadEngine.js`) or a jsdom window built from `2d.html` (`loadDom.js`).
 
@@ -227,12 +286,15 @@ scripts into a `node:vm` context (`loadEngine.js`) or a jsdom window built from 
 |---|---|
 | `index.html` | 3D game page (HUD, import map); loads `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battle3d/rules.js`, then `battle3d/main.js`. |
 | `battle3d.html` | Redirect to `./` for old links. |
-| `2d.html` | 2D page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battleFx.js`, `ui.js`. |
+| `2d.html` | 2D page layout. Scripts load in order: `gameLogic.js`, `aiPlayer.js`, `aiClient.js`, `battle3d/rules.js` (move replay for loading games), `battleFx.js`, `ui.js`, then `savegame.js`, `savepanel.js`, `saves2d.js`. |
 | `gameLogic.js` | Board state, move generation, game-end detection, history. |
 | `aiPlayer.js` | Move search and evaluation. |
 | `aiWorker.js` / `aiClient.js` | Runs the AI off the main thread; `requestAIMove()` returns a cancellable request. |
 | `battleFx.js` | Capture scenes and the checkmate finale (`window.BattleFX`), the animation setting, skip and cancel. |
 | `ui.js` | Rendering, input, animations, history review, AI orchestration. |
+| `savegame.js` | Save, load and export for both games: game records, autosave and named saves in localStorage, PGN writer and reader, copy / share / download (`SaveGame`). |
+| `savepanel.js` | The Save / Load panel both games show (`SavePanel`). |
+| `saves2d.js` | Wires the two files above to `ui.js` (the 3D game uses `battle3d/saves.js`). |
 | `style.css` | Styles. |
 | `battleGallery.html` | Preview page for all battle scenes. |
 

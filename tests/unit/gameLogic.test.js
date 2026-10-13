@@ -257,13 +257,22 @@ describe('threefold repetition and 50-move clock', () => {
         assert.equal(E.run('checkThreefoldRepetition()'), true);
     });
 
-    // Known simplification (engine and UI agree): the en passant square is part of the position
-    // key after every double pawn push, even when no en passant capture is possible.
-    test('a position right after a double pawn push differs from the same placement later', () => {
+    // FIDE 9.2: the en passant square makes a position different only when the capture is legal
+    // (this used to be a known simplification: the square counted after every double push).
+    test('a double pawn push nobody can capture en passant repeats like the same placement later', () => {
         newGame();
-        play(['e2e4', 'e7e5', 'g1f3', 'g8f6', 'f3g1', 'f6g8', 'g1f3', 'g8f6', 'f3g1', 'f6g8']);
+        play(['e2e4', 'e7e5', 'g1f3', 'g8f6', 'f3g1', 'f6g8', 'g1f3', 'g8f6', 'f3g1']);
         assert.equal(E.run('checkThreefoldRepetition()'), false);
-        play(['g1f3', 'g8f6', 'f3g1', 'f6g8']);
+        play(['f6g8']); // the position after 1...e5, 3...Ng8 and 5...Ng8
+        assert.equal(E.run('checkThreefoldRepetition()'), true);
+    });
+
+    test('a position with a legal en passant capture differs from the same placement later', () => {
+        newGame();
+        play(['e2e4', 'a7a6', 'e4e5', 'd7d5', 'g1f3', 'b8c6', 'f3g1', 'c6b8', 'g1f3', 'b8c6', 'f3g1', 'c6b8']);
+        // Same placement as after 2...d5 for the third time, but exd6 was only possible the first time
+        assert.equal(E.run('checkThreefoldRepetition()'), false);
+        play(['g1f3']); // third time without the en passant right (after 3. Nf3, 5. Nf3, 7. Nf3)
         assert.equal(E.run('checkThreefoldRepetition()'), true);
     });
 

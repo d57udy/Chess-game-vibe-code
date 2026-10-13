@@ -49,6 +49,13 @@ const liveButton = document.getElementById('live-button');
 const promotionModal = document.getElementById('promotion-modal');
 const promotionPieceButtons = promotionModal.querySelectorAll('button[data-piece]');
 const promotionCancelButton = document.getElementById('promotion-cancel');
+// Live region for short notices, under the status message. It exists from the start (empty), so
+// screen readers announce a text when it appears.
+const noticeElement = document.createElement('div');
+noticeElement.id = 'game-notice';
+noticeElement.className = 'game-notice';
+noticeElement.setAttribute('role', 'status');
+statusMessageElement.insertAdjacentElement('afterend', noticeElement);
 
 // --- Audio Elements ---
 const sounds = {
@@ -62,6 +69,17 @@ Object.values(sounds).forEach(sound => sound.preload = 'auto');
 const MOVE_ANIMATION_SECONDS = 0.35;
 const HINT_TIME_MS = 1500;
 const HINT_DISPLAY_MS = 3000;
+const NOTICE_SECONDS = 12;
+
+const AI_RETRIES = 1; // An AI answer that cannot be played is asked for once more
+const AI_FALLBACK_NOTE = 'The AI could not find a legal move, so a legal move was played for it.';
+
+// En passant is explained the first few times it happens on this device (texts and count shared with the 3D game)
+const EN_PASSANT_TIP = 'En passant: a pawn that just advanced two squares can be captured as if it had moved only one.';
+const EN_PASSANT_TO_YOU = 'En passant: your pawn moved two squares and landed beside their pawn, so it can be taken as if it had moved one.';
+const EN_PASSANT_BY_YOU = 'En passant: their pawn moved two squares and landed beside yours, so you can take it as if it had moved one.';
+const EN_PASSANT_KEY = 'battle3d.enPassantSeen';
+const EN_PASSANT_EXPLAIN_TIMES = 3;
 
 function uiLog(...args) {
     if (typeof debugLog === 'function') debugLog(...args);
@@ -78,6 +96,58 @@ function sideName(player) {
 
 function squareName(row, col) {
     return String.fromCharCode('a'.charCodeAt(0) + col) + (BOARD_SIZE - row);
+}
+
+// FEN of the position in the rules state (for log messages)
+function positionFen() {
+    return `${getBoardPositionString({ board, currentPlayer, castlingRights, enPassantTarget })} ${halfmoveClock} ${fullmoveNumber}`;
+}
+
+// --- Notices ---
+// One short line under the status message (en passant explained, a move played for the AI)
+let noticeTimeoutId = null;
+
+function showGameNotice(text, seconds = NOTICE_SECONDS) {
+    noticeElement.textContent = text;
+    clearTimeout(noticeTimeoutId);
+    noticeTimeoutId = setTimeout(hideGameNotice, seconds * 1000);
+}
+
+function hideGameNotice() {
+    clearTimeout(noticeTimeoutId);
+    noticeTimeoutId = null;
+    noticeElement.textContent = '';
+}
+
+// --- En passant on screen ---
+// Square of the pawn taken en passant by the move that led to history entry `index`, else null: a pawn
+// went diagonally onto an empty square, so the pawn it took stood beside it. Read from the history,
+// so the move list, the highlight, undo and loaded games agree.
+function enPassantSquare(index) {
+    const prev = gameHistory[index - 1], move = gameHistory[index]?.lastMove;
+    if (!prev || !move) return null;
+    const { from, to } = move;
+    const piece = prev.board[from.row]?.[from.col];
+    if (!piece || piece.toUpperCase() !== 'P' || from.col === to.col || prev.board[to.row][to.col]) return null;
+    return { row: from.row, col: to.col };
+}
+
+// Notation as shown to the player: en passant captures are marked, e.g. "exd6 e.p.".
+// The stored notation (moveNotation) stays standard.
+function shownNotation(index) {
+    const notation = gameHistory[index]?.moveNotation || '';
+    return notation && enPassantSquare(index) ? `${notation} e.p.` : notation;
+}
+
+// The rule in one line when an en passant capture starts, from the player's side of the board when
+// there is one. Shown the first few times on this device, whoever captures.
+function explainEnPassant(mover) {
+    let seen = 0;
+    try { seen = Number(localStorage.getItem(EN_PASSANT_KEY)) || 0; } catch (e) { /* private mode: explain every time */ }
+    if (seen >= EN_PASSANT_EXPLAIN_TIMES) return;
+    try { localStorage.setItem(EN_PASSANT_KEY, String(seen + 1)); } catch (e) { /* ignore */ }
+    if (gameMode !== 'ai-human') showGameNotice(EN_PASSANT_TIP);
+    else showGameNotice(mover === playerColor ? EN_PASSANT_BY_YOU : EN_PASSANT_TO_YOU);
 }
 
 // --- Mode helpers ---
@@ -102,6 +172,7 @@ function isInputLocked() {
 function initGame() {
     uiLog("UI: Initializing game...");
     abortInFlightWork();
+    hideGameNotice();
     isReviewing = false;
     lastMove = null;
     clearSelectionAndHighlights();
@@ -208,8 +279,8 @@ function createBoardDOM() {
 // --- Board Rendering (Pieces and highlights) ---
 function renderBoard() {
     boardElement.querySelectorAll('.piece').forEach(p => p.remove());
-    boardElement.querySelectorAll('.square.in-check, .square.last-move')
-        .forEach(sq => sq.classList.remove('in-check', 'last-move'));
+    boardElement.querySelectorAll('.square.in-check, .square.last-move, .square.last-capture')
+        .forEach(sq => sq.classList.remove('in-check', 'last-move', 'last-capture'));
 
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
@@ -240,6 +311,9 @@ function renderBoard() {
     if (lastMove) {
         getSquareElement(lastMove.from.row, lastMove.from.col)?.classList.add('last-move');
         getSquareElement(lastMove.to.row, lastMove.to.col)?.classList.add('last-move');
+        // En passant: the captured pawn stood on neither of the two, so its square gets a mark of its own
+        const taken = enPassantSquare(currentMoveIndex);
+        if (taken) getSquareElement(taken.row, taken.col)?.classList.add('last-capture');
     }
 
     highlightSelectedSquare();
@@ -331,6 +405,10 @@ function highlightLegalMoves() {
 // Validates and executes a move for the current player: updates the logical board immediately,
 // locks input, animates, then finishMoveProcessing switches the turn and records history.
 // promotionChoice ('Q'|'R'|'B'|'N') is required for promotions; without it the dialog opens.
+// Invariant: between the two halves (board changed here; rights, en passant target, clocks, side to
+// move and history in finishMoveProcessing) nothing may read the rules globals. isInputLocked() keeps
+// undo, redo, navigation, the board, hints, the AI request and Save / Load out until the move is done.
+// Guarded by "a move in progress" in tests/helpers/rulesUiSuite.js and tests/integration/rulesUi2d.test.js.
 function makeMove(fromRow, fromCol, toRow, toCol, promotionChoice = null) {
     if (isAnimating) return false;
     const piece = getPieceAt(fromRow, fromCol);
@@ -348,11 +426,11 @@ function makeMove(fromRow, fromCol, toRow, toCol, promotionChoice = null) {
         return false;
     }
 
-    // Gather everything that depends on the pre-move position before mutating the board
+    // Gather everything that depends on the pre-move position before mutating the board.
+    // The generator says what kind of move this is.
     const capturedOnTarget = getPieceAt(toRow, toCol);
-    const isCastling = piece.toUpperCase() === 'K' && Math.abs(toCol - fromCol) === 2;
-    const isEnPassant = piece.toUpperCase() === 'P' && toCol !== fromCol && !capturedOnTarget &&
-        enPassantTarget !== null && toRow === enPassantTarget.row && toCol === enPassantTarget.col;
+    const isCastling = legalMove.isCastling;
+    const isEnPassant = legalMove.isEnPassant;
     // An en passant victim stands beside the attacker, on the attacker's starting rank
     const victimRow = isEnPassant ? fromRow : toRow;
     const victimPiece = isEnPassant ? getPieceAt(fromRow, toCol) : capturedOnTarget;
@@ -395,6 +473,7 @@ function makeMove(fromRow, fromCol, toRow, toCol, promotionChoice = null) {
     setPieceAt(toRow, toCol, placedPiece);
     setPieceAt(fromRow, fromCol, null);
     updateStatusDisplay();
+    if (isEnPassant) explainEnPassant(currentPlayer);
 
     const moveInfo = { prevStateInfo, piece, capturedPiece: victimPiece, fromRow, fromCol, toRow, toCol, notation, captureSoundPlayed: false };
     let capturePhase = Promise.resolve(false);
@@ -576,18 +655,19 @@ function checkAndTriggerAIMove() {
     }, delay);
 }
 
-function startAIRequest(version) {
+// attempt: 0 for a normal request, 1.. for a repeat after an answer that could not be played
+function startAIRequest(version, attempt = 0) {
     if (!isAIThinking || version !== positionVersion) return;
     uiLog(`UI: Requesting AI move for ${currentPlayer} (ELO ${aiElo})`);
 
     let handle;
     try {
-        handle = requestAIMove(getCurrentGameStateSnapshot(), aiElo);
+        // The engine is deterministic: a repeat gets a seed of its own so it need not give the same answer
+        handle = attempt ? requestAIMove(getCurrentGameStateSnapshot(), aiElo, { seed: attempt })
+            : requestAIMove(getCurrentGameStateSnapshot(), aiElo);
     } catch (error) {
-        console.error("UI: AI request failed to start:", error);
-        isAIThinking = false;
-        updateStatusDisplay();
-        statusMessageElement.textContent = "AI error: could not compute a move.";
+        console.error(`UI: AI request failed to start in ${positionFen()}:`, error);
+        recoverAIMove(version, attempt);
         return;
     }
     aiRequest = handle;
@@ -595,36 +675,72 @@ function startAIRequest(version) {
     handle.promise.then(move => {
         if (aiRequest !== handle) return; // Cancelled or superseded
         aiRequest = null;
-        isAIThinking = false;
         if (version !== positionVersion) {
+            isAIThinking = false;
             uiLog("UI: Discarding AI move for a stale position.");
             checkAndTriggerAIMove();
             return;
         }
-        applyAIMove(move);
+        if (!applyAIMove(move)) recoverAIMove(version, attempt);
     }).catch(error => {
         if (aiRequest !== handle) return;
         aiRequest = null;
-        isAIThinking = false;
         console.error("UI: AI move request failed:", error);
-        updateStatusDisplay();
-        statusMessageElement.textContent = "AI error: could not compute a move.";
+        recoverAIMove(version, attempt);
     });
 }
 
+// Plays the AI's answer. Returns false when there is none or it is not a legal move: that is logged
+// with the position, and nothing has changed.
 function applyAIMove(move) {
     if (!move || !move.from || !move.to) {
-        if (move) console.error("UI: AI returned a malformed move:", move);
+        console.error(`UI: AI returned no move in ${positionFen()}`);
+        return false;
+    }
+    if (!generateLegalMoves(move.from.row, move.from.col).some(m => m.row === move.to.row && m.col === move.to.col)) {
+        console.error(`UI: AI move rejected: ${squareName(move.from.row, move.from.col)}${squareName(move.to.row, move.to.col)} in ${positionFen()}`);
+        return false;
+    }
+    uiLog("UI: AI chose move:", move);
+    isAIThinking = false;
+    makeMove(move.from.row, move.from.col, move.to.row, move.to.col, move.promotionPiece || 'Q');
+    return true;
+}
+
+// The game must go on when the AI's answer cannot be played (illegal move, no move, failed request):
+// ask once more, then play the first legal move and say so.
+function recoverAIMove(version, attempt) {
+    if (version === positionVersion && attempt < AI_RETRIES) {
+        startAIRequest(version, attempt + 1);
+        return;
+    }
+    isAIThinking = false;
+    if (version !== positionVersion) {
+        checkAndTriggerAIMove();
+        return;
+    }
+    const move = firstLegalMove();
+    if (!move) {
         updateStatusDisplay();
         statusMessageElement.textContent = "AI could not find a move.";
         return;
     }
-    uiLog("UI: AI chose move:", move);
-    const started = makeMove(move.from.row, move.from.col, move.to.row, move.to.col, move.promotionPiece || 'Q');
-    if (!started) {
-        updateStatusDisplay();
-        statusMessageElement.textContent = "AI error: returned an illegal move.";
+    console.warn(`UI: playing ${squareName(move.from.row, move.from.col)}${squareName(move.to.row, move.to.col)} for the AI in ${positionFen()}`);
+    showGameNotice(AI_FALLBACK_NOTE);
+    makeMove(move.from.row, move.from.col, move.to.row, move.to.col, 'Q');
+}
+
+// The first legal move of the side to move in board order (a8 to h1); the same position gives the same move
+function firstLegalMove() {
+    for (let row = 0; row < BOARD_SIZE; row++) {
+        for (let col = 0; col < BOARD_SIZE; col++) {
+            const piece = getPieceAt(row, col);
+            if (!piece || getPlayerForPiece(piece) !== currentPlayer) continue;
+            const target = generateLegalMoves(row, col)[0];
+            if (target) return { from: { row, col }, to: { row: target.row, col: target.col } };
+        }
     }
+    return null;
 }
 
 function cancelAIRequest() {
@@ -799,7 +915,7 @@ function updateReviewBar() {
         reviewLabel.textContent = "Reviewing start position.";
     } else {
         const mover = gameHistory[currentMoveIndex - 1].currentPlayer;
-        reviewLabel.textContent = `Reviewing move ${state.moveNumber}${mover === 'w' ? '.' : '...'} ${state.moveNotation}`;
+        reviewLabel.textContent = `Reviewing move ${state.moveNumber}${mover === 'w' ? '.' : '...'} ${shownNotation(currentMoveIndex)}`;
     }
     const locked = isInputLocked();
     resumeButton.disabled = locked || isGameOver;
@@ -836,7 +952,8 @@ function updateMoveHistoryDisplay() {
         } else if (i > currentMoveIndex) {
             moveSpan.classList.add('future-move');
         }
-        moveSpan.textContent = state.moveNotation;
+        moveSpan.textContent = shownNotation(i);
+        if (enPassantSquare(i)) moveSpan.title = EN_PASSANT_TIP;
         moveSpan.dataset.historyIndex = i;
         currentPairDiv.appendChild(moveSpan);
 

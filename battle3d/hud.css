@@ -238,7 +238,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
     max-height: 180px;
     overflow-y: auto;
     display: grid;
-    grid-template-columns: 2.5em 1fr 1fr;
+    grid-template-columns: 2.5em minmax(0, 1fr) minmax(0, 1fr);
     gap: 2px 6px;
     font-variant-numeric: tabular-nums;
     font-size: 13px;
@@ -368,22 +368,39 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .help-list { margin: 6px 0 0; padding-left: 18px; color: var(--hud-muted); line-height: 1.45; }
 .help-list li + li { margin-top: 3px; }
 
-.tip {
+/* Bottom centre: notices (.tip) and the coach card are stacked in one column, the notice on top, so a notice
+   never covers the card (the en passant line used to hide the verdict for 12 s) and both can use the full width */
+.bottom-stack {
     position: fixed;
-    left: 50%;
-    bottom: max(20px, env(safe-area-inset-bottom));
-    transform: translateX(-50%);
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
     z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none; /* only the notice and the card take clicks, not the row they stand in */
+}
+.bottom-stack > * { pointer-events: auto; }
+/* The install / update toast (install.css) joins the stack, under the card: it wraps to any height on a phone */
+.bottom-stack > .b3d-toast { position: static; transform: none; max-width: 100%; animation: tip-in 0.4s ease both; }
+body:has(> .b3d-toast) .bottom-stack { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); } /* a toast outside the stack */
+@media (min-width: 641px) {
+    /* The review panel is docked on the right: centre the stack in what is left of the screen */
+    body.review-open .bottom-stack { right: calc(min(352px, 100vw - 24px) + 24px); }
+}
+.tip {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 10px 10px 10px 14px;
     font-size: 14px;
-    max-width: calc(100% - 32px);
+    max-width: min(100%, 560px); /* a long line wraps instead of spanning the screen */
     animation: tip-in 0.4s ease both;
 }
 .tip[hidden] { display: none; }
-@keyframes tip-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+@keyframes tip-in { from { opacity: 0; transform: translateY(-8px); } } /* settles from above: never slides over the card below */
 .tip-close {
     border: 0;
     background: transparent;
@@ -469,7 +486,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 }
 
 /* --- v6.1: review bar, coach card, docked game review --- */
-.move-list .mv { cursor: pointer; border-radius: 4px; padding: 0 3px; }
+.move-list .mv { cursor: pointer; border-radius: 4px; padding: 0 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .move-list .mv:hover { background: var(--hud-accent-bg); }
 .move-list .reviewed { outline: 1px solid var(--hud-gold); color: var(--hud-gold-strong); }
 #coach-frequency-row.disabled { opacity: 0.45; }
@@ -492,18 +509,12 @@ body.review-open .coach-card { display: none; }  /* the panel shows the verdicts
 
 /* Coach card: verdict on the last move, a warning before the next */
 .coach-card {
-    position: fixed;
-    left: 50%;
-    bottom: max(16px, env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    width: min(420px, calc(100vw - 24px));
-    z-index: 16;
+    width: min(420px, 100%); /* placed by .bottom-stack, under any notice */
     padding: 8px 12px 10px;
     font-size: 14px;
 }
 .coach-card[hidden] { display: none; }
 .coach-card.warn { border-color: rgba(255, 122, 107, 0.55); }
-body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); } /* clear the install / update toast */
 .coach-head { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .coach-crown { color: var(--hud-gold); font-size: 18px; line-height: 1; }
 .coach-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--hud-muted); }
@@ -545,7 +556,7 @@ body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bo
     top: max(12px, env(safe-area-inset-top));
     right: max(12px, env(safe-area-inset-right));
     max-height: calc(100% - 24px);
-    width: min(320px, calc(100vw - 24px));
+    width: min(352px, calc(100vw - 24px)); /* "5. Nxe4 BEST" beside "20... axb3 e.p. INACCURACY", with a classic scrollbar */
     z-index: 14;
     display: flex;
     flex-direction: column;
@@ -588,13 +599,18 @@ body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bo
     flex: 1;
     min-height: 60px;
     overflow-y: auto;
+    scrollbar-width: thin;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* Columns as wide as their longest row, but never wider than the panel: with a minimum of 0 a long label
+       ("20... axb3 e.p." beside its badge) can no longer push the other column's badges out of the list */
+    grid-template-columns: repeat(2, minmax(0, auto));
     gap: 3px 6px;
     align-content: start;
 }
+.review-moves > li { min-width: 0; }
 .review-move {
     width: 100%;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -610,9 +626,11 @@ body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bo
 }
 .review-move:hover { background: var(--hud-accent-bg); }
 .review-move.selected { border-color: var(--hud-gold); background: var(--hud-accent-bg); }
-.review-move .no { color: var(--hud-muted); min-width: 2.2em; text-align: right; }
-.review-move .mv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-move .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--hud-muted); }
+.review-move .no { flex: none; color: var(--hud-muted); min-width: 1.7em; text-align: right; } /* "20." */
+.review-move.black .no { min-width: 2.15em; }                                                   /* "20..." */
+.review-move .mv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* the move gives way, */
+.review-move .mv .ep { font-size: 0.8em; color: var(--hud-muted); letter-spacing: -0.02em; }
+.review-move .tag { flex: none; white-space: nowrap; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--hud-muted); } /* never the badge */
 .review-move.ai .mv { color: var(--hud-muted); }
 .review-move.inaccuracy .tag { color: #e8c478; }
 .review-move.mistake .tag { color: #f0a35a; }
@@ -640,17 +658,121 @@ body:has(.b3d-toast) .coach-card { bottom: calc(max(20px, env(safe-area-inset-bo
 .review-chip:hover { background: var(--hud-bg-solid); }
 
 @media (max-width: 640px) {
-    .coach-card { bottom: max(8px, env(safe-area-inset-bottom)); font-size: 13px; padding: 6px 10px 8px; }
+    .bottom-stack { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); gap: 6px; }
+    .coach-card { font-size: 13px; padding: 6px 10px 8px; }
+    /* Whatever else sits at the bottom of a phone screen: the stack stands above it */
+    body:has(.review-bar:not([hidden])) .bottom-stack, body:has(.review-chip:not([hidden])) .bottom-stack { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px); }
+    body.review-open .bottom-stack { bottom: calc(38vh + 40px); bottom: calc(38dvh + 40px); } /* sheet: 38dvh of content plus its padding */
     .review-bar { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); }
     /* Bottom sheet: the board stays visible above it; the coach card yields to it */
     .review-panel { top: auto; left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: 38vh; max-height: 38dvh; padding: 8px 10px 10px; gap: 6px; }
     .eval-graph { height: 44px; }
     .review-detail { min-height: 0; }
-    .review-moves { grid-template-columns: 1fr 1fr 1fr; }
+    .review-moves { grid-template-columns: repeat(3, minmax(0, auto)); }
     .review-move .tag { display: none; }
     .review-chip { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); }
-    body:has(.b3d-toast) .review-panel, body:has(.b3d-toast) .review-chip { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); }
+    body:has(> .b3d-toast) .review-panel, body:has(> .b3d-toast) .review-chip { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 60px); }
+    /* A toast in the stack while the review is minimised to its chip stands above the chip like the rest of the stack */
 }
 @media (prefers-reduced-motion: reduce) {
     .coach-spinner { animation-duration: 2.4s; }
+}
+
+/* --- v6.3: Save / Load panel (savepanel.js builds it; the 2D page styles the same classes in style.css) --- */
+/* Top-aligned and no taller than the visual viewport, so it stays usable with the on-screen keyboard open
+   (--save-vh / --save-top follow window.visualViewport) */
+.save-modal {
+    place-items: start center;
+    padding: calc(var(--save-top, 0px) + max(12px, env(safe-area-inset-top))) 12px 12px;
+    z-index: 35;
+}
+.modal .save-card {
+    width: min(460px, 100%);
+    max-height: calc(100vh - 24px);
+    max-height: calc(var(--save-vh, 100dvh) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    text-align: left;
+    font-size: 14px;
+    background: rgba(18, 16, 24, 0.94);
+}
+.save-head { display: flex; align-items: center; gap: 8px; }
+.save-head h2 { flex: 1; margin: 0; outline: none; }
+.save-close { font-size: 22px; line-height: 1; }
+.save-tabs { display: flex; flex: none; border: 1px solid var(--hud-border); border-radius: 8px; overflow: hidden; }
+.save-tab {
+    flex: 1;
+    font: inherit;
+    border: 0;
+    background: transparent;
+    color: var(--hud-text);
+    padding: 10px 6px;
+    cursor: pointer;
+}
+.save-tab + .save-tab { border-left: 1px solid var(--hud-border); }
+.save-tab.active { background: var(--hud-accent-bg); color: var(--hud-gold-strong); font-weight: 600; }
+.save-tab:focus-visible { outline-offset: -3px; }
+.save-tabs[hidden], .save-pane[hidden], .save-confirm[hidden], .save-card [hidden] { display: none; }
+.save-status { margin: 0; min-height: 1.4em; line-height: 1.4; font-size: 13px; color: var(--hud-gold); }
+/* Empty message lines take no room but stay in the page, so screen readers hear the next message */
+.save-status:empty { min-height: 0; margin-top: -10px; }
+.save-error:empty { min-height: 0; margin-top: -8px; }
+.save-pane { display: flex; flex-direction: column; gap: 8px; }
+.save-pane label { color: var(--hud-muted); font-size: 13px; }
+.save-form { display: flex; flex-direction: column; gap: 6px; }
+.save-row { display: flex; gap: 8px; align-items: stretch; }
+.save-row .btn { flex: none; }
+.save-card input[type="text"], .save-text {
+    font: inherit;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--hud-border);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--hud-text);
+}
+.save-card input[type="text"]:disabled { opacity: 0.5; }
+textarea.save-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; resize: vertical; min-height: 92px; }
+.save-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.save-buttons .btn { flex: 1 1 auto; }
+.save-note { margin: 0; color: var(--hud-muted); font-size: 12px; line-height: 1.4; }
+.save-note.full { color: var(--hud-gold); }
+.save-error { margin: 0; color: var(--hud-danger); font-size: 13px; line-height: 1.4; }
+.save-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.save-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+}
+.save-info { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.save-item-name { font-weight: 600; overflow-wrap: anywhere; }
+.save-item-meta { color: var(--hud-muted); font-size: 12px; }
+.save-actions { display: flex; gap: 6px; margin-left: auto; }
+.save-actions .btn { flex: none; padding: 6px 10px; font-size: 13px; }
+.save-item .save-rename { flex: 1 1 150px; width: auto; }
+.save-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--hud-border);
+    border-radius: 8px;
+    background: var(--hud-accent-bg);
+}
+.save-confirm p { margin: 0; line-height: 1.4; }
+@media (max-width: 640px) {
+    .save-modal { padding-left: 8px; padding-right: 8px; }
+    .modal .save-card { width: 100%; max-height: calc(var(--save-vh, 100dvh) - 16px); padding: 12px; }
+    /* 16px text fields: iOS does not zoom the page when one gets the focus */
+    .save-card input[type="text"], .save-text, textarea.save-text { font-size: 16px; }
+    .save-actions .btn { padding: 9px 12px; }
 }

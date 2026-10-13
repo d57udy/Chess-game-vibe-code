@@ -118,6 +118,10 @@
                 <button type="button" id="hint" class="btn" title="Suggest a move (H)" aria-keyshortcuts="h"><span class="spinner" aria-hidden="true"></span>Hint <kbd>H</kbd></button>
                 <button type="button" id="skip" class="btn" title="Skip the current animation (Space)">Skip <kbd>Space</kbd></button>
             </div>
+            <div class="row buttons">
+                <button type="button" id="save-open" class="btn" aria-haspopup="dialog" title="Save this game, load a saved game, or import one">Save / Load</button>
+                <button type="button" id="export-open" class="btn" aria-haspopup="dialog" title="Copy, share or download the moves of this game (PGN)">Export moves</button>
+            </div>
             <details id="legend-details" class="moves">
                 <summary>Who's who</summary>
                 <table id="legend" class="legend">
@@ -141,6 +145,7 @@
                     <li>Review game: step through the moves with the engine's verdicts; flagged moves show what was played and the better move. "Return to game" brings the live position back.</li>
                     <li>Keyboard: arrow keys move the cursor, <kbd>Enter</kbd> selects or moves, <kbd>Esc</kbd> cancels, <kbd>Space</kbd> skips a fight, <kbd>H</kbd> asks for a hint.</li>
                     <li>Hint (on your turn): the AI suggests a move; the piece is pre-selected with an arrow to the square. Click the square to play it, or ignore it.</li>
+                    <li>Your game is kept on this device and comes back when you reopen the app. Save / Load keeps named saves and reads games from PGN text or files; Export moves copies, shares or downloads the move list.</li>
                 </ul>
             </details>
             <section class="menu-section" aria-labelledby="install-heading">
@@ -163,20 +168,27 @@
     </div>
 
     <!-- Coach card: verdict on the last coached move, a warning before the next one, take-back actions -->
-    <div id="coach-card" class="coach-card panel" role="group" aria-label="Coach" data-bubble-avoid hidden>
-        <div class="coach-head">
-            <span class="coach-crown" aria-hidden="true">&#9813;</span>
-            <span class="coach-title">Coach</span>
-            <span id="coach-badge" class="coach-badge" hidden></span>
-            <span id="coach-move" class="coach-move"></span>
-            <span id="coach-spinner" class="spinner coach-spinner" aria-hidden="true" hidden></span>
-            <button type="button" id="coach-close" class="tip-close" aria-label="Dismiss coach message">&times;</button>
+    <!-- Bottom centre: notices and the coach card share one stack (notice on top), so neither covers the other -->
+    <div class="bottom-stack">
+        <div id="tip" class="tip panel" role="note" data-bubble-avoid hidden>
+            <span id="tip-text">Click a hero, then a highlighted square.</span>
+            <button type="button" id="tip-close" class="tip-close" aria-label="Dismiss hint">&times;</button>
         </div>
-        <p id="coach-text" class="coach-text"></p>
-        <p id="coach-warning" class="coach-warning" hidden></p>
-        <div id="coach-actions" class="coach-actions" hidden>
-            <button type="button" id="coach-undo" class="btn small-btn">Take it back</button>
-            <button type="button" id="coach-better" class="btn small-btn primary">Show me better</button>
+        <div id="coach-card" class="coach-card panel" role="group" aria-label="Coach" data-bubble-avoid hidden>
+            <div class="coach-head">
+                <span class="coach-crown" aria-hidden="true">&#9813;</span>
+                <span class="coach-title">Coach</span>
+                <span id="coach-badge" class="coach-badge" hidden></span>
+                <span id="coach-move" class="coach-move"></span>
+                <span id="coach-spinner" class="spinner coach-spinner" aria-hidden="true" hidden></span>
+                <button type="button" id="coach-close" class="tip-close" aria-label="Dismiss coach message">&times;</button>
+            </div>
+            <p id="coach-text" class="coach-text"></p>
+            <p id="coach-warning" class="coach-warning" hidden></p>
+            <div id="coach-actions" class="coach-actions" hidden>
+                <button type="button" id="coach-undo" class="btn small-btn">Take it back</button>
+                <button type="button" id="coach-better" class="btn small-btn primary">Show me better</button>
+            </div>
         </div>
     </div>
 
@@ -202,10 +214,6 @@
     <button type="button" id="coach-review-chip" class="review-chip panel" data-bubble-avoid hidden>Back to review</button>
 
     <!-- First-run hint -->
-    <div id="tip" class="tip panel" role="note" data-bubble-avoid hidden>
-        <span id="tip-text">Click a hero, then a highlighted square.</span>
-        <button type="button" id="tip-close" class="tip-close" aria-label="Dismiss hint">&times;</button>
-    </div>
 
     <!-- Promotion choice -->
     <div id="promo" class="modal" hidden>

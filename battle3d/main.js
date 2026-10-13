@@ -227,16 +227,22 @@ function setupCast({ units, manifest, castMod, controller, sceneAPI }) {
     return { apply, initial: current };
 }
 
+// Notices, the coach card and the install / update toasts stand in one column at the bottom centre (hud.css
+// .bottom-stack), so none of them covers another
+const bottomStack = () => document.querySelector('.bottom-stack') || document.body;
+
 // --- First-run tip ---
-// Short notice in the tip panel (when the first-run tip is not showing)
-function showNotice(text, { force = false } = {}) {
+// Short notice in the tip panel (when the first-run tip is not showing, unless forced)
+let noticeTimer = null;
+function showNotice(text, { force = false, seconds = 8 } = {}) {
     const tip = $('tip');
     if (!tip.hidden && !force) return;
     $('tip-text').textContent = text;
     tip.hidden = false;
     const hide = () => { tip.hidden = true; };
     $('tip-close').addEventListener('click', hide, { once: true });
-    setTimeout(hide, 8000);
+    clearTimeout(noticeTimer); // an older notice's timer must not hide this one early
+    noticeTimer = setTimeout(hide, seconds * 1000);
 }
 
 function showFirstRunTip(sceneAPI) {
@@ -245,10 +251,11 @@ function showFirstRunTip(sceneAPI) {
     if (seen) return;
     const tip = $('tip');
     const coarse = sceneAPI.isCoarsePointer?.() ?? matchMedia?.('(pointer: coarse)').matches;
-    $('tip-text').textContent = `${coarse ? 'Tap' : 'Click'} a hero, then a highlighted square.`;
+    const text = `${coarse ? 'Tap' : 'Click'} a hero, then a highlighted square.`;
+    $('tip-text').textContent = text;
     tip.hidden = false;
     const dismiss = () => {
-        tip.hidden = true;
+        if ($('tip-text').textContent === text) tip.hidden = true; // a later notice in the same panel stays
         try { localStorage.setItem(TIP_KEY, '1'); } catch (e) { /* ignore */ }
         $('stage').removeEventListener('pointerup', onStage);
     };
@@ -296,14 +303,22 @@ async function boot() {
     const onMoveEnd = (ev) => {
         if (hintTried || ev.isAI || !$('tip').hidden) return; // one toast at a time
         hintTried = true;
-        pwaReady.then(pwa => pwa?.showInstallHint?.());
+        pwaReady.then(pwa => pwa?.showInstallHint?.(bottomStack()));
     };
-    const controller = createController({ sceneAPI, units, audio, onMoveEnd, debug, log });
+    const controller = createController({ sceneAPI, units, audio, onMoveEnd, notify: showNotice, debug, log });
     // Talking kings and coach listen to controller events; create them before the first game starts
     const commentary = createCommentary({ controller, sceneAPI, units, audio, captionsEl: $('captions'), levelSelect: $('talk-select'), log });
     const coach = createCoach({ controller, sceneAPI, units, audio, log });
     await sceneAPI.setView(controller.viewSide(), { animate: false });
-    controller.newGame();
+    // Save / Load panel and autosave (battle3d/saves.js): an autosaved game comes back in place of a new one
+    let saves = null;
+    try {
+        saves = (await optionalImport('./saves.js'))?.setupSaves({ controller, coach, notify: showNotice }) || null;
+    } catch (e) {
+        console.error('battle3d: save and load are unavailable', e);
+    }
+    if (!saves) for (const id of ['save-open', 'export-open']) $(id)?.setAttribute('disabled', '');
+    if (!saves?.resumed) controller.newGame();
 
     setupCast({ units, manifest, castMod, controller, sceneAPI });
     renderLegend(units, manifest);
@@ -311,7 +326,7 @@ async function boot() {
 
     if (debug) {
         window.__b3d = {
-            sceneAPI, units, controller, audio, commentary, coach,
+            sceneAPI, units, controller, audio, commentary, coach, saves,
             step: (n = 1, dt = 1 / 60) => sceneAPI.stepFrames(n, dt),
             state: () => controller.state()
         };
@@ -320,6 +335,7 @@ async function boot() {
     hideLoading();
     showFirstRunTip(sceneAPI);
     if (castFailed.length) showNotice('Some characters could not be loaded (offline?), so the default ones stand in.');
+    if (saves?.notice) showNotice(saves.notice, { force: true });
     setupInstall(); // after the first frame: the service worker and install UI are not needed to play
     log('booted');
 }
@@ -343,7 +359,7 @@ async function setupInstall() {
     Promise.resolve()
         .then(() => pwa?.registerServiceWorker?.({
             disabled: debug || params.get('nosw') === '1',
-            onUpdate: () => pwa.showUpdateToast?.()
+            onUpdate: () => pwa.showUpdateToast?.(bottomStack())
         }))
         .catch(e => log('service worker registration failed', e));
     if (typeof pwa?.mountInstallUI === 'function') {

@@ -10,7 +10,7 @@
 //   Google Fonts              stale-while-revalidate
 // Query strings on same-origin URLs (?debug=1, ?v=12, ?nosw=1) are ignored for cache keys, so debug or
 // cache-busting links never create duplicate entries.
-const VERSION = '6.2.0';
+const VERSION = '6.3.0';
 const PREFIX = 'chess3d-';
 const SHELL = `${PREFIX}shell-${VERSION}`;
 const RUNTIME = `${PREFIX}runtime-${VERSION}`;
@@ -34,6 +34,7 @@ const CDN_PRECACHE = [
 const APP_SHELL = [
     './', 'index.html', '2d.html', 'battle3d.html', 'manifest.webmanifest',
     'gameLogic.js', 'aiPlayer.js', 'aiClient.js', 'aiWorker.js', 'ui.js', 'battleFx.js', 'style.css',
+    'savegame.js', 'savepanel.js', 'saves2d.js',
     'move.mp3', 'capture.mp3', 'check.mp3', 'game-over.mp3',
     'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
     'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'icons/favicon.svg', 'icons/icon.svg',
@@ -42,7 +43,7 @@ const APP_SHELL = [
     'battle3d/scene-textures.js', 'battle3d/cinematic.js', 'battle3d/units.js', 'battle3d/fights.js',
     'battle3d/unit-visuals.js', 'battle3d/cast.js', 'battle3d/cast-ui.js', 'battle3d/install.js',
     'battle3d/commentary.js', 'battle3d/coach.js', 'battle3d/bubbles.js', 'battle3d/tactics.js',
-    'battle3d/retarget.js', 'battle3d/vrm.js',
+    'battle3d/retarget.js', 'battle3d/vrm.js', 'battle3d/saves.js',
     'battle3d/hud.css', 'battle3d/cast.css', 'battle3d/install.css',
     'battle3d/lines/hero-king.json', 'battle3d/lines/skeleton-king.json', 'battle3d/lines/coach.json',
     'battle3d/assets/rigs/kaykit.json', 'battle3d/assets/rigs/mixamo.json', 'battle3d/assets/rigs/quaternius.json', 'battle3d/assets/rigs/vrm.json',

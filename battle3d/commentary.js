@@ -11,7 +11,7 @@ const LEVELS = ['off', 'occasional', 'chatty'];
 const SETTINGS_KEY = 'battle3d.settings';
 const COOLDOWN_PLIES = { occasional: 3, chatty: 1 };
 const RETORT_CHANCE = { occasional: 0.3, chatty: 0.5 };
-const URGENT = 80;             // priority that ignores the cooldown
+const URGENT = 80;             // priority that ignores the cooldown (en passant is rare and needs naming)
 const IDLE_SECONDS = 45;
 const PIECE_NAMES = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 
@@ -30,7 +30,7 @@ const SLOT_RE = /\{(\w+)\}/g;
 const PRIORITY = {
     checkmateWin: 100, checkmateLoss: 99, stalemate: 90, draw: 90, capturedQueen: 82, lostQueen: 81,
     blunderByOpponent: 76, blunderByMe: 75, brilliantMove: 72, mateThreat: 70, promotion: 65, check: 60,
-    gotChecked: 59, winningBig: 55, losingBig: 54, enPassant: 52, castle: 45, myCapture: 40, lostPiece: 39,
+    gotChecked: 59, winningBig: 55, losingBig: 54, enPassant: 80, castle: 45, myCapture: 40, lostPiece: 39,
     repetition: 38, endgame: 35, longThink: 30, hintUsed: 28, undoUsed: 28, gameStart: 20, idle: 10
 };
 
@@ -187,6 +187,7 @@ export function createCommentary({ controller, sceneAPI, units, audio = null, ca
     const fill = (text, slots) => text.replace(SLOT_RE, (m, k) => slots[k] || m).replace(/\s+/g, ' ').trim();
 
     function onEvent(event) {
+        if (event.type === 'change') return; // bookkeeping for autosave, nothing to say
         if (event.type === 'reset' || event.type === 'review') {
             pending = [];
             clear();
@@ -237,9 +238,13 @@ export function createCommentary({ controller, sceneAPI, units, audio = null, ca
 
     async function speak(event, voice, text) {
         // Wait out a cinematic shot (fights end before events, but an AI move may already be starting)
+        const token = speakToken;
         for (let i = 0; i < 20 && (sceneAPI.isCinematicActive?.() || controller.state().moving); i++) {
             await new Promise(r => setTimeout(r, 150));
         }
+        // A remark that had to wait is stale once a newer one was spoken, or the game was reset, in the meantime:
+        // said now it would replace the newer bubble and caption (a late retort used to swallow the next remark)
+        if (token !== speakToken) return;
         if (controller.state().moving || controller.state().reviewIndex !== null) return;
         const square = g.findKing?.(event.color);
         const name = kingName(voice);

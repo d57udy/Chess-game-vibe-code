@@ -613,11 +613,12 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
         for (const m of a.userData.pulse) pulses.push([m, m.material.opacity, 1.6]);
     }
 
-    // Floating glyph label above everything.
+    // Floating glyph label above the unit's own decorations, but under the board's target markers (scene.js
+    // highlights, order 6): seen from the player's side it floats over the middle of the square behind.
     const labelMat = mat(THREE, 'label-' + color + type, () => new THREE.SpriteMaterial({ map: labelTexture(THREE, color, type), depthWrite: false, transparent: true }));
     const label = new THREE.Sprite(labelMat);
     label.scale.set(0.3, 0.3, 1);
-    label.renderOrder = 10;
+    label.renderOrder = 5;
     root.updateMatrixWorld(true);
     const all = new THREE.Box3();
     if (model) {
@@ -632,7 +633,7 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
     owned.push(label);
 
     // Gentle pulse for glows/auras/rings, driven by the render clock (render-on-demand friendly).
-    let selected = false, threatened = false;
+    let selected = false, threatened = false, wantLabel = !!labels;
     const pulseHost = disc;
     pulseHost.onBeforeRender = () => {
         const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
@@ -666,8 +667,10 @@ export function decorateUnit(unit, { THREE, color, type, role = {}, labels = tru
         base: [disc, rim],
         label,
         labelY: label.position.y,
-        setLabel(on) { label.visible = !!on; },
-        setSelected(on) { selected = !!on; refreshState(); },
+        // The selected unit needs no label, and from the player's side its label floats over the marker of the
+        // square behind it: it is hidden while the unit is selected
+        setLabel(on) { wantLabel = !!on; label.visible = wantLabel && !selected; },
+        setSelected(on) { selected = !!on; label.visible = wantLabel && !selected; refreshState(); },
         setThreatened(on) { threatened = !!on; refreshState(); },
         dispose() {
             for (const o of owned) o.removeFromParent();

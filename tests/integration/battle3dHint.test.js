@@ -96,7 +96,7 @@ describe('battle3d hint (v5)', () => {
         C.controller.setMode('human-human');
         const cases = [
             ['rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', 'e4d5', 'Hint: pawn to d5, capture.'],
-            ['rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3', 'e5f6', 'Hint: pawn to f6, capture.'],
+            ['rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3', 'e5f6', 'Hint: pawn to f6, capture en passant.'],
             ['1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1', 'a7a8', 'Hint: pawn to a8, promote to queen.'],
             ['1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1', 'a7b8n', 'Hint: pawn to b8, capture, promote to knight.'],
             ['r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1', 'e1g1', 'Hint: castle kingside.'],
