@@ -5,6 +5,8 @@
 //
 // A capture is: approach -> (intro) -> clash (0 to 3 exchanges) -> finisher -> death || aftermath.
 // Fast mode skips the cinematic, intro and clash and keeps the whole capture around 1 to 1.3 s.
+// En passant is the exception: the pawn first makes its real move (diagonally onto the empty target
+// square) and strikes the pawn it passed from there, so it never looks like a sideways capture.
 
 // Weapon feel per attacker role: impact FX kind and trail colour.
 const WEAPON = {
@@ -488,28 +490,44 @@ export function createFights(k) {
     // ---------------------------------------------------------------------------------------
     // The capture sequence
 
+    // En passant: the victim does not stand on the target square but beside the attacker's start square.
+    const isPassing = (ev) => !!ev.captured && (ev.captured.square.row !== ev.to.row || ev.captured.square.col !== ev.to.col);
+
     function* capture(ev, A, V) {
         const full = k.full;
         const toPos = k.sqPos(ev.to);
         const vPos = V.root.position.clone();
         const start = A.root.position.clone();
-        const dist = k.flatDist(start, vPos);
-        const dir = v3().subVectors(vPos, start).setY(0).normalize();
+        // The strike comes from where the attacker stands: its own square, or for en passant the target
+        // square behind the victim (walking straight at the victim would be a sideways pawn move).
+        const passing = isPassing(ev);
+        const origin = passing ? toPos : start;
+        const dist = k.flatDist(origin, vPos);
+        const dir = v3().subVectors(vPos, origin).setY(0).normalize();
         const ranged = A.type === 'b';
         const standoff = ranged ? dist : Math.min(k.reach ? k.reach(A, V) : APPROACH, dist);
         const approach = vPos.clone().addScaledVector(dir, -standoff);
-        const p = full ? plan(A, V) : { name: 'fast', clash: [], finisher: null };
+        const p = !full ? { name: 'fast', clash: [], finisher: null }
+            : passing ? { name: 'enPassant', clash: [], finisher: 'lungeStab' } : plan(A, V);
 
         k.hideLabels([A, V]);
         k.cam.open(A, V, approach);
 
         // Approach: the victim turns and takes guard (or taunts) while the attacker closes in.
+        // En passant: the victim is caught in passing and only turns round once the attacker is behind it.
+        let passed = !passing;
         const victimReady = function* () {
-            yield* k.turnTo(V, k.yawBetween(vPos, approach));
+            if (!passed) yield () => passed;
+            yield* k.turnTo(V, k.yawBetween(vPos, approach), passing ? 14 : undefined);
             k.guard(V);
         };
         const attackerGo = function* () {
-            const d = k.flatDist(start, approach);
+            if (passing) {
+                const d0 = k.flatDist(start, toPos);
+                yield* k.moveTo(A, toPos, { speed: Math.max(k.walkSpeed(), d0 / (full ? 0.7 : 0.25)) });
+                passed = true;
+            }
+            const d = k.flatDist(A.root.position, approach);
             if (A.type === 'n' && d > 0.3) yield* k.jumpTo(A, approach, 0.5, full ? 1.35 : 1.5);
             else if (d > 0.02) yield* k.moveTo(A, approach, { speed: Math.max(k.walkSpeed(), d / (full ? 0.6 : 0.3)) });
             yield* k.turnTo(A, k.yawBetween(A.root.position, vPos), 14);
@@ -521,7 +539,7 @@ export function createFights(k) {
         let info;
         if (full) {
             if (p.intro) yield* INTROS[p.intro](A, V);
-            else if (V.isSkeleton && !p.clash.length && Math.random() < 0.5) yield* INTROS.taunt(A, V);
+            else if (!passing && V.isSkeleton && !p.clash.length && Math.random() < 0.5) yield* INTROS.taunt(A, V);
             else yield 0.12;
             for (const x of p.clash) if (EXCHANGES[x]) yield* EXCHANGES[x](A, V);
             k.cam.finisher(A, V, p.shot);

@@ -28,7 +28,7 @@ const HL_COLORS = {
   selected: '#ffd25e',
   hover: '#ffffff',
   lastMove: '#ffc65c',
-  move: '#fff1bf',
+  move: '#ffc83d', // a full gold: the old pale '#fff1bf' vanished on the light squares
   capture: '#ff3d2e',
   check: '#ff2a1a',
 };
@@ -364,6 +364,7 @@ export async function createScene(container, { debug = false, renderer: injected
 
   // ---- picking registry (used by cinematics for occlusion too) ----
   const proxies = new Map(); // object3D -> () => { row, col }
+  const proxyBodies = new Map(); // object3D -> the unit as drawn (Object3D), when the unit registered one
 
   // ---- cinematics ----
   let timeScale = 1;
@@ -478,6 +479,8 @@ export async function createScene(container, { debug = false, renderer: injected
     fill: highlightTexture('fill'),
     dot: highlightTexture('dot'),
     ring: highlightTexture('ring'),
+    target: highlightTexture('target'),
+    outline: highlightTexture('outline'),
     glow: highlightTexture('glow'),
   };
   function hlMat(tex, color, opacity, additive = false) {
@@ -499,16 +502,31 @@ export async function createScene(container, { debug = false, renderer: injected
   const lastMoveMat = hlMat(hlTex.fill, HL_COLORS.lastMove, 0.3);
   const lastFrom = hlMesh(lastMoveMat, 1, 0.004, 2);
   const lastTo = hlMesh(lastMoveMat, 1, 0.004, 2);
+  // en passant: the captured pawn's square is neither from nor to, so it gets its own (red) frame
+  const lastCaptured = hlMesh(hlMat(hlTex.frame, HL_COLORS.capture, 0.7), 1, 0.005, 2);
+  lastCaptured.name = 'last-captured';
   const checkMesh = hlMesh(hlMat(hlTex.glow, HL_COLORS.check, 0.85, true), 1.5, 0.006, 3);
   const selectedMesh = hlMesh(hlMat(hlTex.frame, HL_COLORS.selected, 1, true), 1.04, 0.008, 4);
   const hoverMesh = hlMesh(hlMat(hlTex.frame, HL_COLORS.hover, 0.4), 1.0, 0.01, 5);
-  const dotMat = hlMat(hlTex.dot, HL_COLORS.move, 0.8);
+  // The dot of an offered empty square is drawn over everything (no depth test): a figure standing in front
+  // of the square, or its label, must not hide it. A click on it plays the move (pickAt reports `marker`).
+  const DOT_SIZE = 0.4;
+  const dotMat = hlMat(hlTex.target, HL_COLORS.move, 0.95);
+  dotMat.depthTest = false;
   const ringMat = hlMat(hlTex.ring, HL_COLORS.capture, 0.95);
+  // while a pawn that can take en passant is selected: the pawn it would remove (same frame as after the move)
+  const victimMesh = hlMesh(hlMat(hlTex.frame, HL_COLORS.capture, 0.7), 1, 0.005, 2);
+  victimMesh.name = 'capture-victim';
   const dots = [];
   const rings = [];
+  const outlines = [];
   const poolMesh = (pool, i, mat, size) => pool[i] || (pool[i] = hlMesh(mat, size, 0.012, 6));
+  // A unit in front hides the middle of the square behind it, dot included: every offered empty square also
+  // gets a soft outline that reaches its visible part. (Order 5.5: the targets themselves are the order 6 meshes.)
+  const outlineMat = hlMat(hlTex.outline, HL_COLORS.move, 0.7);
+  const outlineMesh = (i) => outlines[i] || (outlines[i] = hlMesh(outlineMat, 0.94, 0.011, 5.5));
 
-  const hlState = { selected: null, moves: [], lastMove: null, check: null, hover: null };
+  const hlState = { selected: null, moves: [], lastMove: null, check: null, hover: null, victim: null };
   const validSq = (s) => !!s && Number.isInteger(s.row) && Number.isInteger(s.col) && s.row >= 0 && s.row < 8 && s.col >= 0 && s.col < 8;
   function place(mesh, sq) {
     mesh.visible = validSq(sq);
@@ -523,13 +541,17 @@ export async function createScene(container, { debug = false, renderer: injected
     place(checkMesh, hlState.check);
     place(lastFrom, hlState.lastMove?.from);
     place(lastTo, hlState.lastMove?.to);
+    place(lastCaptured, hlState.lastMove?.captured);
+    place(victimMesh, hlState.victim);
     let di = 0;
     let ri = 0;
     for (const m of hlState.moves || []) {
       if (!validSq(m)) continue;
-      place(m.capture ? poolMesh(rings, ri++, ringMat, 1.0) : poolMesh(dots, di++, dotMat, 0.34), m);
+      if (!m.capture) place(outlineMesh(di), m);
+      place(m.capture ? poolMesh(rings, ri++, ringMat, 1.0) : poolMesh(dots, di++, dotMat, DOT_SIZE), m);
     }
     for (let i = di; i < dots.length; i++) dots[i].visible = false;
+    for (let i = di; i < outlines.length; i++) outlines[i].visible = false;
     for (let i = ri; i < rings.length; i++) rings[i].visible = false;
     requestRender();
   }
@@ -579,7 +601,7 @@ export async function createScene(container, { debug = false, renderer: injected
   const clearArrows = () => setArrows([]);
 
   function clearHighlights() {
-    setHighlights({ selected: null, moves: [], lastMove: null, check: null, hover: null });
+    setHighlights({ selected: null, moves: [], lastMove: null, check: null, hover: null, victim: null });
   }
   function updateHighlights(t) {
     const p = 0.5 + 0.5 * Math.sin(t * 5);
@@ -609,25 +631,72 @@ export async function createScene(container, { debug = false, renderer: injected
     raycaster.setFromCamera(ndc, camera);
   }
 
-  function pickAt(clientX, clientY) {
+  // The square under the pointer: a unit's pick proxy wins over the board behind it. A proxy is larger than
+  // the figure (easy to hit on a touch screen) and so also covers the middle of the square behind it. With
+  // `detail` the result says what the pointer really is on: `ground` is the board square on the same ray (or
+  // null off the board), `figure` is the square of the nearest unit whose own meshes the ray meets (or null
+  // when it only passes proxies), and `marker` is the offered empty square whose move dot the pointer is on
+  // (the dot is drawn over figures and labels, so it can be clicked wherever it shows).
+  function pickAt(clientX, clientY, detail = false) {
     setRay(clientX, clientY);
     // proxies may have moved since the last render
     for (const o of proxies.keys()) o.updateWorldMatrix(true, false);
     const hits = raycaster.intersectObjects([pickPlane, ...proxies.keys()], true);
+    const boardSquare = (hit) => {
+      const col = Math.floor(hit.point.x + 4);
+      const row = Math.floor(hit.point.z + 4);
+      return row >= 0 && row < 8 && col >= 0 && col < 8 ? { row, col } : null;
+    };
+    let picked = null;
+    const units = []; // [proxy, square] of every unit whose proxy the ray meets, nearest first
     for (const hit of hits) {
       let o = hit.object;
       while (o && !proxies.has(o) && o !== pickPlane) o = o.parent;
       if (!o) continue;
       if (o === pickPlane) {
-        const col = Math.floor(hit.point.x + 4);
-        const row = Math.floor(hit.point.z + 4);
-        if (row >= 0 && row < 8 && col >= 0 && col < 8) return { row, col };
-        continue;
+        picked = picked || boardSquare(hit);
+        break; // nothing behind the board counts
       }
       const sq = proxies.get(o)();
-      if (validSq(sq)) return { row: sq.row, col: sq.col };
+      if (!validSq(sq)) continue;
+      picked = picked || { row: sq.row, col: sq.col };
+      if (!detail) break;
+      if (!units.some(([p]) => p === o)) units.push([o, sq]);
     }
-    return null;
+    if (!picked || !detail) return picked;
+    const plane = hits.find((h) => h.object === pickPlane);
+    let marker = null;
+    if (plane) {
+      for (const m of hlState.moves || []) {
+        if (m.capture || !validSq(m) || Math.hypot(plane.point.x - (m.col - 3.5), plane.point.z - (m.row - 3.5)) > DOT_SIZE / 2) continue;
+        marker = { row: m.row, col: m.col };
+        break;
+      }
+    }
+    let figure = null;
+    let nearest = Infinity;
+    for (const [proxy, sq] of units) {
+      const d = figureDistance(proxy);
+      if (d < nearest) { nearest = d; figure = { row: sq.row, col: sq.col }; }
+    }
+    return { ...picked, ground: plane ? boardSquare(plane) : null, figure, marker };
+  }
+
+  // Distance along the current ray to the unit as drawn (its meshes in their current pose), Infinity when
+  // the ray only meets its proxy. Labels (sprites) do not count: they float above the head, over the square
+  // behind. A unit that registered no body counts as hit where its proxy is.
+  function figureDistance(proxy) {
+    const body = proxyBodies.get(proxy);
+    if (!body) return raycaster.intersectObject(proxy, false)[0]?.distance ?? Infinity;
+    const parts = [];
+    body.updateWorldMatrix(true, false);
+    body.updateMatrixWorld(true); // also refreshes the bind matrices of skinned meshes (updateWorldMatrix does not)
+    body.traverseVisible((o) => {
+      if (!o.isMesh || proxies.has(o)) return;
+      if (o.isSkinnedMesh) o.computeBoundingSphere(); // the cached sphere belongs to an earlier pose
+      parts.push(o);
+    });
+    return raycaster.intersectObjects(parts, false)[0]?.distance ?? Infinity;
   }
 
   // Double-tap (touch): toggle a closer view centred on the tapped board point.
@@ -684,9 +753,9 @@ export async function createScene(container, { debug = false, renderer: injected
       }
       lastTap = { t, x: e.clientX, y: e.clientY };
     }
-    const sq = pickAt(e.clientX, e.clientY);
+    const sq = pickAt(e.clientX, e.clientY, true);
     log('click', sq);
-    if (sq) for (const cb of clickCbs) cb(sq.row, sq.col);
+    if (sq) for (const cb of clickCbs) cb(sq.row, sq.col, { ground: sq.ground, figure: sq.figure, marker: sq.marker });
   }
   function onPointerCancel(e) {
     activePointers.delete(e.pointerId);
@@ -893,9 +962,13 @@ export async function createScene(container, { debug = false, renderer: injected
       hoverCbs.push(cb);
       return () => hoverCbs.splice(hoverCbs.indexOf(cb) >>> 0, 1);
     },
-    registerPickProxy(object3D, getSquare) { proxies.set(object3D, getSquare); },
-    unregisterPickProxy(object3D) { proxies.delete(object3D); },
-    pickAt, // extension: (clientX, clientY) -> { row, col } | null
+    // body (optional): the unit as drawn, so a click can tell the figure from the larger proxy around it
+    registerPickProxy(object3D, getSquare, body = null) {
+      proxies.set(object3D, getSquare);
+      if (body) proxyBodies.set(object3D, body); else proxyBodies.delete(object3D);
+    },
+    unregisterPickProxy(object3D) { proxies.delete(object3D); proxyBodies.delete(object3D); },
+    pickAt, // extension: (clientX, clientY, detail?) -> { row, col } | null; detail adds { ground, figure, marker }
     setHighlights,
     clearHighlights, // extension
     setHint,

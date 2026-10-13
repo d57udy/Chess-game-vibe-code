@@ -106,7 +106,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
     let frequency = saved.coachFrequency === 'mistakes' ? 'mistakes' : 'every';
     let voices = null;                  // coach.json voices: { hero: {...}, skeleton: {...} }
     let records = [];                   // records[ply]: one per move of the game (index 0 unused)
-    const card = { ply: null, warning: '', info: '', dismissed: false };
+    const card = { ply: null, warning: '', note: '', info: '', dismissed: false }; // note: a rule explained for this turn
     const review = { open: false, minimised: false, selected: null, token: 0, running: false };
     let threatHandle = null;
     let token = 0;                      // bumped to drop pending warnings
@@ -156,6 +156,8 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         if (!move?.from || !move?.to) return '';
         const piece = board?.[move.from.row]?.[move.from.col] ?? g.getPieceAt?.(move.from.row, move.from.col);
         const target = board?.[move.to.row]?.[move.to.col];
+        // A pawn going diagonally onto an empty square takes the pawn beside it
+        if (!target && pieceName(piece) === 'pawn' && move.from.col !== move.to.col) return `pawn takes ${squareName(move.to)} en passant`;
         return `${pieceName(piece) || 'piece'} ${target ? 'takes' : 'to'} ${squareName(move.to)}`;
     }
 
@@ -196,6 +198,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         return {
             ply, color: info.mover, human: !!info.human, notation: info.notation || '', moveNumber: info.moveNumber || Math.floor((ply - 1) / 2) + 1,
             piece: info.piece, from: info.from, to: info.to,
+            enPassantSquare: info.enPassant ? info.capturedSquare : null, // the pawn taken stood here, not on `to`
             status: 'new',          // new | pending | done | failed | unavailable
             classification: null, brilliant: false, evalBefore: null, evalAfter: null,
             best: null, bestText: '', motifs: [], text: '', attempts: 0, promise: null
@@ -254,7 +257,12 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         } : null;
         record.bestText = record.best ? describeMove(record.best, board) : '';
         record.playedText = describeMove({ from: record.from, to: record.to }, board);
-        record.text = composeText(record) || '';
+        // A verdict must not hide that the pawn can be taken in passing (the reply looks like a sideways capture)
+        const takers = Array.isArray(j.allowsEnPassant) ? j.allowsEnPassant : [];
+        const note = takers.length
+            ? `${takers.length > 1 ? `Their pawns on ${takers.join(' and ')}` : `Their pawn on ${takers[0]}`} can now take this pawn en passant, as if it had moved only one square.`
+            : '';
+        record.text = [composeText(record), note].filter(Boolean).join(' ');
     }
 
     // One sentence for the move, chosen once so the card and the review say the same thing
@@ -304,7 +312,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
     function renderCard(announceIt = false) {
         if (!el.card) return;
         const record = card.ply !== null ? records[card.ply] : null;
-        const visible = enabled && !card.dismissed && !!(record || card.warning || card.info);
+        const visible = enabled && !card.dismissed && !!(record || card.warning || card.note || card.info);
         el.card.hidden = !visible;
         if (!visible) return;
         let badge = '', badgeClass = '', text = card.info, pending = false, actions = false;
@@ -334,14 +342,15 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         el.spinner.hidden = !pending;
         el.text.textContent = text || '';
         el.text.hidden = !text;
-        el.warning.hidden = !card.warning;
-        el.warning.textContent = card.warning;
+        const warning = [card.note, card.warning].filter(Boolean).join(' ');
+        el.warning.hidden = !warning;
+        el.warning.textContent = warning;
         el.actions.hidden = !actions;
         if (actions) el.better.hidden = !record.best;
         el.card.classList.toggle('warn', actions);
         el.card.classList.toggle('pending', pending);
         if (!pending && (announceIt || record?.status === 'done') && el.announce) {
-            const spoken = [badge && record ? `${badge}.` : '', text, card.warning].filter(Boolean).join(' ');
+            const spoken = [badge && record ? `${badge}.` : '', text, warning].filter(Boolean).join(' ');
             if (spoken && spoken !== renderCard.last) { renderCard.last = spoken; el.announce.textContent = ''; el.announce.textContent = `Coach: ${spoken}`; }
         }
     }
@@ -349,6 +358,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
     function hideCard() {
         card.ply = null;
         card.warning = '';
+        card.note = '';
         card.info = '';
         renderCard();
     }
@@ -361,6 +371,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
     function showInfo(text) {
         card.ply = null;
         card.warning = '';
+        card.note = '';
         card.info = text;
         card.dismissed = false;
         renderCard(true);
@@ -382,7 +393,7 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         if (event.type === 'reset') {
             cancelWarning();
             clearTimeout(reviewTimer);
-            if (event.reason === 'newGame' || event.reason === 'loadFen') {
+            if (event.reason === 'newGame' || event.reason === 'loadFen' || event.reason === 'loadGame') { // another game
                 records = [];
                 nudgedOnce.clear();
                 review.selected = null;
@@ -416,13 +427,16 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         const record = records[event.ply] = makeRecord(event.ply, event) || records[event.ply];
         if (!record) return;
         card.warning = '';
+        card.note = '';
         const coached = enabled && record.human;
         if (coached) {
             if (frequency === 'every') showVerdict(record);     // thinking state now, the verdict when it arrives
             else if (card.ply !== null) hideCard();             // a new move replaces the last mistake card
             judge(record);
         } else {
-            renderCard();
+            // The opponent took en passant: say what just happened, under the verdict of the player's own move
+            if (enabled && frequency === 'every' && event.enPassantLine) { card.note = event.enPassantLine; card.dismissed = false; }
+            renderCard(!!card.note);
         }
         if (review.open) { renderReview(); runBackfill(); }
         if (event.status?.over && enabled) {
@@ -662,22 +676,23 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
         const label = moveLabel(record);
         const verdict = record.status === 'done' ? LABEL[verdictKey(record)] : '';
         const played = { from: record.from, to: record.to, kind: 'played', capture: /x/.test(record.notation) };
+        const squares = { from: record.from, to: record.to, ...(record.enPassantSquare ? { captured: record.enPassantSquare } : {}) };
         let result;
         if (isBad(record) && record.best) {
             // Decision view: the position before the move, the played move and the better move as two arrows
             result = controller.enterReview?.(ply - 1, {
-                lastMove: { from: record.from, to: record.to }, force: true,
+                lastMove: squares, force: true,
                 arrows: [played, { from: record.best.from, to: record.best.to, kind: 'better', capture: !!record.best.capture }],
                 text: `Before ${label} (${verdict.toLowerCase()}): played ${record.playedText}, better was ${record.bestText}. Esc returns to the game.`
             });
         } else {
             // The position after the move with the played move as an arrow (also for the last move)
-            result = controller.enterReview?.(ply, { force: true, arrows: [played], text: `After ${label}${verdict ? ` (${verdict.toLowerCase()})` : ''}. Esc returns to the game.` });
+            result = controller.enterReview?.(ply, { force: true, arrows: [played], text: `${`After ${label}${verdict ? ` (${verdict.toLowerCase()})` : ''}`.replace(/\.$/, '')}. Esc returns to the game.` });
         }
         renderReview();
         const li = el.reviewList?.querySelector(`[data-ply="${ply}"]`);
         li?.scrollIntoView?.({ block: 'nearest' });
-        announceReview(`${label}${verdict ? `, ${verdict}` : ''}. ${record.text || ''}${record.best && isBad(record) ? ` Better: ${record.bestText}.` : ''}`);
+        announceReview(`${`${label}${verdict ? `, ${verdict}` : ''}`.replace(/\.$/, '')}. ${record.text || ''}${record.best && isBad(record) ? ` Better: ${record.bestText}.` : ''}`);
         return result;
     }
 
@@ -734,10 +749,18 @@ export function createCoach({ controller, sceneAPI, units = null, log = () => {}
             }
             const key = r.status === 'done' ? verdictKey(r) : r.status === 'pending' ? 'pending' : '';
             button.dataset.ply = String(ply);
-            button.className = `review-move ${key} ${r.human ? 'human' : 'ai'}${ply === review.selected ? ' selected' : ''}${isFlagged(r) ? ' flagged' : ''}`;
+            button.className = `review-move ${key} ${r.human ? 'human' : 'ai'}${r.color === 'b' ? ' black' : ''}${ply === review.selected ? ' selected' : ''}${isFlagged(r) ? ' flagged' : ''}`;
             button.setAttribute('aria-current', ply === review.selected ? 'true' : 'false');
             button.querySelector('.no').textContent = `${r.moveNumber}${r.color === 'w' ? '.' : '...'}`;
-            button.querySelector('.mv').textContent = r.notation;
+            // "axb3 e.p.": the marker in a smaller face, so the label stays short beside the verdict badge
+            const mv = button.querySelector('.mv'), passing = / e\.p\.$/.test(r.notation);
+            mv.textContent = passing ? r.notation.slice(0, -4) : r.notation;
+            if (passing) {
+                const small = document.createElement('small');
+                small.className = 'ep';
+                small.textContent = 'e.p.';
+                mv.append(small);
+            }
             button.querySelector('.tag').textContent = r.status === 'done' ? LABEL[key] : r.status === 'pending' ? '...' : '';
         }
         // Detail of the selected move

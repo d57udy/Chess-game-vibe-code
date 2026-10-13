@@ -189,6 +189,25 @@ export function highlightTexture(kind, size = 128) {
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, s, s);
+  } else if (kind === 'target') {
+    // Move dot that reads on light and on dark squares: a bright core (tinted by the material) in a dark rim
+    ctx.fillStyle = 'rgba(20,13,4,0.72)';
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s * 0.47, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s * 0.33, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === 'outline') {
+    // Square outline for an offered square: a bright line with a dark edge on both sides, no fill
+    roundRect(ctx, s * 0.1, s * 0.1, s * 0.8, s * 0.8, s * 0.1);
+    ctx.strokeStyle = 'rgba(20,13,4,0.6)';
+    ctx.lineWidth = s * 0.085;
+    ctx.stroke();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = s * 0.04;
+    ctx.stroke();
   } else if (kind === 'ring') {
     ctx.shadowColor = '#fff';
     ctx.shadowBlur = s * 0.06;

@@ -32,7 +32,9 @@
 //   cancelled request terminates its channel's worker and that channel's other requests are
 //   re-posted.
 //   getCurrentGameStateSnapshot() -> state object built from the live globals (deep copies),
-//     with positionHistory = getBoardPositionString() of gameHistory[0..currentMoveIndex].
+//     with positionHistory = getRepetitionKey() of gameHistory[0..currentMoveIndex] (the format of
+//     getBoardPositionString(); the en passant square only where a capture is legal, so the AI
+//     counts repetitions like checkThreefoldRepetition()).
 
 const AI_WORKER_URL = 'aiWorker.js';
 const AI_MAIN_THREAD_DELAY_MS = 30; // lets the browser paint "thinking" state before blocking
@@ -61,7 +63,7 @@ function getCurrentGameStateSnapshot() {
     const positionHistory = [];
     if (Array.isArray(gameHistory)) {
         for (let i = 0; i <= currentMoveIndex && i < gameHistory.length; i++) {
-            positionHistory.push(getBoardPositionString(gameHistory[i]));
+            positionHistory.push(getHistoryRepetitionKey(i));
         }
     }
     return cloneAIState({ board, currentPlayer, castlingRights, enPassantTarget, halfmoveClock, fullmoveNumber, positionHistory });

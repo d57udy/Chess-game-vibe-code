@@ -107,6 +107,30 @@ describe('battle3d commentary (v6)', { skip: !have && 'commentary.js not present
         assert.equal(R.calls.say.length, 3, 'urgent event ignores the cooldown');
     });
 
+    test('a remark that had to wait for an animation is dropped once a newer remark has been spoken', async () => {
+        Math.random = () => 0.99; // nothing skipped, no retorts
+        const R = rigC({ level: 'chatty' });
+        await R.C.ready;
+        R.state.moving = true;                        // the next move is already animating
+        await R.emit(ev('check', 'w', 10));           // has to wait (it looks again every 150 ms)
+        assert.equal(R.calls.say.length, 0);
+        R.state.moving = false;
+        await R.emit(ev('enPassant', 'b', 11));       // a newer remark, said at once
+        assert.equal(R.calls.say.length, 1);
+        const caption = R.captions.textContent;
+        assert.match(caption, /^The Skeleton King: /);
+        await new Promise((r) => setTimeout(r, 200)); // the older remark's wait is over by now
+        assert.equal(R.calls.say.length, 1, 'the stale remark is not said after the newer one');
+        assert.equal(R.captions.textContent, caption, 'and does not replace its caption');
+        // Without anything newer in between, a remark that waited is still said
+        R.state.moving = true;
+        await R.emit(ev('check', 'w', 14));
+        R.state.moving = false;
+        await new Promise((r) => setTimeout(r, 200));
+        assert.equal(R.calls.say.length, 2, 'said once the animation is over');
+        assert.match(R.captions.textContent, /^The Hero King: /);
+    });
+
     test('Chatty: a remark every ply is allowed', async () => {
         Math.random = () => 0.99;
         const R = rigC({ level: 'chatty' });

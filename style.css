@@ -195,6 +195,14 @@ body {
     background-color: rgba(255, 213, 0, 0.35);
     pointer-events: none;
 }
+/* En passant: the square the captured pawn was taken from (neither the from nor the to square) */
+.square.last-capture::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 0 0 3px rgba(200, 40, 40, 0.75);
+    pointer-events: none;
+}
 
 /* Hint Highlighting */
 .square.hint-from {
@@ -243,6 +251,20 @@ body {
 }
 
 /* Spinner shown while the AI or a hint is being computed */
+/* Short notice under the status message (en passant explained, a move played for the AI) */
+.game-notice {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-left: 3px solid #4a7c59;
+    background-color: #f1f6f2;
+    color: #333;
+    font-size: 0.9em;
+}
+.game-notice:empty {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
 #status-message.thinking::before {
     content: '';
     display: inline-block;
@@ -521,4 +543,122 @@ body {
     .piece {
        font-size: 8vmin; /* Slightly larger pieces on small mobile */
     }
+}
+
+/* --- Save / Load panel (savepanel.js builds it; the 3D page styles the same classes in battle3d/hud.css) --- */
+/* Top-aligned and no taller than the visual viewport, so it stays usable with the on-screen keyboard open
+   (--save-vh / --save-top follow window.visualViewport) */
+.save-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: calc(var(--save-top, 0px) + 12px) 12px 12px;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+.save-modal[hidden], .save-card [hidden] { display: none; }
+.save-card {
+    width: min(460px, 100%);
+    max-height: calc(100vh - 24px);
+    max-height: calc(var(--save-vh, 100dvh) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background-color: #fefefe;
+    color: #333;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    font-size: 14px;
+}
+.save-head { display: flex; align-items: center; gap: 8px; }
+.save-head h2 { flex: 1; font-size: 1.25em; color: #3a3a3a; outline: none; }
+.save-close {
+    width: 36px; height: 36px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background: #fff;
+    color: #333;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.save-tabs { display: flex; flex: none; border: 1px solid #4a7c59; border-radius: 5px; overflow: hidden; }
+.save-tab { flex: 1; font: inherit; border: 0; background: #fff; color: #2f5a3e; padding: 10px 6px; cursor: pointer; }
+.save-tab + .save-tab { border-left: 1px solid #4a7c59; }
+.save-tab.active { background-color: #4a7c59; color: #fff; font-weight: 600; }
+.save-status { min-height: 1.4em; line-height: 1.4; color: #2f5a3e; font-size: 13px; }
+/* Empty message lines take no room but stay in the page, so screen readers hear the next message */
+.save-status:empty { min-height: 0; margin-top: -10px; }
+.save-error:empty { min-height: 0; margin-top: -8px; }
+.save-pane, .save-form, .save-confirm { display: flex; flex-direction: column; gap: 8px; }
+.save-pane label { color: #555; font-size: 13px; }
+.save-row { display: flex; gap: 8px; align-items: stretch; }
+.save-card input[type="text"], .save-text {
+    font: inherit;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #bbb;
+    border-radius: 5px;
+    background: #fff;
+    color: #333;
+}
+.save-card input[type="text"]:disabled { background: #eee; }
+textarea.save-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; resize: vertical; min-height: 92px; }
+.save-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.save-btn {
+    font: inherit;
+    padding: 9px 12px;
+    border: 1px solid #4a7c59;
+    border-radius: 5px;
+    background-color: #fff;
+    color: #2f5a3e;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.save-buttons .save-btn { flex: 1 1 auto; }
+.save-btn:hover:not(:disabled) { background-color: #e7f0ea; }
+.save-btn.primary { background-color: #4a7c59; color: #fff; }
+.save-btn.primary:hover:not(:disabled) { background-color: #3a6648; }
+.save-btn:disabled { border-color: #ccc; background-color: #ccc; color: #888; cursor: not-allowed; }
+.save-card :focus-visible { outline: 2px solid #1d6fd1; outline-offset: 2px; }
+.save-note { color: #666; font-size: 12px; line-height: 1.4; }
+.save-note.full { color: #8a5a00; }
+.save-error { color: #b3261e; font-size: 13px; line-height: 1.4; }
+.save-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.save-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px; border: 1px solid #e3e3e3; border-radius: 5px; background-color: #fafafa; }
+.save-info { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.save-item-name { font-weight: 600; overflow-wrap: anywhere; }
+.save-item-meta { color: #666; font-size: 12px; }
+.save-actions { display: flex; gap: 6px; margin-left: auto; }
+.save-actions .save-btn { padding: 6px 10px; font-size: 13px; }
+.save-item .save-rename { flex: 1 1 150px; width: auto; }
+.save-confirm { padding: 12px; border: 1px solid #d9c27a; border-radius: 5px; background-color: #fff8e1; }
+.save-confirm p { line-height: 1.4; }
+.save-notice {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    z-index: 250;
+    max-width: calc(100% - 32px);
+    padding: 10px 14px;
+    border-radius: 6px;
+    background-color: #2c2433;
+    color: #fff;
+    font-size: 14px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+.save-notice[hidden] { display: none; }
+@media (max-width: 480px) {
+    .save-modal { padding-left: 8px; padding-right: 8px; }
+    .save-card { max-height: calc(var(--save-vh, 100dvh) - 16px); padding: 12px; }
+    /* 16px text fields: iOS does not zoom the page when one gets the focus */
+    .save-card input[type="text"], .save-text, textarea.save-text { font-size: 16px; }
+    .save-actions .save-btn { padding: 9px 12px; }
 }

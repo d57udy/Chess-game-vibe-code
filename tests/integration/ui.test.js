@@ -212,14 +212,43 @@ describe('AI orchestration (stubbed engine)', () => {
         assert.equal(D.g('isAIThinking'), false);
     }));
 
-    test('an illegal or empty AI result is reported, not applied', withDom(async (D) => {
+    test('an illegal or empty AI result is not applied: the AI is asked once more, then a legal move is played for it', withDom(async (D) => {
         await D.play('e2e4');
         await D.waitFor(() => D.aiCalls().length === 1);
         D.aiCalls()[0].resolve(move({ row: 1, col: 4 }, { row: 4, col: 4 }, { piece: 'p' })); // e7e4
-        await sleep(20);
-        assert.equal(D.g('gameHistory.length'), 2);
-        assert.equal(D.status(), 'AI error: returned an illegal move.');
+        await D.waitFor(() => D.aiCalls().length === 2, { message: 'second request' });
+        assert.equal(D.g('gameHistory.length'), 2, 'the illegal move is not applied');
         assert.equal(D.errors.length, 1, 'the rejected move is logged');
+        assert.match(D.errors[0], /AI move rejected: e7e4 in rnbqkbnr\/pppppppp\/8\/8\/4P3\/8\/PPPP1PPP\/RNBQKBNR b KQkq e3 0 1/);
+        assert.equal(D.aiCalls()[1].options.seed, 1, 'the repeat is a request of its own');
+        assert.equal(D.aiCalls()[1].state.currentPlayer, 'b');
+        assert.equal(D.g('isAIThinking'), true, 'still the AI turn: the board stays locked');
+        D.click('d2'); D.click('d4');
+        assert.equal(D.g('selectedSquare'), null);
+
+        D.aiCalls()[1].resolve(null); // no answer this time
+        await D.waitFor(() => D.g('gameHistory.length') === 3, { message: 'a move played for the AI' });
+        await D.settle();
+        assert.deepEqual(D.notations(), ['e4', 'Na6'], 'the first legal move in board order');
+        assert.equal(D.el('game-notice').textContent, 'The AI could not find a legal move, so a legal move was played for it.');
+        assert.equal(D.errors.length, 2, 'the missing answer is logged too');
+        assert.equal(D.aiCalls().length, 2, 'no third request');
+        assert.equal(D.g('currentPlayer'), 'w');
+        assert.equal(D.g('isAIThinking'), false);
+        assert.equal(D.status(), "White's turn.");
+    }));
+
+    test('a legal answer to the repeated request is played as usual, without a notice', withDom(async (D) => {
+        await D.play('e2e4');
+        await D.waitFor(() => D.aiCalls().length === 1);
+        D.aiCalls()[0].resolve(move({ row: 1, col: 3 }, { row: 1, col: 4 }, { piece: 'p' })); // d7 "takes" e7 sideways
+        await D.waitFor(() => D.aiCalls().length === 2, { message: 'second request' });
+        D.aiCalls()[1].resolve(move({ row: 1, col: 4 }, { row: 3, col: 4 }, { piece: 'p' }));
+        await D.waitFor(() => D.g('gameHistory.length') === 3);
+        await D.settle();
+        assert.deepEqual(D.notations(), ['e4', 'e5']);
+        assert.equal(D.el('game-notice').textContent, '');
+        assert.equal(D.errors.length, 1);
     }));
 
     test('review mode: history click cancels the AI, AI waits; resume and back to live', withDom(async (D) => {

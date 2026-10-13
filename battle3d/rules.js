@@ -49,9 +49,9 @@ function battle3dApplyMove(from, to, promotion = null) {
     const mover = currentPlayer;
     const type = piece.toUpperCase();
     const capturedOnTarget = getPieceAt(toRow, toCol);
-    const isCastling = type === 'K' && Math.abs(toCol - fromCol) === 2;
-    const isEnPassant = type === 'P' && toCol !== fromCol && !capturedOnTarget &&
-        enPassantTarget !== null && toRow === enPassantTarget.row && toCol === enPassantTarget.col;
+    // The generator decides what kind of move this is; nothing is re-inferred from the squares
+    const isCastling = legalMove.isCastling === true;
+    const isEnPassant = legalMove.isEnPassant === true;
     // An en passant victim stands beside the attacker, on the attacker's starting rank
     const victimSquare = isEnPassant ? { row: fromRow, col: toCol } : { row: toRow, col: toCol };
     const victimPiece = isEnPassant ? getPieceAt(fromRow, toCol) : capturedOnTarget;

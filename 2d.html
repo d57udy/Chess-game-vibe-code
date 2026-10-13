@@ -61,6 +61,7 @@
                 <p>Click a piece to select it, then click a highlighted square to move.</p>
                 <p>Standard chess rules apply.</p>
                 <p>Use the Left/Right arrow keys or click a move to review the game. Escape cancels a selection.</p>
+                <p>Your game is kept on this device and comes back when you reopen the page. Save / Load keeps named saves and reads games from PGN; Export Moves copies, shares or downloads the move list.</p>
             </div>
         </div>
 
@@ -79,6 +80,8 @@
                 <button id="undo-button">Undo Move</button>
                 <button id="redo-button">Redo Move</button>
                 <button id="hint-button">Get Hint</button>
+                <button id="save-open" aria-haspopup="dialog" title="Save this game, load a saved game, or import one">Save / Load</button>
+                <button id="export-open" aria-haspopup="dialog" title="Copy, share or download the moves of this game (PGN)">Export Moves</button>
             </div>
             <h3>Move History</h3>
             <div id="review-bar" hidden>
@@ -109,12 +112,17 @@
         </div>
     </div>
 
-    <!-- Load order matters: rules and state, AI, AI worker client, capture scenes, then the UI -->
+    <!-- Load order matters: rules and state, AI, AI worker client, capture scenes, the UI, then save / load -->
     <script src="gameLogic.js"></script>
     <script src="aiPlayer.js"></script>
     <script src="aiClient.js"></script>
+    <script src="battle3d/rules.js"></script> <!-- silent move replay for loading saved games (savegame.js) -->
     <script src="battleFx.js"></script>
     <script src="ui.js"></script>
+    <!-- Save / Load, autosave, PGN export and import: logic, panel, then the wiring to ui.js -->
+    <script src="savegame.js"></script>
+    <script src="savepanel.js"></script>
+    <script src="saves2d.js"></script>
     <!-- Offline support for visitors who only open the 2D page (sw.js is shared with the 3D game).
          ?nosw=1 unregisters the worker, ?debug=1 skips registration; a new version shows a Reload toast. -->
     <script type="module">

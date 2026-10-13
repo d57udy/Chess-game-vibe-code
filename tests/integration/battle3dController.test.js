@@ -153,12 +153,17 @@ describe('battle3d controller: human vs AI flow', () => {
         assert.equal(C.get('board[7][0]'), 'q');
     }));
 
-    test('an illegal AI move is reported, not applied', withCtl(async (C) => {
+    // The game used to stop here with "AI error: returned an illegal move."; now the AI is asked again and,
+    // failing that, a legal move is played for it (battle3dAiRecovery.test.js).
+    test('an illegal AI move is logged, not applied, and asked for again', withCtl(async (C) => {
         await C.play('e2e4');
         await C.step(0.3);
         await C.answerAI('e7e4');
-        assert.match(C.status(), /AI error/);
         assert.equal(C.state().history.length, 1);
+        assert.ok(C.errors.some((e) => /AI move rejected: e7e4 in /.test(e)), `${C.errors}`);
+        assert.doesNotMatch(C.status(), /AI error/);
+        await C.step(0.3);
+        assert.equal(C.aiCalls().length, 2, 'a second request for the same position');
     }));
 });
 

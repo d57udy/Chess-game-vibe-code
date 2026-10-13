@@ -16,6 +16,16 @@ const squareName = (sq) => String.fromCharCode(97 + sq.col) + (8 - sq.row);
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const ANALYSIS_WAIT_SECONDS = 1.5; // after a move's scene, wait at most this long for its analysis before going on
 const BIG_EVAL = 300, BIG_EVAL_RESET = 150; // centipawns for winningBig / losingBig
+// En passant looks like a mistake without the rule, so the first few captures (either side) explain it in one line
+const EN_PASSANT_TIP = 'En passant: a pawn that just advanced two squares can be captured as if it had moved only one.';
+const EN_PASSANT_TO_YOU = 'En passant: your pawn moved two squares and landed beside their pawn, so it can be taken as if it had moved one.';
+const EN_PASSANT_BY_YOU = 'En passant: their pawn moved two squares and landed beside yours, so you can take it as if it had moved one.';
+const EN_PASSANT_KEY = 'battle3d.enPassantSeen'; // how often the rule has been explained on this device
+const EN_PASSANT_EXPLAIN_TIMES = 3;
+// The AI's answer could not be played: it is asked again this often, then the rules pick a legal move
+const AI_RETRIES = 1;
+const AI_FALLBACK_NOTE = 'The AI could not find a legal move, so a legal move was played for it.';
+const BEST_MAX_LOSS = 50; // centipawns a move may trail the engine's choice and still be called "best"
 
 function loadSettings() {
     try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; }
@@ -25,7 +35,7 @@ function saveSettings(settings) {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...loadSettings(), ...settings })); } catch (e) { /* private mode etc. */ }
 }
 
-export function createController({ sceneAPI, units, audio = null, onMoveEnd = null, debug = false, log = () => {} }) {
+export function createController({ sceneAPI, units, audio = null, onMoveEnd = null, notify = null, debug = false, log = () => {} }) {
     const $ = (id) => document.getElementById(id);
     const el = {
         hud: $('hud'), hudToggle: $('hud-toggle'),
@@ -70,18 +80,19 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         hover: null,
         moving: false,           // a move is being animated (input locked)
         phase: null,             // while moving: 'move' | 'check' | 'finale' (result stays hidden until done)
-        anim: null,              // { color, capture } of the move being animated
+        anim: null,              // { color, capture, enPassant: square | null } of the move being animated
         aiHandle: null,          // { promise, cancel }
         aiWaiting: false,        // pause before the AI request
         aiToken: 0,              // bumped by cancelAI so a pending pause drops out
         pendingPromotion: null,  // { from, to }
-        hint: null,              // { from, to, capture, piece, promotion, castling } shown on the board
+        hint: null,              // { from, to, capture, enPassant, piece, promotion, castling } shown on the board
         hintHandle: null,        // in-flight hint request { promise, cancel }
         hintToken: 0,            // bumped by clearHint so a late answer drops out
         version: 0,              // bumped whenever the position changes underneath async work
         resets: 0,               // bumped by new game / undo / loadFen (drops late analysis results)
         reviewIndex: null,       // history index shown in review mode (input locked), null = live
         reviewNote: null,        // status text while reviewing (from the coach's review panel)
+        reviewMarks: null,       // last-move squares highlighted on the reviewed position
         pendingReview: null,     // [index, options] requested while a move was animating
         turnStartedAt: 0,        // performance.now() when the side to move got the turn
         bigSide: null,           // 'w' | 'b' after a winningBig event, until the eval comes back
@@ -116,15 +127,44 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         return g.isKingInCheck(gs().currentPlayer) ? g.findKing(gs().currentPlayer) : null;
     }
 
+    // --- En passant (read from the history, so the move list, the highlight, undo and review agree) ---
+    // Square of the pawn taken en passant by the move that led to history entry `index`, else null:
+    // a pawn went diagonally onto an empty square, so the pawn it took stood beside it.
+    function enPassantSquare(index) {
+        const hist = gs().gameHistory, prev = hist[index - 1], move = hist[index]?.lastMove;
+        if (!prev || !move) return null;
+        const { from, to } = move;
+        const piece = prev.board[from.row]?.[from.col];
+        if (!piece || piece.toLowerCase() !== 'p' || from.col === to.col || prev.board[to.row][to.col]) return null;
+        return { row: from.row, col: to.col };
+    }
+
+    // Last-move squares for the highlight; en passant adds the square the captured pawn was taken from
+    function lastMoveMarks(index = gs().currentMoveIndex) {
+        const move = gs().gameHistory[index]?.lastMove;
+        if (!move) return null;
+        const captured = enPassantSquare(index);
+        return captured ? { from: move.from, to: move.to, captured } : move;
+    }
+
+    // Notation as shown to the player: en passant captures are marked, e.g. "exd6 e.p."
+    function shownNotation(index) {
+        const notation = gs().gameHistory[index]?.moveNotation || '';
+        return notation && enPassantSquare(index) ? `${notation} e.p.` : notation;
+    }
+    const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+
     function refreshHighlights() {
+        const reviewing = st.reviewIndex !== null; // the board shows a past position: keep its own marks
         const showMoves = !st.moving && st.selected;
-        const showCheck = !st.moving || st.phase === 'check';
+        const showCheck = !reviewing && (!st.moving || st.phase === 'check');
         sceneAPI.setHighlights({
             selected: showMoves ? st.selected : null,
             moves: showMoves ? st.moves.map(m => ({
                 row: m.row, col: m.col, capture: !!g.getPieceAt(m.row, m.col) || !!m.isEnPassant
             })) : [],
-            lastMove: g.battle3dLastMove(),
+            lastMove: reviewing ? st.reviewMarks : lastMoveMarks(),
+            victim: showMoves ? enPassantVictim() : null,
             check: showCheck ? checkSquare() : null,
             hover: !st.moving && !inputLocked() ? (st.cursor || st.hover) : null
         });
@@ -195,6 +235,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             ? `${sideName(ev.color)} castles ${ev.to.col > ev.from.col ? 'kingside' : 'queenside'}.`
             : `${who} ${squareName(ev.from)} to ${squareName(ev.to)}` +
               (ev.captured ? `, takes ${PIECE_NAMES[ev.captured.piece.toLowerCase()]}` : '') +
+              (ev.enPassant ? ` on ${squareName(ev.captured.square)} en passant` : '') +
               (ev.promotion ? `, promotes to ${PIECE_NAMES[ev.promotion.toLowerCase()]}` : '') + '.';
         if (s.over) text += ' ' + s.message;
         else if (s.inCheck) text += ' Check.';
@@ -218,6 +259,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         if (st.error) text = st.error;
         else if (st.reviewIndex !== null) text = reviewText(st.reviewIndex);
         else if (st.moving && st.phase === 'check') text = `${sideName(gs().currentPlayer)} is in check!`;
+        else if (st.moving && st.anim?.enPassant) text = `En passant! ${sideName(st.anim.color)} takes the pawn on ${squareName(st.anim.enPassant)}.`;
         else if (st.moving) text = st.anim?.capture ? 'Battle in progress...' : `${sideName(st.anim?.color)} is moving...`;
         else if (showOver) text = s.message;
         else if (thinking()) text = `${sideName(gs().currentPlayer)} (AI ${eloLabel(st.elo)}) is thinking...`;
@@ -289,7 +331,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
                 el.moveList.append(li);
             }
             const span = document.createElement('span');
-            span.textContent = entry.moveNotation;
+            span.textContent = shownNotation(i);
+            if (enPassantSquare(i)) span.title = EN_PASSANT_TIP;
             span.dataset.index = String(i);
             span.className = 'mv' + (i === last && st.reviewIndex === null ? ' last' : '') + (i === st.reviewIndex ? ' reviewed' : '');
             li.append(span);
@@ -311,7 +354,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         }
     }
 
-    async function maybeStartAI() {
+    // attempt: 0 for a normal request, 1.. for a repeat after an answer that could not be played
+    async function maybeStartAI(attempt = 0) {
         if (st.moving || thinking() || st.reviewIndex !== null || gs().isGameOver || isHumanTurn()) return;
         const version = st.version;
         const token = st.aiToken;
@@ -323,11 +367,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
 
         let handle;
         try {
-            handle = g.requestAIMove(g.getCurrentGameStateSnapshot(), st.elo);
+            // The engine is deterministic: a repeat gets a seed of its own so it need not give the same answer
+            handle = attempt ? g.requestAIMove(g.getCurrentGameStateSnapshot(), st.elo, { seed: attempt })
+                : g.requestAIMove(g.getCurrentGameStateSnapshot(), st.elo);
         } catch (error) {
-            console.error('battle3d: AI request failed to start', error);
-            st.error = 'AI error: could not compute a move.';
-            updateHud();
+            console.error(`battle3d: AI request failed to start in ${g.battle3dFen()}`, error);
+            recoverAI(attempt);
             return;
         }
         st.aiHandle = handle;
@@ -342,16 +387,42 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         st.aiHandle = null;
         if (version !== st.version) { maybeStartAI(); return; }
         if (!move?.from || !move?.to) {
-            st.error = 'AI could not find a move.';
-            updateHud();
+            console.error(`battle3d: AI returned no move in ${g.battle3dFen()}`);
+            recoverAI(attempt);
             return;
         }
         log('AI move', move);
-        await playMove(move.from, move.to, move.promotionPiece || 'Q', true);
+        // An illegal answer is rejected by the rules (and logged with the position); nothing has changed then
+        if (await playMove(move.from, move.to, move.promotionPiece || 'Q', true) === false) recoverAI(attempt);
+    }
+
+    // The game must go on when the AI's answer cannot be played (illegal move, no move, failed request):
+    // ask once more, then let the rules choose a legal move and say so.
+    function recoverAI(attempt) {
+        if (attempt < AI_RETRIES) { maybeStartAI(attempt + 1); return; }
+        const move = firstLegalMove();
+        if (!move) { st.error = 'AI could not find a move.'; updateHud(); return; }
+        console.warn(`battle3d: playing ${squareName(move.from)}${squareName(move.to)} for the AI in ${g.battle3dFen()}`);
+        try { notify?.(AI_FALLBACK_NOTE, { force: true }); } catch (e) { log('notify failed', e); }
+        playMove(move.from, move.to, 'Q', true, AI_FALLBACK_NOTE);
+    }
+
+    // The first legal move of the side to move in board order (a8 to h1); the same position gives the same move
+    function firstLegalMove() {
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = g.getPieceAt(row, col);
+                if (!piece || g.getPlayerForPiece(piece) !== gs().currentPlayer) continue;
+                const target = g.generateLegalMoves(row, col)[0];
+                if (target) return { from: { row, col }, to: { row: target.row, col: target.col } };
+            }
+        }
+        return null;
     }
 
     // --- Moves ---
-    async function playMove(from, to, promotion, isAI) {
+    // note: one more sentence for the screen reader announcement of this move
+    async function playMove(from, to, promotion, isAI, note = '') {
         if (st.reviewIndex !== null) exitReview({ quiet: true });
         const keyBefore = g.battle3dFen();
         const stateBefore = g.getCurrentGameStateSnapshot();
@@ -361,19 +432,20 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         try {
             ev = g.battle3dApplyMove(from, to, promotion);
         } catch (error) {
-            console.error('battle3d: move rejected', error);
-            st.error = isAI ? 'AI error: returned an illegal move.' : null;
+            console.error(`battle3d: ${isAI ? 'AI ' : ''}move rejected: ${from ? squareName(from) : '?'}${to ? squareName(to) : '?'} in ${keyBefore}`, error);
+            st.error = null;
             updateHud();
             return false;
         }
         ev.isAI = isAI;
+        emit('change', { reason: 'move' }); // the move is in the rules state now; the animation follows
         clearHint();
         const analysisAfter = analyzeCurrent(); // runs in the worker while the scene plays
         log('move', ev.notation, ev);
         const version = ++st.version;
         st.moving = true;
         st.phase = 'move';
-        st.anim = { color: ev.color, capture: !!ev.captured };
+        st.anim = { color: ev.color, capture: !!ev.captured, enPassant: ev.enPassant ? ev.captured.square : null };
         st.error = null;
         clearSelection();
         clearRings();
@@ -381,6 +453,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         refreshHighlights();
         renderMoveList();
         updateHud();
+        const explained = ev.enPassant ? explainEnPassant(ev) : null;
 
         await runAnimation(() => units.playMove(ev), 'playMove');
         if (version !== st.version) return true; // new game / undo while animating
@@ -391,7 +464,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         refreshHighlights();
         renderMoveList();
         updateHud();
-        announce(describeMove(ev, s));
+        announce(describeMove(ev, s) + (explained ? ` ${explained}` : '') + (note ? ` ${note}` : ''));
         // units.js plays every motion and fight sound, including castle and the victory cheer at mate;
         // the controller adds only the game-state cues: check, checkmate, draw
         if (s.over) {
@@ -438,6 +511,24 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             if (version === st.version) startTurn(); // a newer move emits its own turn
         }
         return true;
+    }
+
+    // The rule in one line, from the player's side of the board when there is one
+    function enPassantLine(ev) {
+        if (st.mode !== 'human-ai') return EN_PASSANT_TIP;
+        return ev.color === st.humanColor ? EN_PASSANT_BY_YOU : EN_PASSANT_TO_YOU;
+    }
+
+    // Shows the rule the first few times an en passant capture happens on this device (whoever captures).
+    // Returns the line when it was shown, else null.
+    function explainEnPassant(ev) {
+        let seen = 0;
+        try { seen = Number(localStorage.getItem(EN_PASSANT_KEY)) || 0; } catch (e) { /* private mode: explain every time */ }
+        if (seen >= EN_PASSANT_EXPLAIN_TIMES) return null;
+        try { localStorage.setItem(EN_PASSANT_KEY, String(seen + 1)); } catch (e) { /* ignore */ }
+        const line = enPassantLine(ev);
+        try { notify?.(line, { force: true, seconds: 12 }); } catch (e) { log('notify failed', e); }
+        return line;
     }
 
     function endMoving() {
@@ -499,28 +590,75 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         return moves.find(m => m.isCastling && Math.sign(m.col - from.col) === Math.sign(col - from.col)) || null;
     }
 
-    function onSquareClick(row, col) {
+    // Clicking the pawn that an en passant move takes plays that move (the pawn's own square is never a target)
+    function enPassantOntoVictim(from, moves, row, col) {
+        return row === from.row ? moves.find(m => m.isEnPassant && m.col === col) || null : null;
+    }
+
+    // Square of the pawn the selected pawn would take en passant, else null
+    function enPassantVictim() {
+        const move = st.selected ? st.moves.find(m => m.isEnPassant) : null;
+        return move ? { row: st.selected.row, col: move.col } : null;
+    }
+
+    // --- What a click means ---
+    // The scene reports three things for a pointer click: the picked square (the first unit's pick proxy on
+    // the ray, else the board), via.ground (the board square the pointer is over) and via.figure (the square
+    // of the unit whose drawn figure the pointer is on, or null). A proxy is larger than its figure and, seen
+    // from the player's side, covers the middle of the square behind it, so the picked square alone would
+    // give the unit in front every click on that square's marker.
+    //   On a move dot (via.marker; the dot is drawn over figures and labels): that square.
+    //   On a figure: that unit. Its square is played when it is an offered target (a capture).
+    //   Not on a figure: the board square under the pointer first, then the picked unit (the generous proxy).
+    // Keyboard clicks and clickSquare(row, col) carry no `via` and mean the square itself.
+    function clickedSquares(row, col, via) {
+        if (!via) return [{ row, col }];
+        if (via.marker) return [via.marker];
+        if (via.figure) return [via.figure];
+        return via.ground && (via.ground.row !== row || via.ground.col !== col) ? [via.ground, { row, col }] : [{ row, col }];
+    }
+
+    // The offered move a click plays while a unit is selected, or null: onto the square, castling by clicking
+    // the own rook, en passant by clicking the pawn it takes.
+    function clickedMove(row, col, via = null) {
+        if (!st.selected) return null;
+        for (const sq of clickedSquares(row, col, via)) {
+            const move = st.moves.find(m => m.row === sq.row && m.col === sq.col) ||
+                castlingTowardRook(st.selected, st.moves, sq.row, sq.col) ||
+                enPassantOntoVictim(st.selected, st.moves, sq.row, sq.col);
+            if (move) return move;
+        }
+        return null;
+    }
+
+    // The unit a click selects when it plays no move: the figure under the pointer; else one of the mover's own
+    // pieces on the board square under the pointer (not the neighbour whose proxy the pointer crossed); else the pick.
+    function clickedUnit(row, col, via) {
+        const ownAt = (sq) => { const p = sq && g.getPieceAt(sq.row, sq.col); return !!p && g.getPlayerForPiece(p) === gs().currentPlayer; };
+        if (via?.figure) return via.figure;
+        return via?.ground && ownAt(via.ground) ? via.ground : { row, col };
+    }
+
+    // via (pointer clicks only, from the scene): { ground, figure, marker }, see above
+    function onSquareClick(row, col, via = null) {
         if (row === null || row === undefined) return;
         if (inputLocked()) {
             // Not your turn (AI thinking, opponent's move): a dull knock says "not now"
             if (!st.moving && !gs().isGameOver && !st.pendingPromotion) sfx('invalid', { row, col });
             return;
         }
-        const piece = g.getPieceAt(row, col);
-        if (st.selected) {
-            // King then own rook castles toward that rook (the rook's pick proxy can also cover g1/c1)
-            const move = st.moves.find(m => m.row === row && m.col === col) ||
-                castlingTowardRook(st.selected, st.moves, row, col);
-            if (move) {
-                const from = st.selected;
-                if (move.isPromotion) {
-                    openPromotion(from, { row, col });
-                } else {
-                    playMove(from, { row: move.row, col: move.col }, null, false);
-                }
-                return;
+        const move = clickedMove(row, col, via);
+        if (move) {
+            const from = st.selected;
+            if (move.isPromotion) {
+                openPromotion(from, { row: move.row, col: move.col });
+            } else {
+                playMove(from, { row: move.row, col: move.col }, null, false);
             }
+            return;
         }
+        ({ row, col } = clickedUnit(row, col, via));
+        const piece = g.getPieceAt(row, col);
         const own = piece && g.getPlayerForPiece(piece) === gs().currentPlayer;
         const sameSquare = st.selected && st.selected.row === row && st.selected.col === col;
         // A suggested piece (hint, "Show me better") is already selected: clicking it is "pick it up", not "put it down"
@@ -592,7 +730,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     function hintText(h) {
         if (h.castling) return `Hint: castle ${h.to.col > h.from.col ? 'kingside' : 'queenside'}.`;
         let text = `Hint: ${PIECE_NAMES[h.piece.toLowerCase()]} to ${squareName(h.to)}`;
-        if (h.capture) text += ', capture';
+        if (h.capture) text += h.enPassant ? ', capture en passant' : ', capture';
         if (h.promotion) text += `, promote to ${PIECE_NAMES[h.promotion.toLowerCase()]}`;
         return text + '.';
     }
@@ -637,6 +775,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             from: { row: move.from.row, col: move.from.col },
             to: { row: move.to.row, col: move.to.col },
             capture: !!g.getPieceAt(move.to.row, move.to.col) || !!target.isEnPassant,
+            enPassant: !!target.isEnPassant,
             piece,
             promotion: target.isPromotion ? (move.promotionPiece || 'Q') : null,
             castling: !!target.isCastling
@@ -676,6 +815,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     // --- Game events (commentary.js, coach.js) ---
     // Each line-bank event carries `color` = the king who would naturally say it (its own point of view).
     // Lifecycle events for the coach: reset, turn, moveDone. Unknown types are ignored by listeners.
+    // 'change' { reason: 'move' | 'newGame' | 'loadFen' | 'loadGame' | 'undo' | 'settings' } fires synchronously
+    // right after the rules state or the game settings changed (autosave listens to it).
     const eventListeners = new Set();
 
     function onEvent(fn) {
@@ -796,15 +937,20 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         for (const [type, data] of out) emit(type, data);
         emit('moveDone', {
             ...base, color: mover, ev, status: s, before, after, stateBefore,
+            enPassantLine: ev.enPassant ? enPassantLine(ev) : null,
             bestBefore: before?.bestMove || null, alternatives: before?.alternatives || null
         });
     }
 
+    // Position key of history entry i as the game's own repetition rule sees it (gameLogic.js): an en passant
+    // square nobody can capture on does not make a position different
+    const repetitionKey = (i) => g.getHistoryRepetitionKey?.(i) ?? g.getBoardPositionString(gs().gameHistory[i]);
+
     function repetitions() {
-        const hist = gs().gameHistory, idx = gs().currentMoveIndex;
-        const current = g.getBoardPositionString(hist[idx]);
+        const idx = gs().currentMoveIndex;
+        const current = repetitionKey(idx);
         let n = 0;
-        for (let i = 0; i <= idx; i++) if (g.getBoardPositionString(hist[i]) === current) n++;
+        for (let i = 0; i <= idx; i++) if (repetitionKey(i) === current) n++;
         return n;
     }
 
@@ -897,7 +1043,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
             enPassantTarget: e.enPassantTarget ? { ...e.enPassantTarget } : null,
             halfmoveClock: e.halfmoveClock,
             fullmoveNumber: e.fullmoveNumber,
-            positionHistory: hist.slice(0, index + 1).map(h => g.getBoardPositionString(h))
+            positionHistory: hist.slice(0, index + 1).map((h, i) => repetitionKey(i))
         };
     }
 
@@ -909,9 +1055,12 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         const piece = prev.board[from.row][from.col];
         const placed = cur.board[to.row][to.col];
         const promotion = piece && placed && piece.toLowerCase() === 'p' && placed.toLowerCase() !== 'p' ? placed.toUpperCase() : null;
+        const passed = enPassantSquare(index); // the pawn taken en passant stood beside the mover, not on `to`
         return {
             ply: index, mover: prev.currentPlayer, piece, from: { ...from }, to: { ...to }, promotion,
-            captured: prev.board[to.row][to.col] || null, notation: cur.moveNotation, moveNumber: cur.moveNumber,
+            captured: (passed ? prev.board[passed.row][passed.col] : prev.board[to.row][to.col]) || null,
+            enPassant: !!passed, capturedSquare: passed || (prev.board[to.row][to.col] ? { ...to } : null),
+            notation: shownNotation(index), moveNumber: cur.moveNumber,
             human: !isAIColor(prev.currentPlayer)
         };
     }
@@ -931,10 +1080,26 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         if (!before || !after || gs().gameHistory[index] !== cur) return null;
         const evalBefore = evalCp(before), evalAfter = evalCp(after);
         const played = { from: info.from, to: info.to, promotionPiece: info.promotion };
-        const classification = classify(evalBefore, evalAfter, info.mover, played, before.bestMove);
-        let motifs = [], brilliant = false;
+        const playedBest = sameMove(before.bestMove, played);
+        let classification = classify(evalBefore, evalAfter, info.mover, played, before.bestMove);
+        // In a won or lost position every move keeps the win chance, so "best" by that measure alone says
+        // little: a move the engine did not choose and that trails its choice clearly is "good", not "best"
+        // (compared within the "before" search when the move is one of its alternatives, else across the two)
+        const alt = (before.alternatives || []).find(a => sameMove(a.move, played));
+        const after1 = Number.isFinite(alt?.eval) ? alt.eval : evalAfter;
+        const loss = povCp(evalBefore, info.mover) - povCp(after1, info.mover);
+        if (classification === 'best' && !playedBest && loss >= BEST_MAX_LOSS) classification = 'good';
+        let motifs = [], brilliant = false, allowsEnPassant = [];
         const tactics = await loadTactics();
         try {
+            // Enemy pawns that may now take the pawn that just moved two squares (legal replies only)
+            const target = stateAfter.enPassantTarget, T = tactics?._internal;
+            if (target && T?.legalMoves && T?.flat) {
+                const b = T.flat(stateAfter), ep = target.row * 8 + target.col;
+                allowsEnPassant = T.legalMoves(b, opponent(info.mover), ep)
+                    .filter(m => m.to === ep && String(b[m.from]).toLowerCase() === 'p' && (m.from & 7) !== (m.to & 7))
+                    .map(m => squareName({ row: m.from >> 3, col: m.from & 7 }));
+            }
             motifs = tactics?.detect?.(stateBefore, played, stateAfter, { before, after }) || [];
             // Brilliant: a best move that really leaves a piece (not a pawn) to be taken
             const moved = (info.promotion || info.piece || '').toLowerCase();
@@ -943,8 +1108,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
                 (tactics?.hangingPieces?.(stateAfter, info.mover) || []).some(h => h.square === square);
         } catch (e) { log('tactics failed', e); }
         return {
-            ...info, evalBefore, evalAfter, classification, motifs, brilliant, stateBefore,
-            bestBefore: before.bestMove || null, playedBest: sameMove(before.bestMove, played), mateAfter: after.mate ?? null
+            ...info, evalBefore, evalAfter, classification, motifs, brilliant, stateBefore, allowsEnPassant,
+            bestBefore: before.bestMove || null, playedBest, mateAfter: after.mate ?? null
         };
     }
 
@@ -954,7 +1119,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         const entry = gs().gameHistory[i];
         if (!entry || i === 0) return 'Reviewing the start position. Esc returns to the game.';
         const mover = gs().gameHistory[i - 1].currentPlayer;
-        return `Reviewing ${entry.moveNumber}${mover === 'w' ? '.' : '...'} ${entry.moveNotation}. Esc returns to the game.`;
+        return `${sentence(`Reviewing ${entry.moveNumber}${mover === 'w' ? '.' : '...'} ${shownNotation(i)}`)} Esc returns to the game.`;
     }
 
     // Shows history position `index`. Options: lastMove (squares to highlight instead of the move that led
@@ -980,7 +1145,8 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         st.reviewIndex = index;
         try { units.syncBoard(hist[index].board); } catch (e) { log('review sync failed', e); }
         clearRings({ forget: true });
-        sceneAPI.setHighlights({ selected: null, moves: [], lastMove: lastMove !== undefined ? lastMove : (hist[index].lastMove || null), check: null, hover: null });
+        st.reviewMarks = lastMove !== undefined ? lastMove : lastMoveMarks(index);
+        sceneAPI.setHighlights({ selected: null, moves: [], lastMove: st.reviewMarks, victim: null, check: null, hover: null });
         showReviewArrows(arrows, arrow);
         sceneAPI.requestRender?.();
         el.reviewBar && (el.reviewBar.hidden = false);
@@ -1060,6 +1226,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         resyncView();
         sceneAPI.setView(viewSide(), { animate: true });
         emit('reset', { reason: 'newGame' });
+        emit('change', { reason: 'newGame' });
         emit('gameStart', { color: 'w' });
         emit('gameStart', { color: 'b' });
         startTurn();
@@ -1073,8 +1240,43 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         resetEventState();
         resyncView();
         emit('reset', { reason: 'loadFen' });
+        emit('change', { reason: 'loadFen' });
         startTurn();
         maybeStartAI();
+    }
+
+    // Replaces the whole game (history included) without animating, e.g. a saved game or an imported PGN.
+    // apply() changes the rules state synchronously and runs after everything in flight is aborted; it puts
+    // the previous game back itself when it fails and then returns { ok: false }. settings { mode, humanColor,
+    // elo } (each optional, validated like the stored settings) are applied and saved when the load worked.
+    // Returns whatever apply() returned. Works during an animation, in review and before the first new game.
+    function loadGame(apply, { mode, humanColor, elo } = {}) {
+        abortInFlight();
+        let result;
+        try {
+            result = apply();
+        } catch (error) {
+            console.error('battle3d: loadGame failed', error);
+            result = { ok: false, error: String(error?.message || error) };
+        }
+        const loaded = result?.ok !== false;
+        if (loaded) {
+            if (MODES.includes(mode)) st.mode = mode;
+            if (humanColor === 'w' || humanColor === 'b') st.humanColor = humanColor;
+            if (Number.isFinite(elo)) st.elo = clampElo(elo);
+            el.elo.value = st.elo;
+            persist();
+        }
+        g.battle3dGameStatus(); // isGameOver for the position now on the board
+        if (loaded) resetEventState();
+        resyncView();
+        sceneAPI.setView(viewSide(), { animate: true });
+        // A failed load left the old game in place: listeners keep what they know about it
+        emit('reset', { reason: loaded ? 'loadGame' : 'loadFailed' });
+        if (loaded) emit('change', { reason: 'loadGame' });
+        startTurn();
+        maybeStartAI();
+        return result;
     }
 
     // Plies to undo so a human vs AI game lands on the human's turn.
@@ -1093,6 +1295,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         g.battle3dUndo(plies);
         resyncView();
         emit('reset', { reason: 'undo', plies });
+        emit('change', { reason: 'undo' });
         // The side that took moves back is now to move; its king speaks and the other may retort
         emit('undoUsed', { color: gs().currentPlayer });
         startTurn();
@@ -1107,6 +1310,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         g.battle3dUndo(plies);
         resyncView();
         emit('reset', { reason: 'undo', plies });
+        emit('change', { reason: 'undo' });
         emit('undoUsed', { color: gs().currentPlayer });
         startTurn();
         maybeStartAI();
@@ -1128,6 +1332,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         updateHud();
         // A move animation in flight finishes and then calls maybeStartAI itself
         if (!st.moving) maybeStartAI();
+        emit('change', { reason: 'settings' });
     }
 
     function setHumanColor(color) {
@@ -1142,6 +1347,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         refreshHighlights();
         updateHud();
         if (!st.moving) maybeStartAI();
+        emit('change', { reason: 'settings' });
     }
 
     function setSpeed(speed) {
@@ -1162,6 +1368,7 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
         st.elo = clampElo(elo);
         persist();
         updateHud();
+        emit('change', { reason: 'settings' });
     }
 
     function setAmbience(on) {
@@ -1320,12 +1527,14 @@ export function createController({ sceneAPI, units, audio = null, onMoveEnd = nu
     }
 
     return {
-        newGame, loadFen, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
+        newGame, loadFen, loadGame, undo, setMode, setHumanColor, setSpeed, setLabels, setElo, setMuted, setAmbience, skip,
         hint: requestHint, clearHint,
         onEvent, setAnalysisNeed, showSuggestion, judgePly, plyInfo, undoTo, analyzeCurrent, analysisFor, enterReview, exitReview,
         isHumanColor: (c) => !isAIColor(c),
         viewSide,
         clickSquare: onSquareClick,
+        // The move { row, col, ... } a click would play right now, or null (nothing is played): for tests and tools
+        clickedMove: (row, col, via = null) => (inputLocked() ? null : clickedMove(row, col, via)),
         // Cast changes rebuild every unit: drop rings before setCast, refresh() reapplies them after
         clearRings: () => clearRings(),
         forgetRings: () => clearRings({ forget: true }),

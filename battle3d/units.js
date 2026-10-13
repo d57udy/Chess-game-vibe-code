@@ -445,7 +445,9 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         u.proxy.position.y = coarse ? 0.5 : 0.45;
         u.proxy.userData.unit = u;
         root.add(u.proxy);
-        if (S.registerPickProxy) S.registerPickProxy(u.proxy, () => (gridHas(u) ? { row: u.square.row, col: u.square.col } : null));
+        // Third argument: the figure itself (model with its gear, or the mount carrying it), so the scene can tell a
+        // click on it from one that only meets the larger proxy. Base, aura, rings and label are not the figure.
+        if (S.registerPickProxy) S.registerPickProxy(u.proxy, () => (gridHas(u) ? { row: u.square.row, col: u.square.col } : null), u.horse ? u.horse.model : model);
 
         decorate(u);
         placeAt(u, square);
@@ -479,13 +481,14 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         const label = new THREE.Sprite(labelMaterial(u.color, u.type));
         label.scale.set(0.3, 0.3, 1);
         label.position.y = u.labelY;
-        label.renderOrder = 10;
+        label.renderOrder = 5;   // under the board's target markers (scene.js, order 6): a label must not hide the dot behind it
         label.visible = labelsOn;
         u.root.add(disc, rim, label);
         u.label = label;
+        let wantLabel = labelsOn, selected = false;
         return {
-            setLabel(on) { label.visible = !!on; },
-            setSelected() {},
+            setLabel(on) { wantLabel = !!on; label.visible = wantLabel && !selected; },
+            setSelected(on) { selected = !!on; label.visible = wantLabel && !selected; }, // as unit-visuals.js does
             setThreatened() {},
             dispose() {}
         };

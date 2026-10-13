@@ -133,7 +133,7 @@ function attacksFrom(b, s) {
 function applyMove(b, m, ep) {
     const n = b.slice(), p = n[m.from];
     n[m.from] = null;
-    if (typeOf(p) === 'P' && m.to === ep && !b[m.to]) n[(m.from & ~7) | (m.to & 7)] = null; // en passant victim
+    if (typeOf(p) === 'P' && m.to === ep && !b[m.to] && (m.to & 7) !== (m.from & 7)) n[(m.from & ~7) | (m.to & 7)] = null; // en passant victim
     if (typeOf(p) === 'K' && Math.abs((m.to & 7) - (m.from & 7)) === 2) { // castling (when given a game move)
         const row = m.from & ~7, kside = (m.to & 7) === 6;
         n[row + (kside ? 5 : 3)] = n[row + (kside ? 7 : 0)];
@@ -164,7 +164,10 @@ function legalMoves(b, color, ep) {
             for (const dc of [-1, 1]) {
                 if (!inside(r + dr, c + dc)) continue;
                 const to = (r + dr) * 8 + c + dc, q = b[to];
-                if ((q && colorOf(q) !== color) || to === ep) add(to);
+                // En passant only takes the enemy pawn standing beside this one (so an ep square that
+                // belongs to the other side's last move never gives `color` a diagonal step)
+                const enPassant = to === ep && !q && b[r * 8 + c + dc] === (color === 'w' ? 'p' : 'P');
+                if ((q && colorOf(q) !== color) || enPassant) add(to);
             }
         } else {
             for (const to of attacksFrom(b, s)) {
@@ -630,6 +633,6 @@ function toRows(b) {
 function parse(n) { return { row: 8 - Number(n[1]), col: n.charCodeAt(0) - 97 }; }
 
 // Exposed for tests and the coach (e.g. "is this side mated", SEE checks).
-export const _internal = { flat, legalMoves, matesInOne, see, attackers, isMate, backRankMate, trapped, VALUE };
+export const _internal = { flat, legalMoves, applyMove, matesInOne, see, attackers, isMate, backRankMate, trapped, VALUE };
 
 // --- END OF FILE battle3d/tactics.js ---

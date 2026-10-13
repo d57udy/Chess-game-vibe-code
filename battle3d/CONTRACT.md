@@ -86,7 +86,8 @@ SceneAPI = {
   onSquareHover(cb(row | null, col | null)),
   registerPickProxy(object3D, () => ({ row, col })),  // units register a simple invisible collider
   unregisterPickProxy(object3D),
-  setHighlights({ selected, moves: [{ row, col, capture }], lastMove: { from, to } | null, check: { row, col } | null, hover }),
+  setHighlights({ selected, moves: [{ row, col, capture }], lastMove: { from, to, captured? } | null, check: { row, col } | null, hover }),
+                                       // lastMove.captured: square of a pawn taken en passant (red frame; omitted otherwise)
   setView(side 'w' | 'b', { animate = true }) -> Promise,
   focusOn(points: THREE.Vector3[], { duration = 0.6, distance } = {}) -> Promise,  // fight close-up
   restoreView({ duration = 0.6 } = {}) -> Promise,
@@ -131,6 +132,8 @@ Choreography rules (units.js): sliders walk in a straight line; knights jump (ar
 squares while the rook walks around; capture = attacker approaches to about 0.6 units from the victim, both
 face each other, attacker plays a role attack, victim reacts at the impact time (Hit, sometimes Block_Hit first),
 then dies (skeletons may use `Death_C_Skeletons`), the body sinks/fades, the attacker steps onto the square.
+En passant (`captured.square` differs from `to`): the pawn first walks diagonally onto `to`, turns to the pawn
+it passed and strikes from there (plan `enPassant` in Full); it never moves along its own rank.
 Bishop attacks are ranged (Spellcast_Shoot + magic projectile). Promotion: the pawn plays a short flourish,
 poof, and is replaced by the new unit (Spawn_Air or Spawn_Ground_Skeletons). Full mode: camera `focusOn` the
 duel then `restoreView`. Fast mode: no camera move, total capture time about 1.2 s. Full capture about 2.5 to 3.5 s.
@@ -592,3 +595,296 @@ sceneAPI.arrowStyle(kind) -> { color, captureColor, dashed, hollowHead }   // fo
 - `setArrows` renders synchronously, so it shows without rAF (background tabs, paused loop). The arrows are separate
   from `setHint` and `setHighlights`, survive camera moves and view changes, and are cleared only by the caller: the
   controller/coach calls `clearArrows()` on Return to game, new game, undo and leaving review.
+
+# v6.3: en passant made readable, controller hooks for saving
+
+Report: "a pawn was capturing another pawn, but not diagonally, but sideways" (20. b4 axb3 e.p. by the AI). The
+capture was legal; `fights.js` walked the attacker to the pawn beside it.
+
+- `fights.js`: when `ev.captured.square` differs from `ev.to`, the pawn walks the diagonal onto `ev.to`, turns and
+  strikes from there (Full plan `enPassant`, Fast about 1.2 s). It never moves along its own rank.
+- `scene.js`: `setHighlights({ lastMove: { from, to, captured? } })`; `captured` is framed in red (mesh `last-captured`).
+- `controller.js`: en passant is read from the history (a pawn went diagonally onto an empty square), so stored data
+  is untouched: `gameHistory[i].moveNotation` stays standard SAN and `lastMove` stays `{ from, to }`. Display only:
+  the move list and `plyInfo(i).notation` say "axb3 e.p."; `plyInfo(i)` adds `enPassant`, `capturedSquare`.
+  `createController({ notify })`: `notify(text, { force, seconds })` shows the rule in one line the first 3 times
+  (localStorage `battle3d.enPassantSeen`), worded for the player in human vs AI. `moveDone` carries `enPassantLine`.
+  A bad AI answer (illegal move, no move, request that fails to start) never stalls the game: it is logged with the
+  move and the FEN, `requestAIMove` is called once more with `{ seed: 1 }`, and after a second failure the first legal
+  move in board order (a8 to h1, promotions to a queen) is played with a notice.
+  `judgePly` adds `allowsEnPassant: ['a4', ...]` (enemy pawns that may now take en passant) and calls a move `best`
+  only when it is the engine's choice or within 50 cp of it.
+- `coach.js`: the verdict of a two-square pawn move names the pawns that can take it en passant; when the opponent
+  takes en passant the card gets one line about it ("Every move").
+- `commentary.js`: `enPassant` is spoken regardless of the cooldown.
+
+Click targets. A unit's pick proxy is larger than its figure (radius 0.3, height 0.9; 0.4 and 1.0 on a touch
+screen) so units are easy to pick, but seen from the player's side it also stands over the middle of the square behind
+it, where that square's move marker is drawn. Picking by proxy alone gave the unit in front every click there.
+
+```js
+sceneAPI.registerPickProxy(object3D, getSquare, figure?)  // figure: the unit as drawn (model with gear, or its mount)
+sceneAPI.pickAt(x, y)          -> { row, col } | null     // unchanged: the first proxy on the ray, else the board
+sceneAPI.pickAt(x, y, true)    -> { row, col, ground, figure, marker }
+// ground: the board square on the same ray (null off the board). figure: the square of the nearest unit whose own
+// meshes (current pose; no labels, bases, auras or rings) the ray meets, or null when it only passes proxies.
+// marker: the offered empty square whose move dot the pointer is on (the dot is drawn over figures and labels).
+sceneAPI.onSquareClick((row, col, via) => ...)            // via = { ground, figure, marker } for pointer clicks
+controller.clickSquare(row, col, via?)                    // via optional: keyboard and tests mean the square itself
+controller.clickedMove(row, col, via?) -> move | null     // what a click would play right now; plays nothing
+```
+
+The rule (`controller.js`, "What a click means"):
+0. The pointer is on a move dot: that square is played, whatever stands under the dot.
+1. The pointer is on a figure: that unit decides. With a unit selected, its square is played if it is an offered
+   target (a capture); the own rook castles, the pawn an en passant move takes is captured. Otherwise the click
+   selects it, puts the selected unit down, or is refused, as before.
+2. The pointer is on no figure: the board square under it decides first (offered target, rook, en passant pawn),
+   then the unit whose proxy was crossed (so a tap just beside an enemy unit still captures it).
+3. Nothing played: the click selects the figure under the pointer, else one of the mover's own pieces standing on
+   the board square under the pointer, else the unit whose proxy was crossed.
+Hover is unchanged (it frames the picked square).
+
+Markers: an offered empty square has a gold dot with a dark rim (order 6, texture `target`, no depth test: it is
+drawn over figures and labels, so it shows on every offered square from every side) and a gold outline with dark
+edges (order 5.5, texture `outline`, depth-tested); both read on light and on dark squares (the old pale dot did
+not show on light squares at all). Unit labels are drawn before the markers (order 5), and the selected unit's own
+label is hidden while it is selected. Measured by pixel readback in `tests/slow/battle3dLayoutBrowser.test.js`.
+While a pawn that can take en passant is selected, the pawn it would remove has a red
+frame (`setHighlights({ victim })`, mesh `capture-victim`), the same frame that marks its square after the capture.
+
+Bottom of the screen (`index.html`, `hud.css`): `#tip` (notices, `showNotice`), `#coach-card` and the install / update
+toasts (`main.js` passes `.bottom-stack` as their parent) stand in one fixed flex column, `.bottom-stack`, notice on
+top, so none covers another at any width; on a phone the stack stands above the review sheet, the review chip or
+the review bar. Game review list: `.review-moves` columns are `minmax(0, auto)` (content-sized, never wider than the
+panel), the move text is the part that is shortened (`.mv`, ellipsis) and the badge never (`.tag`, `flex: none`);
+"e.p." is a `<small class="ep">` inside `.mv`. Both are measured in headless Chrome by
+`tests/slow/battle3dLayoutBrowser.test.js`.
+
+Saving (`savegame.js`):
+
+```js
+controller.loadGame(apply, { mode, humanColor, elo } = {}) -> result of apply()
+// Aborts whatever is in flight, calls apply() (which changes the rules state synchronously and restores the old
+// game itself on failure, returning { ok: false }), applies the settings on success, redraws without animating.
+// Events: reset { reason: 'loadGame' } + change { reason: 'loadGame' } on success, reset { reason: 'loadFailed' } else.
+controller.onEvent(e => ...)   // e.type === 'change', e.reason: 'move' | 'newGame' | 'loadFen' | 'loadGame' | 'undo' | 'settings'
+// 'change' fires synchronously right after the rules state or mode / side / AI strength changed ('move': before the animation).
+```
+
+# v6.3: save, load and export
+
+Autosave and resume, named saves, PGN export and import, for the 3D and the 2D game. Everything stays in
+localStorage on the device; there are no network calls.
+
+## Files
+
+| File | Role |
+| --- | --- |
+| `savegame.js` (repo root) | All logic, no DOM building: records, storage, PGN writer and reader, SAN matching, clipboard / share / download. Global `SaveGame`. |
+| `savepanel.js` (repo root) | The Save / Load dialog (tabs Saved games, Export, Import). Global `SavePanel`. Styled by `hud.css` (3D) and `style.css` (2D) through the `save-*` classes. |
+| `battle3d/saves.js` | 3D wiring (ES module): `setupSaves({ controller, coach, notify })`, called by `main.js` in place of the first `controller.newGame()`. |
+| `saves2d.js` (repo root) | 2D wiring (classic script after `ui.js`); `ui.js` is unchanged. |
+
+**One file, two loaders, no build step.** `savegame.js` and `savepanel.js` are plain scripts: one function
+scope, a global assigned on `globalThis`, no `import` / `export`, no top-level `this`. The 2D page loads them
+with `<script src>`; the 3D page gets them through `battle3d/saves.js`, which does `import '../savegame.js'`
+(run for the side effect) and re-exports the globals. Keep them free of module syntax.
+
+Rules access: only global functions of `gameLogic.js` and `battle3d/rules.js` (`battle3dNewGame`, `battle3dLoadFen`,
+`battle3dApplyMove`, `battle3dState`, `battle3dFen`, `generateLegalMoves`, `getPieceAt`, `getPlayerForPiece`,
+`isKingInCheck`, `checkGameEndCondition`, `checkThreefoldRepetition`, `getHistoryRepetitionKey`,
+`hasInsufficientMaterial`, `getBoardPositionString`, `loadGameStateSnapshot`), looked up when called. A record's
+`result` is the game's own verdict on the last position: mate, stalemate, 50 moves, insufficient material and
+repetition with the game's key (also when the 2D view shows an earlier position). `2d.html` loads `battle3d/rules.js` for the
+replay; `ui.js` still makes its own moves. The one exception is `snapshot()` / `restore()` in `savegame.js`, which
+read and assign the `gameLogic.js` bindings `gameHistory`, `currentMoveIndex`, `isGameOver` and `gameStatusMessage`
+by name so that a failed load puts the previous game back exactly (history entries are never changed after the push).
+
+## Storage format (version 1)
+
+| localStorage key | Content |
+| --- | --- |
+| `chess.autosave.3d`, `chess.autosave.2d` | One record: the current game of that view. Removed while the game has no moves. |
+| `chess.saves` | `{ "v": 1, "saves": [record, ...] }`: the named saves, shared by both views, at most 30. |
+| `chess.saves.unreadable` | The raw `chess.saves` string this version could not read (corrupt or another version), set aside on the next write instead of being deleted. |
+
+```js
+record = {
+  v: 1,                          // format version, on every record and on the saves list
+  id: 's<time><random>',         // named saves only
+  name: '12 Oct, vs AI 1200',    // named saves only, 1 to 60 characters, unique without regard to case
+  savedAt: 1791856000000,        // ms since 1970
+  startedAt: 1791855000000,      // when the game started (PGN Date)
+  view: '3d' | '2d',             // where it was written (informational: any save loads in either view)
+  mode: 'human-ai' | 'human-human' | 'ai-ai' | null,   // 3D names; 2D maps 'human-ai' <-> 'ai-human'
+  humanColor: 'w' | 'b' | null,
+  elo: 1200 | null,
+  startFen: null | '<fen>',      // null = the usual start position
+  moves: ['e2e4', 'e7e8q'],      // long algebraic, the authority: a load replays them through battle3dApplyMove
+  san: ['e4', 'e8=Q+'],          // standard SAN of the same moves, for export (never "e.p."); not used for loading
+  result: '*' | '1-0' | '0-1' | '1/2-1/2',
+  fen: '<fen of the last position>',
+  cursor: 12                     // autosave of the 2D view only: the earlier position that was shown (redo kept)
+}
+```
+
+Reading is strict about `v`, `moves` (each `/^[a-h][1-8][a-h][1-8][qrbn]?$/`, at most 2000) and `startFen`
+(shape check, one king each); everything else falls back to a default. `SaveGame.normalizeRecord(raw)` returns
+the clean record or `null`. Versioning: `SaveGame.MIGRATIONS[n]` turns a version `n` object into `n + 1` and is
+applied step by step up to `FORMAT_VERSION`; the table is empty because 1 is the first format. Data of another
+version (newer, or older without a migration) or corrupt data is never an error: the autosave is ignored
+(`problem: 'version' | 'corrupt'`, the page starts a new game and shows "Your saved game could not be read, so a
+new game was started."), single bad entries of the saves list are dropped, an unreadable list reads as empty.
+A missing, blocked or full storage makes reads return nothing and writes return `false` / `{ ok: false, error: 'storage' }`.
+
+## Module API (`SaveGame`)
+
+```js
+// Records and the rules state
+currentRecord({ view, mode, humanColor, elo, startedAt }) -> record | null     // the whole game incl. a 2D redo tail
+applyRecord(record) -> { ok: true, record } | { ok: false, error, ply }       // replaces the game, all moves or nothing;
+                                                                               // tell the view afterwards (see below)
+normalizeRecord(raw) -> record | null        sameGame(a, b) -> boolean (start position and moves)
+fenAt(index) -> FEN of gameHistory[index]
+
+// PGN
+toPgn(record, { event, site, white, black }) -> string     // Seven Tag Roster (Round "-"), SetUp/FEN when startFen,
+                                                           // SAN movetext on one line with the result, final newline
+parsePgn(text) -> { tags, sans, result, more }             // tokens of the first game; no rules involved
+fromPgn(text) -> { ok: true, record, more, adjusted } | { ok: false, error, ply, moveNumber, color, san }
+                                             // every move checked by replaying it; the rules state is put back;
+                                             // adjusted: the FEN tag's castling / en passant rights did not fit (see below)
+sanToMove(san) -> { move: { from, to, promotion } } | { reason: 'syntax' | 'illegal' | 'ambiguous' }   // current position
+
+// Storage (createStore(storage = localStorage))
+store.loadAutosave(view) -> { record, problem }     store.saveAutosave(view, record | null) -> boolean
+store.list() -> records, newest first               store.get(id)   store.findByName(name)   store.problem()
+store.save(name, record, { replace }) -> { ok: true, id, replaced } | { ok: false, error: 'name' | 'exists' | 'full' | 'storage', id? }
+store.rename(id, name)   store.remove(id)   store.max (30)
+
+// Out of the app (each feature-detected; env = { navigator, document, URL, Blob } only in tests)
+copyText(text) -> Promise<{ ok, method: 'clipboard' | 'execCommand' | null }>
+canShare() -> boolean      shareText({ title, text }) -> Promise<{ ok, reason?: 'unavailable' | 'cancelled' | 'failed' }>
+downloadText(filename, text) -> { ok, method: 'blob' | 'data' | null }
+
+// One per page: the glue the panel and the views use
+session = createSession({ view, title, settings(), adopt(apply, settings, { review, cursor }), busy?(), fen?(), site?, storage? })
+session.autosave(reason)       // call after every change of the game or its settings ('newGame' restarts the PGN date)
+session.resume() -> { resumed, notice }    // at boot: puts the autosave back through adopt()
+session.load(record, { review }) -> { ok, record } | { ok: false, error }
+session.readPgn(text)   session.importPgn(text, { review })   session.unsaved()   session.record()   session.pgn()
+session.fen()   session.saveAs(name, { replace })   session.defaultName()   session.fileName()   session.store
+```
+
+`adopt` is the view's part of a load: stop what is in flight, call `apply()` (it returns the `applyRecord` result),
+apply the settings, redraw. 3D: `controller.loadGame(apply, settings)`, then `coach.openReview()` for `review`.
+2D: `apply()`, then `abortInFlightWork()`, the settings through the page's own controls, `navigateToHistoryState(index)`.
+The 3D view autosaves on the controller's `change` event; the 2D view when `ui.js` redraws the move list (a
+MutationObserver on `#move-history`) and when the mode, strength or colour controls are used.
+
+PGN import tolerance: comments (`{...}`, `;` to the end of the line, `%` lines), NAGs, nested variations, move
+numbers in any style, detached `!?`, `e.p.`, `0-0` / `0-0-0`, a missing or extra `x`, more disambiguation than
+needed (`Nbd7`, `Ng1f3`, `e2-e4`), promotions as `e8Q` or `e8=q`, wrong or missing check marks. Of several games the
+first is read (`more: true`). A `[FEN]` tag (with or without the two clocks) is loaded through `battle3dLoadFen`, so
+the position is the one the rules accept: `parseFen` drops castling rights without king and rook at home and an en
+passant square without a double-pushed pawn in front of it. `record.startFen` is that cleaned position,
+`adjusted: true` reports the difference (the panel adds "they were ignored" to its notice), and a move that
+needed the dropped right is illegal like any other. A FEN that is not a position (wrong shape, a king missing,
+the side that just moved in check) is refused. The first move that is unreadable, illegal or ambiguous stops the import:
+`Move 8 for Black ("Kc5") is not a legal move in that position. Nothing was loaded.`
+
+## DOM ids (for tests)
+
+Openers: `save-open`, `export-open` (both pages). Panel: `save-modal` (`hidden` when closed; class `modal` on the 3D
+page so the controller's shortcuts stay out), `save-title`, `save-close`, tabs `save-tab-saves|export|import` with
+panes `save-pane-*`, `save-status` (role status), `save-confirm` with `save-confirm-text`, `save-confirm-yes`,
+`save-confirm-no`. Saved games: `save-form`, `save-name`, `save-submit`, `save-count`, `save-list` (items
+`.save-item[data-id]` with `.save-item-name`, `.save-item-meta`, buttons `[data-action="load|rename|delete"]`,
+while renaming `.save-rename` and `[data-action="rename-ok|rename-cancel"]`), `save-empty`. Export: `save-pgn`,
+`save-copy`, `save-share` (hidden without `navigator.share`), `save-download`, `save-fen`, `save-copy-fen`.
+Import: `save-import-text`, `save-import-error` (role alert), `save-import-play`, `save-import-review`,
+`save-import-pick`, `save-import-file`. 2D only: `save-notice`. Test hooks: `window.__b3d.saves` (3D, with
+`?debug=1`) and `window.SaveHost` (2D), both `{ session, panel }`.
+
+Tests: `tests/unit/savegame.test.js`, `tests/integration/battle3dSaves.test.js` (real page, opened with an
+autosave), `battle3dSavesBoot.test.js` (real page, unusable data), `battle3dSavesReboot.test.js` (controller +
+`saves.js`, close and reopen), `saves2d.test.js` (real 2D page); slow: `tests/slow/savegamePgnSweep.test.js` and
+`savesBrowser.test.js` (headless Chrome at 360 px, `tests/helpers/headlessChrome.js`). Shared helpers:
+`tests/helpers/saveGameHarness.js`.
+
+# Rules audit (v6.3)
+
+Every place that generates, validates or applies a move, and where the rule state lives. Reference for the engine
+tests (`tests/unit/rules*.test.js`, chess.js as the independent reference, see `tests/helpers/chessReference.js`).
+
+## Who generates, validates and applies moves
+
+| Place | Role |
+| --- | --- |
+| `gameLogic.js` `generateLegalMoves(row, col)` (`getPawnMoves`, `getKnightMoves`, `getSlidingMoves`, `getKingMoves`) | THE generator of both views. Pseudo-legal moves of one piece of `currentPlayer`, each simulated on the board and kept when `isKingInCheck` is false. Move = `{ row, col, isEnPassant, isCastling, isPromotion }`, one entry per promotion square (the applier picks the piece). |
+| `gameLogic.js` `hasLegalMoves`, `checkGameEndCondition`, `isKingInCheck`, `isSquareAttacked` | Check, checkmate, stalemate. `hasLegalMoves(player)` and `checkAmbiguity` (SAN) switch `currentPlayer` for the call and put it back. |
+| `aiPlayer.js` `getAllLegalMoves(player)` | All pieces through `generateLegalMoves`, in the AI move shape (`promotionPiece` always `'Q'`). |
+| `ui.js` `makeMove` + `finishMoveProcessing` | 2D applier. Validates with `generateLegalMoves`, changes the board at once, then rights, en passant target, clocks, turn and history after the animation. |
+| `battle3d/rules.js` `battle3dApplyMove` | 3D applier (also used by `savegame.js` to replay). Validates with `generateLegalMoves`, takes `isEnPassant` / `isCastling` from the generator's move, applies everything in one step, pushes history, returns the MoveEvent. Throws on an illegal move without changing anything. |
+| `aiPlayer.js` `ChessAI` `genMoves` / `genCastling` / `legalMoves`, `makeMove` / `unmakeMove` / `makeNullMove` | The AI's own generator on a 64-square int board with flags `FLAG_EP`, `FLAG_CASTLE`, `FLAG_DOUBLE`; legality by make + `attacked`. Never touches the game state during a search. `toGameMove` turns the result into the AI move shape; both appliers validate it again with `generateLegalMoves`, so an AI move the game rules reject is never played. |
+| `ChessAI.applyMoveToGlobals` / `writeToGlobals`, `perft`, `perftCounts` | Tests and self-play only. |
+| `battle3d/tactics.js` `legalMoves` / `applyMove` | Coach motif detection only (no castling, promotions to queen and knight). Never applied to the game. |
+
+## Where the rule state lives
+
+- Live position: `gameLogic.js` globals `board[row][col]` (row 0 = rank 8), `currentPlayer`, `castlingRights { w: { K, Q }, b: { K, Q } }`,
+  `enPassantTarget { row, col } | null` (the square the pawn skipped), `halfmoveClock`, `fullmoveNumber`.
+- History: `gameHistory[i]` is the position AFTER ply `i` (entry 0 = start), written once by `pushHistoryState()` with deep
+  copies of board, rights and target plus the clocks; `currentMoveIndex` is the shown one. Entries are never changed
+  afterwards except `moveNotation`, `statusMessage`, `lastMove` set right after the push.
+- En passant target: set to the skipped square after every double pawn push and to `null` by every other move
+  (`battle3dApplyMove` step 3, `ui.js finishMoveProcessing`, `ChessAI.makeMove`: `ep`). A capture is generated only onto the
+  empty target with the enemy pawn standing beside the capturer.
+- Castling rights: cleared by a king move, a rook leaving its home square and a rook captured on its home square (both
+  appliers; `ChessAI`: `CASTLE_MASK[from] & CASTLE_MASK[to]`). Castling needs the king on e1/e8, the rook on its
+  corner, empty squares between, and e/f/g or e/d/c not attacked (b1/b8 and the rook may be attacked).
+- Clocks: `halfmoveClock` is 0 after a pawn move or capture, else +1; draw at 100. `fullmoveNumber` +1 after Black.
+- Repetition: `checkThreefoldRepetition()` counts `getRepetitionKey()` over `gameHistory[0..currentMoveIndex]`: placement,
+  side, castling rights, and the en passant square only when a capture is legal (FIDE 9.2). The AI gets the same keys as
+  `positionHistory` (`getHistoryRepetitionKey(i)` in `getCurrentGameStateSnapshot`) and hashes them (Zobrist). Inside its
+  own search tree the AI still hashes the en passant file after every double push, so there it can notice a repetition
+  that begins with such a position one occurrence late (a search heuristic, not a rule the game applies).
+- Undo: 3D `battle3dUndo(plies)` = `loadGameStateSnapshot(gameHistory[target])` and cuts the history; 2D
+  `navigateToHistoryState(i)` copies the same fields and keeps later entries for redo (cut by the next move).
+  `savegame.js` `snapshot()` / `restore()` keep and put back the whole history around a replay (all-or-nothing loads).
+- Copies: `loadGameStateSnapshot(state)` (deep copy in; undo, `aiWorker.js`, the main-thread AI fallback, which saves
+  and restores the live globals around it), `getCurrentGameStateSnapshot()` / `cloneAIState` (deep copy out),
+  `ChessAI.loadState(state, positionHistory)` (own board; drops an en passant target that does not fit the position).
+- FEN in: `parseFen` (six fields, eight rows of eight, known pieces, side `w`/`b`). Since v6.3 it also drops, with a
+  `console.warn`, an en passant target that is not on the mover's sixth rank, not empty, without the double-pushed enemy
+  pawn in front or with the start square behind occupied, and castling rights without king and rook on their home squares.
+- FEN out: `getBoardPositionString(state)` + clocks (`battle3dFen()`). The en passant square is written after every
+  double push (the FEN standard); chess.js writes it only when a capture is legal. The tests derive the expected field
+  from the reference move (double push or not) instead of normalising it away.
+- Draw checks in `battle3dGameStatus()` / `ui.js evaluateGameState()`, in this order: checkmate, stalemate, 50 moves,
+  threefold, insufficient material (K v K, one minor piece, any number of bishops all on one square colour). The AI's
+  own `isRepetition` / `insufficientMaterial` (at most one minor piece) only score positions inside its search.
+
+## Findings (all fixed in v6.3)
+
+| Bug | Minimal reproduction |
+| --- | --- |
+| A hand-written FEN could make a pawn capture "en passant" a piece that is not a double-pushed pawn, its own piece included (`gameLogic.js getPawnMoves`, `parseFen`). | `4k3/8/8/3NP3/8/8/8/4K3 w - d6 0 1`, e5d6: was legal and removed White's knight on d5. |
+| `ChessAI` generated an en passant move without any pawn to take from such a FEN (`aiPlayer.js loadState`). | `4k3/8/8/4P3/8/8/8/4K3 w - d6 0 1`: e5d6 was in `ChessAI.legalMoves()`. |
+| Castling rights from a FEN were trusted without the king on its home square (`gameLogic.js getKingMoves`, `parseFen`). | `4k3/8/8/8/8/8/4K2R/8 w K - 0 1`, e2g2: was "O-O" on the second rank. |
+| Threefold repetition counted a position right after a double push as different even when nobody could capture en passant (`gameLogic.js checkThreefoldRepetition`). | 1. e4 e5 2. Nf3 Nf6 3. Ng1 Ng8 4. Nf3 Nf6 5. Ng1 Ng8: draw only one ply later. |
+| `tactics.js legalMoves` gave the side that just double-pushed a diagonal pawn step onto its own en passant square (coach only, `trapped()` asks for the side not to move). | After 1. e4, `legalMoves(b, 'w', e3)` contained d2-e3 and f2-e3. |
+
+The reported "pawn captured another pawn sideways" has no engine cause: 20. b4 axb3 was a legal en passant capture
+(replayed against chess.js in `tests/fixtures/rules-corpus.json`); the MoveEvent names the victim beside the attacker
+(`captured.square = { row: from.row, col: to.col }`) and the view walked there. See "v6.3: en passant made readable".
+
+## Engine tests
+
+`tests/unit/rulesPerft.test.js` (perft with capture / en passant / castle / promotion / check / mate counts, through
+`battle3dApplyMove` and through `ChessAI`), `rulesDifferential.test.js` (100 corner positions, 21 lines, seeded playouts
+against chess.js: move sets, flags, MoveEvents, SAN, FEN after every move, draw flags; also `ChessAI` and `tactics.js`),
+`rulesEnPassant.test.js` (pawn geometry, en passant target life cycle, invalid FEN and state), `rulesAiMoves.test.js`
+(AI moves through the worker hand-off at six strengths). Deeper runs: `tests/slow/rulesPerftDeep.test.js`,
+`tests/slow/rulesDifferentialDeep.test.js` (`npm run test:slow`).
