@@ -324,6 +324,11 @@ body {
 }
 /* --- END ADDED --- */
 
+/* Offline readiness line under the controls (battle3d/install.js mountOfflineStatus) */
+.offline-status { margin: -5px 0 15px; font-size: 0.85em; color: #666; }
+.offline-status[hidden] { display: none; }
+.offline-status[data-state="ready"] { color: #3a6648; }
+
 /* --- START: Updated Move History Styles --- */
 #move-history {
     height: 200px; /* Or adjust as needed */

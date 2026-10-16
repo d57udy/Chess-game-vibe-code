@@ -18,7 +18,8 @@
 //   forward: '+z' | '-z' | '+x' | '-x'                         // facing fix for imported models
 // }
 // Model sources: Built-in (manifest.models, KayKit rig, shared clips), library packs (assets/library.json ->
-// packs/<id>/pack.json, downloaded only when used; each model plays its own embedded clips, role.native = true)
+// packs/<id>/pack.json, fetched when a cast uses them and precached by sw.js for offline play; each model plays its
+// own embedded clips, role.native = true)
 // and imported files (.glb / .vrm in IndexedDB; KayKit rigs animate directly, other humanoids through
 // retarget.js when it can map them, everything else stands in a static pose). FBX must be converted first.
 // Call prepareCast(cast, { assetBase }) before resolveRoles so pack data and imported models are registered.
@@ -75,7 +76,7 @@ const SKELETONS = {
     q: { model: 'Skeleton_Rogue', loadout: 'dual_bone_blades', gear: ['Skeleton_Rogue_Hood', 'Skeleton_Rogue_Cape'], recolor: { to: VIOLET } },
     k: { model: 'Skeleton_Mage', loadout: 'bone_king', gear: [] }
 };
-// Library pack casts (packs download on first use).
+// Library pack casts (packs load when a cast uses them).
 const RPG = 'pack:quaternius-rpg/', MON = 'pack:quaternius-monsters/', FARM = 'pack:quaternius-farm/';
 const ADVENTURERS = {
     p: { model: RPG + 'Rogue' }, n: { model: RPG + 'Monk' }, b: { model: RPG + 'Wizard' },

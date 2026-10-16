@@ -776,3 +776,21 @@ textarea.save-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
     .save-card input[type="text"], .save-text, textarea.save-text { font-size: 16px; }
     .save-actions .btn { padding: 9px 12px; }
 }
+
+/* --- v6.4: offline readiness line (menu), slow boot notice (loading screen) --- */
+.offline-status { margin: 0; line-height: 1.4; }
+.offline-status[hidden] { display: none; }
+.offline-status::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 7px;
+    border-radius: 50%;
+    vertical-align: 1px;
+    background: var(--hud-muted);
+}
+.offline-status[data-state="ready"]::before { background: #7fc88a; }
+.offline-status[data-state="incomplete"]::before { background: var(--hud-danger); }
+.loading-slow { margin-top: 14px; }
+.loading-slow[hidden] { display: none; }

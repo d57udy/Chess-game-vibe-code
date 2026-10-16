@@ -1,13 +1,12 @@
 'use strict';
 // v6 model library: library.json <-> pack.json consistency, license/credit fields, files exist and
 // parse, declared sizes match, triangle and texture budgets, declared animation clips and bones exist
-// in each GLB, thumbnails are real images, CREDITS.md credits every pack, and packs are lazy: never
-// in the service worker precache.
+// in each GLB, thumbnails are real images, CREDITS.md credits every pack, and the offline list finds
+// packs through library.json only (v6.4 precaches them all as optional files; no hand-written list).
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
 const { ROOT } = require('../helpers/loadEngine');
 
 const ASSETS = path.join(ROOT, 'battle3d', 'assets');
@@ -136,14 +135,14 @@ describe('battle3d model library (v6)', { skip: !have && 'library.json not prese
         assert.deepEqual(bad, []);
     });
 
-    test('packs are lazy: nothing under assets/packs is precached by the service worker', () => {
-        const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-        const ctx = { self: { registration: { scope: 'https://x/' }, location: { origin: 'https://x' }, addEventListener() {} }, URL, caches: {}, fetch() {}, Request: class {}, Response: class {}, setTimeout, console };
-        vm.createContext(ctx);
-        vm.runInContext(src, ctx);
-        const shell = JSON.parse(vm.runInContext('JSON.stringify(APP_SHELL)', ctx));
-        assert.deepEqual(shell.filter((p) => /assets\/packs\//.test(p)), [], 'no pack files in APP_SHELL');
-        // castAssets() reads models from manifest roles/models/loadouts: built-in packs must not leak in there
+    test('the offline list finds packs through library.json: no pack file is listed by hand or in the built-in manifest', () => {
+        // v6.4 precaches every pack for offline play (tools/offline-list.js -> offline-files.json, as optional files)
+        const { APP_SHELL, offlinePaths } = require('../../tools/offline-list');
+        assert.deepEqual(APP_SHELL.filter((p) => /assets\/packs\//.test(p)), [], 'no pack files in APP_SHELL');
+        const { required, optional } = offlinePaths(ROOT);
+        assert.deepEqual(required.filter((p) => /assets\/packs\//.test(p)), [], 'packs are optional');
+        assert.ok(optional.filter((p) => /assets\/packs\//.test(p)).length >= 3 * 3);
+        // assetFiles() reads models from manifest roles/models/loadouts: built-in packs must not leak in there
         const manifest = JSON.parse(fs.readFileSync(path.join(ASSETS, 'manifest.json'), 'utf8'));
         const referenced = JSON.stringify([manifest.models, manifest.roles, manifest.loadouts]);
         assert.ok(!/packs\//.test(referenced), 'the built-in manifest does not reference pack files');

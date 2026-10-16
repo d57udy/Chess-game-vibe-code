@@ -12,6 +12,10 @@ const g = globalThis; // classic-script globals from gameLogic.js / rules.js
 const MANIFESTS = ['battle3d/assets/manifest.json', 'battle3d/manifest.dev.json'];
 const ASSET_BASE = new URL('battle3d/assets/', location.href).href; // library.json and packs/ live here
 const TIP_KEY = 'battle3d.tipSeen';
+// Longest wait for an answer to one file or module of the boot. The service worker answers cached files at once and
+// gives up on the network itself; this covers a first visit without it on a network that never answers. Generous,
+// so that a slow connection or a busy phone is never cut off.
+const BOOT_WAIT_MS = 30000;
 const TYPE_ORDER = ['k', 'q', 'r', 'b', 'n', 'p'];
 const TYPE_NAMES = { k: 'King', q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight', p: 'Pawn' };
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
@@ -55,18 +59,30 @@ function hideLoading() {
 
 function showBootError(error) {
     console.error('battle3d: boot failed', error);
+    window.__b3dBootError = true; // the slow-boot notice (index.html) stays away
     clearInterval(hintTimer);
     loading.hidden = false;
     loading.classList.remove('fade');
     loading.classList.add('error');
-    $('loading-text').textContent = 'Something went wrong while loading the 3D battle. Try reloading, or play the 2D game.';
+    $('loading-slow')?.setAttribute('hidden', '');
+    $('loading-text').textContent = navigator.onLine === false
+        ? 'The 3D battle could not start offline. Open it once while online, or play the 2D game.'
+        : 'Something went wrong while loading the 3D battle. Try reloading, or play the 2D game.';
     if (!loading.querySelector('.back')) {
         const link = document.createElement('a');
         link.className = 'btn primary back';
         link.href = '2d.html';
         link.textContent = 'Play the 2D game';
-        $('loading-text').after(link);
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.className = 'btn back';
+        reload.textContent = 'Reload';
+        reload.addEventListener('click', () => (window.__b3dReload ? window.__b3dReload() : location.reload()));
+        $('loading-text').after(link, ' ', reload);
     }
+    // A newer complete version waits: switch to it now. A reload alone would get this broken version again, and the
+    // update toast sits under the loading screen. No game is in progress, and nothing waits after the switch.
+    pwaReady.then(pwa => pwa?.updateIfWaiting?.()).catch(() => { });
 }
 
 // GLTFLoader uses the default loading manager unless given another one
@@ -74,28 +90,47 @@ THREE.DefaultLoadingManager.onProgress = (url, loaded, total) => {
     if (total > 0) setProgress(0.15 + 0.8 * (loaded / total), `Summoning the armies... ${loaded}/${total}`);
 };
 
-async function pickManifest() {
-    for (const url of MANIFESTS) {
-        try {
-            const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-            if (response.ok) return url;
-        } catch (e) { /* try the next one */ }
-    }
-    return MANIFESTS[0]; // let units.js report the error
+// Settles like `promise`, or fails after `ms`
+function within(promise, ms, what) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${what}: no answer within ${ms / 1000} s`)), ms);
+        promise.then(resolve, reject).finally(() => clearTimeout(timer));
+    });
+}
+
+// fetch() that gives up when no answer arrives within BOOT_WAIT_MS
+function fetchWithin(url, options = {}) {
+    const abort = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => abort?.abort(), BOOT_WAIT_MS);
+    return within(fetch(url, { ...options, signal: abort?.signal }), BOOT_WAIT_MS, url).finally(() => clearTimeout(timer));
 }
 
 async function fetchJson(url) {
     try {
-        const response = await fetch(url);
-        return response.ok ? await response.json() : null;
+        const response = await fetchWithin(url);
+        return response.ok ? await within(response.json(), BOOT_WAIT_MS, url) : null;
     } catch (e) {
         return null;
     }
 }
 
+// The production asset manifest, or the dev one where it does not exist. A request that fails gets a second try.
+async function pickManifest() {
+    for (const url of MANIFESTS) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const response = await fetchWithin(url);
+                if (!response.ok) break; // not here: the next one
+                return { url, manifest: await within(response.json(), BOOT_WAIT_MS, url) };
+            } catch (e) { log('manifest', url, e); }
+        }
+    }
+    return { url: MANIFESTS[0], manifest: null }; // let units.js report the error
+}
+
 // Optional modules from other agents: the game still runs without them
 async function optionalImport(path) {
-    try { return await import(path); } catch (e) { log('optional module missing', path, e); return null; }
+    try { return await within(import(path), BOOT_WAIT_MS, path); } catch (e) { log('optional module missing', path, e); return null; }
 }
 
 // --- Who's who legend ---
@@ -273,22 +308,26 @@ async function boot() {
 
     const sceneAPI = await createScene($('stage'), { debug });
     setProgress(0.15, 'Summoning the armies...');
+    // Requests started in the same task that ends the module's first run failed at once in Chrome ("Failed to fetch"
+    // without reaching the server; also the old manifest probe). A failed module import stays failed for the page,
+    // so let one task pass first.
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     const audio = createAudio();
     audio.setListener?.(sceneAPI.camera); // stereo pan and distance follow the camera; units drive setSlowMo
-    const manifestUrl = await pickManifest();
+    const [{ url: manifestUrl, manifest }, castMod] = await Promise.all([pickManifest(), optionalImport('./cast.js')]);
     log('manifest', manifestUrl);
-    const [manifest, castMod] = await Promise.all([fetchJson(manifestUrl), optionalImport('./cast.js')]);
     const units = await createUnits(sceneAPI, manifestUrl, { audio });
 
     // A stored cast is applied before the first frame is shown. prepareCast restores imported models
-    // (IndexedDB blob URLs) and loads the pack.json of every library pack the cast uses.
+    // (IndexedDB blob URLs) and loads the pack.json of every library pack the cast uses. Packs that do not
+    // load in time fall back to the default characters.
     const savedCast = castMod?.loadUserCast?.();
     let castFailed = [];
     if (savedCast && castMod?.prepareCast) {
         try {
-            ({ failed: castFailed = [] } = await castMod.prepareCast(savedCast, { assetBase: ASSET_BASE }) || {});
-        } catch (e) { log('preparing the cast failed', e); }
+            ({ failed: castFailed = [] } = await within(castMod.prepareCast(savedCast, { assetBase: ASSET_BASE, fetch: fetchWithin }), BOOT_WAIT_MS, 'cast') || {});
+        } catch (e) { log('preparing the cast failed', e); castFailed = [{ id: 'cast', error: String(e?.message || e) }]; }
     } else {
         try { await castMod?.restoreCustomModels?.(); } catch (e) { log('restoring custom models failed', e); }
     }
@@ -328,15 +367,17 @@ async function boot() {
         window.__b3d = {
             sceneAPI, units, controller, audio, commentary, coach, saves,
             step: (n = 1, dt = 1 / 60) => sceneAPI.stepFrames(n, dt),
-            state: () => controller.state()
+            state: () => controller.state(),
+            offline: () => pwaReady.then(pwa => pwa?.offlineReport?.() ?? null) // marker and last failed download
         };
     }
     setProgress(1, 'Ready.');
+    window.__b3dBooted = true;
+    $('loading-slow')?.setAttribute('hidden', '');
     hideLoading();
     showFirstRunTip(sceneAPI);
     if (castFailed.length) showNotice('Some characters could not be loaded (offline?), so the default ones stand in.');
     if (saves?.notice) showNotice(saves.notice, { force: true });
-    setupInstall(); // after the first frame: the service worker and install UI are not needed to play
     log('booted');
 }
 
@@ -352,10 +393,14 @@ function setupResetView(sceneAPI) {
     });
 }
 
-// PWA: service worker + "Install app" section in the menu (battle3d/install.js)
+// PWA: service worker, offline readiness line and "Install app" section in the menu (battle3d/install.js)
 async function setupInstall() {
     const mount = $('install-mount');
     const pwa = await pwaReady;
+    // Not with ?debug=1 or ?nosw=1: the worker is not registered there, so there is nothing to report
+    if (!debug && params.get('nosw') !== '1') {
+        try { pwa?.mountOfflineStatus?.($('offline-status')); } catch (e) { log('offline status failed', e); }
+    }
     Promise.resolve()
         .then(() => pwa?.registerServiceWorker?.({
             disabled: debug || params.get('nosw') === '1',
@@ -374,4 +419,8 @@ async function setupInstall() {
     mount.closest('.menu-section').hidden = true;
 }
 
-boot().catch(showBootError);
+const booted = boot();
+booted.catch(showBootError);
+// The service worker and the install UI are not needed to play: set them up after the first frame, but also when the
+// boot fails or takes long, so a first visit still gets offline play
+Promise.race([booted.catch(() => { }), new Promise(resolve => setTimeout(resolve, BOOT_WAIT_MS))]).then(setupInstall);
