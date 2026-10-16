@@ -1,0 +1,25 @@
+# GitHub Pages publishes main as it is (no build step), so a stale offline-files.json or build stamp in sw.js would
+# ship and leave installed apps with old files. This check fails the push or pull request instead.
+# Fix: npm run offline-list, then commit offline-files.json and sw.js. See tools/offline-list.js.
+name: Offline list
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Both need nothing from npm: the list, the stamp, git tracking with exact case, and the list's unit tests
+      - run: node tools/offline-list.js --check
+      - run: node --test tests/unit/offlineLists.test.js

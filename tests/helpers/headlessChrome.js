@@ -71,15 +71,16 @@ function serveRepo({ transform = null } = {}) {
  * @param {object} [o]
  * @param {number} [o.maxLifetimeMs] Chrome is killed after this long (default 10 min)
  * @param {number} [o.callTimeoutMs] a protocol call fails after this long (default 2 min)
+ * @param {string[]} [o.args] extra Chrome switches (e.g. --proxy-server for the offline tests)
  * @returns {Promise<{ send(method, params), evaluate(js), waitFor(js, ms), events, problems(), close() }>}
  *   evaluate runs as a user gesture; problems() lists uncaught exceptions and console errors so far;
  *   events are the protocol events received; close() is safe to call at any time, any number of times.
  */
-async function launchChrome({ maxLifetimeMs = MAX_LIFETIME_MS, callTimeoutMs = CALL_TIMEOUT_MS } = {}) {
+async function launchChrome({ maxLifetimeMs = MAX_LIFETIME_MS, callTimeoutMs = CALL_TIMEOUT_MS, args = [] } = {}) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'chess-browser-'));
     // Port 0: Chrome picks a free one and writes it to DevToolsActivePort, so parallel runs cannot collide
     const proc = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run',
-        '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
+        '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...args, 'about:blank'], { stdio: 'ignore' });
     proc.unref();
     live.add(proc);
     hookProcessEnd();
@@ -181,12 +182,13 @@ async function launchChrome({ maxLifetimeMs = MAX_LIFETIME_MS, callTimeoutMs = C
  * @param {object} [o]
  * @param {number} [o.timeoutMs] default 4 min
  * @param {object} [o.serve] options for serveRepo()
+ * @param {object} [o.chrome] options for launchChrome() (args)
  */
-async function withBrowser(run, { timeoutMs = 240000, serve = {} } = {}) {
+async function withBrowser(run, { timeoutMs = 240000, serve = {}, chrome = {} } = {}) {
     const S = await serveRepo(serve);
     let C = null, timer = null;
     try {
-        C = await launchChrome({ maxLifetimeMs: timeoutMs + 30000 });
+        C = await launchChrome({ ...chrome, maxLifetimeMs: timeoutMs + 30000 });
         const limit = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error(`the browser test did not finish within ${timeoutMs / 1000} s`)), timeoutMs); });
         return await Promise.race([run({ C, S }), limit]);
     } finally {
@@ -196,4 +198,4 @@ async function withBrowser(run, { timeoutMs = 240000, serve = {} } = {}) {
     }
 }
 
-module.exports = { CHROME, haveChrome, serveRepo, launchChrome, withBrowser, sleep };
+module.exports = { CHROME, TYPES, haveChrome, serveRepo, launchChrome, withBrowser, sleep };

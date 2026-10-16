@@ -888,3 +888,150 @@ against chess.js: move sets, flags, MoveEvents, SAN, FEN after every move, draw 
 `rulesEnPassant.test.js` (pawn geometry, en passant target life cycle, invalid FEN and state), `rulesAiMoves.test.js`
 (AI moves through the worker hand-off at six strengths). Deeper runs: `tests/slow/rulesPerftDeep.test.js`,
 `tests/slow/rulesDifferentialDeep.test.js` (`npm run test:slow`).
+
+# v6.4: offline
+
+Owner report (Android, installed app): "I tried to play the game offline after having it installed on my Android
+phone, but that didn't work. It was stuck in some initial loading phase."
+
+## Root causes (v6.3, reproduced in headless Chrome with the network cut where a phone loses it)
+
+| Case | v6.3 | Cause |
+|---|---|---|
+| Connected, but nothing answers (Wi-Fi without internet, a weak mobile signal) | Stuck at "Summoning the armies..." for as long as the network stays silent (94 s and counting in the test) | `main.js` probed `battle3d/assets/manifest.json` with a HEAD request; `sw.js` sent HEAD to the network first, without a timeout. Cache misses (CDN, fonts) waited without a limit too, and the Google Fonts stylesheet blocked the page while it loaded. |
+| An update, then offline, with a library-pack cast | Default characters instead of the pack | Packs were cached at runtime in `chess3d-runtime-<VERSION>`, which every release deleted. |
+| An update, then offline, with an imported VRM avatar | Placeholders ("Could not load the VRM library (offline?)") | three-vrm was not precached; its runtime copy was deleted with the release. |
+| An update on a flaky connection | The 3D page showed "Could not load the 3D engine" offline; the 2D page lost its animations | `precache()` used `Promise.allSettled` and `skipWaiting()` anyway: a version with 128 of 134 files took over and deleted the complete previous version. |
+| Any offline start | Title font missing | The fonts stylesheet was a no-cors request; its opaque answer was never stored. |
+
+Offline with DevTools' network emulation on the page alone is not offline: the service worker fetches in its own
+target and still reached the server (37 requests in one start). `tests/helpers/offlineNet.js` closes the site's port
+or holds it, and sends the CDNs through a proxy with the same switches.
+
+## Design (`sw.js`, `offline-files.json`)
+
+- **Everything is precached**: the same-origin files of `offline-files.json` (app shell, every model, clip, prop and
+  thumbnail of the asset manifest, every library pack: `library.json` -> `pack.json` -> models and thumbnails, at the
+  paths `cast.js` asks for), the CDN modules (three.js and its addons, three-vrm, gsap) and the Google Fonts
+  stylesheet with its font files.
+- **`offline-files.json` and the build stamp** (committed, both written by `tools/offline-list.js`,
+  `npm run offline-list`): the list maps each same-origin path to a content hash (SHA-256, 16 hex digits) and names
+  the optional ones; the generator derives it from the manifests, so new casts and packs need no worker change. The
+  stamp `const BUILD = '...'` in `sw.js` is a hash of the list and of `sw.js` without the stamp line (bytes as saved;
+  `--check` rejects a byte order mark in either file, and the worker keeps one when it hashes, as node does). Cache names
+  carry VERSION and BUILD, so any change of a listed file or of the worker code (after `npm run offline-list`) gives
+  a new worker and a new shell, even without a VERSION bump; VERSION is the human-readable label.
+- **Guards against a forgotten `npm run offline-list`**: `node tools/offline-list.js --check` (run by
+  `.github/workflows/offline-list.yml` on pushes and pull requests to main, and by `tests/unit/offlineLists.test.js`)
+  fails when the list or the stamp is stale, or when `sw.js`, the list or a listed file is not tracked by git with
+  exactly that path (GitHub Pages is case-sensitive, macOS is not). Pages publishes main with the built-in "pages
+  build and deployment", so the check cannot block a deploy; it marks the commit red. At install the worker hashes the
+  deployed list with its own script: a mismatch (a release without the stamp, or a deploy still spreading over the
+  CDN) gets one more try with `cache: 'reload'`, then the install fails and the previous version keeps serving.
+  A downloaded file must have its listed hash (one more try with `cache: 'reload'`): a required file that differs
+  fails the install; an optional one is kept and listed in the marker's `mismatched` and in `offline-error.json`.
+- **Required and optional**: the app shell, the default cast (role models, their props, the clip files) and the CDN
+  modules are required. Thumbnails, the other weapons of the cast editor and the library packs are optional: a 404
+  for them (the deploy does not have the file) is left out and listed in the marker's `missing`. Any other failure
+  of any file keeps the version from taking over. Fonts are optional: one try each (5 s), in parallel with the rest.
+- **A version takes over only when complete.** Each download gets 3 tries (2 s, then 10 s apart); one that receives
+  nothing for 30 s, headers or body, is aborted. The whole install stops after 4 minutes, posts `failed` and
+  leaves what it stored. If anything required is missing, install fails: the previous version keeps serving from its
+  complete caches, and the next visit (or the device coming back online, when the page has a worker) resumes. A
+  complete download stores `offline-ready.json` (`{ version, build, files, missing, mismatched, completed }`); a
+  failed one stores `offline-error.json` (`{ version, error, at }`, for the debug view only) in the shell.
+- **Only changed files are downloaded.** For every listed file the worker first looks for a cached copy whose content
+  has the listed hash: in this version's own cache (a retried install resumes), then in older versions' caches (an
+  update copies unchanged files; an older version's partial download counts too). Only files without such a copy are
+  downloaded. ETags play no part: GitHub Pages gives every file of a deploy a new one. Measured in headless Chrome: an
+  update that changes one JS file (`battle3d/coach.js`) downloads `sw.js` twice (the browser's update check and the
+  worker's stamp check), `offline-files.json` and that file: 117 KB before gzip, nothing from the CDNs, instead of
+  all same-origin files again (about 6.8 MB).
+- **One version at a time**: the active worker answers every listed file, pages included, from its own shell, and
+  nothing but its install writes that shell. HTML, scripts and models therefore always come from one version, online
+  or offline (before, the first load after a deploy mixed new HTML from the network with old scripts, and
+  stale-while-revalidate let a newer deploy's files into the active offline copy). New versions reach open pages only
+  through a complete install and the Reload toast. Navigation preload is turned off (listed pages never use it).
+- **No switch in the middle of a game**: only the first version takes over at once (skipWaiting when there is no
+  active worker, then clients.claim). A newer complete version waits: the pages show "A new version is ready." with
+  Reload (`install.js applyUpdate()` posts SKIP_WAITING and reloads on `controllerchange`) and the status line says
+  "Ready to play offline. An update is ready. Reload to use it." Without a Reload it takes over once no page of the
+  app is open, so the installed app picks it up after a full close and reopen (checked in headless Chrome; a real
+  Android phone is not checked). When another tab switches, the remaining tabs get the Reload toast again (also when
+  they dismissed it before; one toast at a time). If the switch does not come within 5 s of a Reload, the page
+  reloads anyway. A boot that fails switches to a waiting version at once (`updateIfWaiting()` in `showBootError`:
+  a plain reload would get the broken version again, and the toast sits under the loading screen); the Reload buttons
+  of the boot error and of the slow-boot notice (`window.__b3dReload`, which loads `install.js` on its own) switch
+  first too. An installed app brought back from the recent apps list loads no page, so the page asks the worker to
+  check for an update when it becomes visible, at most once an hour.
+- **The update from v6.3**: its first load is served by v6.3's worker (network-first HTML, cached scripts), so this
+  version's pages run v6.3's scripts once. `2d.html` loads `install.js` with a dynamic import and feature checks
+  (v6.3's has no `mountOfflineStatus`; registration must not depend on it), and `index.html`'s slow-boot notice also
+  counts the loading screen's own state (v6.3's `main.js` sets neither `__b3dBooted` nor `__b3dBootError`).
+- **Caches**: `chess3d-shell-<VERSION>-<BUILD>` (the listed files, the list, the marker; written only by the install),
+  `chess3d-runtime-<VERSION>-<BUILD>` (same-origin files that are not listed, fetched at runtime: network first for
+  pages, stale-while-revalidate for scripts, cache first for media), `chess3d-cdn` (CDN files and fonts, kept across
+  releases because their URLs carry the version; entries no version uses any more are dropped on activate). After the
+  copy phase of an install, shells of other versions without a marker (downloads that never finished) are dropped once
+  a version with a marker exists; a pre-6.4 shell (no marker) stays while it may be the one serving.
+- **No endless waits**: the active worker answers only from its own caches; HEAD probes answer from the cache;
+  a file that is not cached gives up after 15 s without an answer (pages that are not listed fall back to the cache
+  after 4 s).
+- **Progress**: the installing worker posts `{ type: 'OFFLINE_STATUS', version, state: 'installing' | 'ready' |
+  'failed', done, total, error }` to every page (also uncontrolled ones). `GET_STATUS` asks for it; an active worker
+  answers `ready` from its marker.
+- First offline download (measured in headless Chrome): 176 files, 9.3 MB stored, about 6.5 MB over the wire with
+  gzip (v6.3: 134 files, 6.6 MB, about 3.9 MB). The library packs are 2.5 MB of it.
+
+## Pages
+
+- `battle3d/install.js`: `mountOfflineStatus(el)`, `watchOfflineStatus(onChange)`, `offlineMarker()`,
+  `offlineStatusText(status)`, `offlineReport()` (marker and last failed download; `__b3d.offline()` with
+  `?debug=1`). One quiet line: "Ready to play offline.", "Preparing offline play: 60%", "Ready to play offline.
+  Downloading an update: 40%", "Offline play is not ready yet. ..." (online and offline wording). A failing update
+  keeps "Ready to play offline." (the previous version works). Screen readers hear changes of state through a visually
+  hidden live region next to the line, not every percent. An `online` event lets an existing worker try again; it never
+  registers one. The installed app also asks for persistent storage (`navigator.storage.persist()`, no prompt in
+  Chrome).
+- 3D menu: `#offline-status` above the Install section (also shown while the app runs installed). 2D page: the same id
+  under the Controls buttons. Neither page shows it with `?debug=1` or `?nosw=1` (no worker is registered there).
+- 3D boot (`main.js`): no HEAD probe (the production manifest is fetched, with a second try, and the dev manifest
+  only where the production one does not exist); manifest, cast module and pack files give up after 30 s without an
+  answer (`BOOT_WAIT_MS`), packs then fall back to the default characters with the existing notice. In `units.js`
+  every file the loader fetches (a model's bytes, a `.gltf`'s buffers and textures) counts as progress; pending
+  model, clip and prop loads fail (placeholder, as for a missing file) only when nothing has moved for 30 s. The boot
+  lets one task pass after `createScene` before its first request: requests started in the task that ends the
+  module's first run failed at once in Chrome, and a failed `import()` stays failed for the page (v6.3's HEAD probe
+  failed the same way, without harm). The service worker is registered after the first frame, or after 30 s / a failed
+  boot, so a first visit always gets offline play. `window.__b3dBooted` is set when the board is up,
+  `window.__b3dBootError` when the boot shows its error.
+- 3D loading screen: after 20 s without a board (and without a boot error), `#loading-slow` offers "Play the 2D game"
+  (the boot goes on). The WebGL fallback and the boot error say when the device is offline. The fonts stylesheet loads
+  with `crossorigin` and `media="print"` until loaded, so it never blocks the page.
+
+## Release
+
+After any change to a file of the game or to `sw.js`:
+
+1. Bump `VERSION` in `sw.js` (the label users and logs see; the caches change with the stamp anyway).
+2. `npm run offline-list`: rewrites `offline-files.json` and the build stamp in `sw.js`. Run it last: editing any
+   listed file or `sw.js` afterwards makes the stamp stale again.
+3. `npm test` (includes `tools/offline-list.js --check`).
+4. Commit `offline-files.json` and `sw.js` with the change; new files must be committed with exactly the case the
+   list uses. The workflow `.github/workflows/offline-list.yml` checks the same on the push.
+
+## Tests
+
+`tests/unit/offlineLists.test.js` (the list and the stamp are up to date, `sw.js`, the list and every listed file
+are tracked by git with exact case, the stamp follows the list and the worker code, required versus optional, the
+lists it is made of, hashes and build id equal in node and in the worker, download size, the status texts),
+`tests/integration/battle3dServiceWorker.test.js` (install, retries, 404s of optional and required files, resume
+after a failed try with per-deploy ETags, copy by content hash across versions, a copy whose content no longer matches,
+an older partial download reused before it is dropped, stalled bodies, the install deadline, unfinished shells dropped,
+CDN cache kept, a release without a new stamp, a missing list, a list from a deploy still spreading, downloaded bytes
+that differ from the list, listed pages and scripts from one version, no drift of the active shell while a newer
+install is pending, messages, marker, HEAD and cache-miss timeouts), `tests/integration/battle3dInstall.test.js` (the status line: percent on screen, announcements on a
+change of state only, no registration from an `online` event), `tests/slow/offlineBrowser.test.js` (the cases above
+in headless Chrome, with moves against the AI in 3D and 2D, an update that downloads only the list, and the update
+from v6.3 itself: v6.3 from git first, then this checkout, the first 3D and 2D loads after it, the install that waits,
+and a restart that switches).

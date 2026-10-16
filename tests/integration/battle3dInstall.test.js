@@ -231,14 +231,14 @@ describe('battle3d install.js', { skip: !have && 'no install.js yet' }, () => {
             assert.equal(await T.mod.registerServiceWorker(), null);
         });
 
-        test('update notice only when a new worker takes over an already controlled page, once', async () => {
+        test('update notice when another version takes over an already controlled page, after every switch; one toast', async () => {
             let T = await load();
             T.swLog.controller = { state: 'activated' };
             let updates = 0;
             await T.mod.registerServiceWorker({ onUpdate: () => updates++ });
             for (const f of T.swLog.listeners.controllerchange) f();
             for (const f of T.swLog.listeners.controllerchange) f();
-            assert.equal(updates, 1);
+            assert.equal(updates, 2, 'offered again after each switch (a dismissed offer included)');
             restore();
             T = await load();
             updates = 0;
@@ -252,6 +252,93 @@ describe('battle3d install.js', { skip: !have && 'no install.js yet' }, () => {
             for (const f of T.swLog.listeners.controllerchange) f();
             assert.ok(T.w.document.querySelector('.b3d-toast'), 'default update toast');
             assert.match(T.w.document.querySelector('.b3d-toast').textContent, /new version/i);
+            for (const f of T.swLog.listeners.controllerchange) f();
+            assert.equal(T.w.document.querySelectorAll('.b3d-toast').length, 1, 'not shown twice');
+        });
+
+        test('Reload: posts SKIP_WAITING and reloads on its own if the switch does not come; no waiting version: reload at once', async () => {
+            const T = await load();
+            const posted = [];
+            let reg = { waiting: { postMessage: (m) => posted.push(m) } };
+            navigator.serviceWorker.getRegistration = async () => reg;
+            let reloads = 0;
+            await T.mod.applyUpdate({ reload: () => reloads++, fallbackMs: 20 });
+            assert.deepEqual(posted, [{ type: 'SKIP_WAITING' }]);
+            assert.equal(reloads, 0, 'waits for the switch first');
+            await new Promise((r) => setTimeout(r, 60));
+            assert.equal(reloads, 1, 'then reloads anyway');
+            reg = { waiting: null };
+            await T.mod.applyUpdate({ reload: () => reloads++ });
+            assert.equal(reloads, 2, 'nothing waits: plain reload');
+        });
+
+        test('a failed boot switches to a waiting version at once (main.js), and the loading screen\'s Reload switches first', async () => {
+            const T = await load();
+            const posted = [];
+            let reg = { waiting: null };
+            navigator.serviceWorker.getRegistration = async () => reg;
+            assert.equal(await T.mod.updateIfWaiting({ reload: () => {} }), false, 'nothing waits: nothing happens');
+            reg = { waiting: { postMessage: (m) => posted.push(m) } };
+            assert.equal(await T.mod.updateIfWaiting({ reload: () => {}, fallbackMs: 1 }), true);
+            assert.deepEqual(posted, [{ type: 'SKIP_WAITING' }]);
+            // Wiring: main.js's boot error calls it; both loading-screen Reloads go through applyUpdate
+            const main = fs.readFileSync(path.join(ROOT, 'battle3d', 'main.js'), 'utf8');
+            const bootError = main.slice(main.indexOf('function showBootError'), main.indexOf('\n}\n', main.indexOf('function showBootError')));
+            assert.match(bootError, /updateIfWaiting\?\.\(\)/);
+            assert.match(bootError, /__b3dReload/);
+            const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+            assert.match(html, /id="loading-slow"[\s\S]*?onclick="window\.__b3dReload\(\)"/);
+            assert.match(html, /window\.__b3dReload = function[\s\S]*?import\('\.\/battle3d\/install\.js'\)[\s\S]*?applyUpdate/);
+        });
+
+        test('an app brought back to the front checks for an update, at most once an hour', async () => {
+            const T = await load();
+            let checks = 0;
+            navigator.serviceWorker.register = async () => ({ scope: '/', waiting: null, installing: null, addEventListener() {}, update: async () => { checks++; } });
+            await T.mod.registerServiceWorker();
+            const show = () => T.w.document.dispatchEvent(new T.w.Event('visibilitychange'));
+            show();
+            assert.equal(checks, 0, 'just registered: no check yet');
+            const realNow = Date.now;
+            try {
+                Date.now = () => realNow() + 2 * 3600000;
+                show();
+                show();
+                assert.equal(checks, 1, 'once after an hour, not on every switch');
+            } finally { Date.now = realNow; }
+        });
+
+        test('a complete new version waits: the page offers it once, and Reload asks it to take over', async () => {
+            const T = await load();
+            T.swLog.controller = { state: 'activated' };
+            // The registration as Chrome gives it: a new version installing, then installed (waiting)
+            const listeners = {};
+            const posted = [];
+            const installing = { state: 'installing', addEventListener: (t, f) => { (listeners[t] ||= []).push(f); } };
+            const reg = { scope: '/Chess-game-vibe-code/', waiting: null, installing, addEventListener() {} };
+            navigator.serviceWorker.register = async () => reg;
+            navigator.serviceWorker.getRegistration = async () => reg;
+            let updates = 0;
+            await T.mod.registerServiceWorker({ onUpdate: () => updates++ });
+            assert.equal(updates, 0, 'nothing to offer while it downloads');
+            installing.state = 'installed';
+            reg.waiting = { postMessage: (m) => posted.push(m) };
+            reg.installing = null;
+            for (const f of listeners.statechange) f();
+            for (const f of listeners.statechange) f();
+            assert.equal(updates, 1, 'offered once');
+            let reloads = 0;
+            await T.mod.applyUpdate({ reload: () => reloads++, fallbackMs: 1 });
+            assert.deepEqual(posted, [{ type: 'SKIP_WAITING' }]);
+            await new Promise((r) => setTimeout(r, 20));
+            assert.equal(reloads, 1);
+            // A version that already waits when the page opens is offered at once
+            restore();
+            const T2 = await load();
+            T2.swLog.controller = {};
+            navigator.serviceWorker.register = async () => ({ scope: '/', waiting: { postMessage() {} }, installing: null, addEventListener() {} });
+            await T2.mod.registerServiceWorker();
+            assert.match(T2.w.document.querySelector('.b3d-toast')?.textContent || '', /new version/i);
         });
     });
 
@@ -263,5 +350,69 @@ describe('battle3d install.js', { skip: !have && 'no install.js yet' }, () => {
             return i >= 0 && b >= 0 && i < b && !/function setupInstall[\s\S]*import\('\.\/install\.js'\)/.test(main.slice(0, b));
         })();
         assert.ok(staticImport || earlyDynamic);
+    });
+
+    test('offline status line: percent on screen, screen readers hear changes of state only; an online event registers nothing', async () => {
+        const T = await load();
+        // The worker and Cache Storage as install.js sees them: no registration yet, then a download, then the marker
+        const stores = new Map();
+        const caches = {
+            keys: async () => [...stores.keys()],
+            match: async (key, { cacheName } = {}) => {
+                const hit = stores.get(cacheName)?.get(key);
+                return hit ? { json: async () => hit } : undefined;
+            },
+        };
+        let reg;
+        Object.assign(navigator.serviceWorker, {
+            getRegistration: async () => reg,
+            removeEventListener: () => {},
+            startMessages: () => {},
+        });
+        T.w.caches = caches;
+        globalThis.caches = caches;
+        const post = (data) => { for (const f of T.swLog.listeners.message || []) f({ data }); };
+        const settle = async () => { for (let i = 0; i < 5; i++) await T.flush(); };
+        const line = T.w.document.createElement('p');
+        T.w.document.body.append(line);
+        const view = T.mod.mountOfflineStatus(line);
+        const live = line.nextElementSibling;
+        try {
+            await settle();
+            assert.equal(line.textContent, 'Preparing offline play...');
+            assert.equal(line.getAttribute('role'), null, 'the line itself is not a live region');
+            assert.equal(live.getAttribute('aria-live'), 'polite');
+            reg = { installing: {}, addEventListener() {}, update: async () => {} };
+            for (const done of [10, 55, 90]) { post({ type: 'OFFLINE_STATUS', state: 'installing', done, total: 100 }); await settle(); }
+            assert.equal(line.textContent, 'Preparing offline play: 90%');
+            assert.equal(live.textContent, '', 'no announcement per percent');
+            stores.set('chess3d-shell-9.9.9', new Map([['https://example.github.io/Chess-game-vibe-code/offline-ready.json', { version: '9.9.9' }]]));
+            reg = { active: {}, addEventListener() {}, update: async () => {} };
+            post({ type: 'OFFLINE_STATUS', state: 'ready', done: 100, total: 100 });
+            await settle();
+            assert.equal(line.textContent, 'Ready to play offline.');
+            assert.equal(live.textContent, 'Ready to play offline.', 'the change of state is announced');
+            assert.equal(line.dataset.state, 'ready');
+            // A failing update keeps the line as it is
+            post({ type: 'OFFLINE_STATUS', state: 'failed', error: 'x' });
+            await settle();
+            assert.equal(line.textContent, 'Ready to play offline.');
+            // A complete update that waits for a reload
+            reg = { active: {}, waiting: {}, addEventListener() {}, update: async () => {} };
+            post({ type: 'OFFLINE_STATUS', state: 'ready', done: 100, total: 100 });
+            await settle();
+            assert.equal(line.textContent, 'Ready to play offline. An update is ready. Reload to use it.');
+            assert.equal(live.textContent, 'Ready to play offline. An update is ready. Reload to use it.', 'announced');
+            // Online again without a registration (a page that does not use the worker): nothing is registered
+            reg = undefined;
+            stores.clear();
+            T.w.dispatchEvent(new T.w.Event('online'));
+            await settle();
+            assert.deepEqual(T.swLog.registered, []);
+        } finally {
+            view.destroy();
+            delete globalThis.caches;
+        }
+        assert.equal(line.nextElementSibling, null, 'destroy removes the live region');
     });
 });

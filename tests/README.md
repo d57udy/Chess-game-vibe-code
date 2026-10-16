@@ -82,3 +82,21 @@ stop at the offers on crowded boards and on the mirrored entries.
 - The 2D view applies a move in two steps (board first, rights, clocks and side to move after the
   animation). Nothing on the page can act in between (tests above), but code that reads the rules
   state directly during an animation would see the first half only.
+
+## Offline play (v6.4)
+
+| What | Where |
+|---|---|
+| `offline-files.json` and the build stamp in `sw.js` are up to date (`npm run offline-list`; CI runs `tools/offline-list.js --check` and this file on pushes and pull requests, `.github/workflows/offline-list.yml`); `sw.js`, the list and every listed file are tracked by git with exactly that path; required versus optional files; the lists it is made of (asset manifest, library packs, glTF sidecars) and the fonts of a stylesheet against the repo; the size of the download; the readiness texts | `unit/offlineLists` |
+| Install stores everything and takes over only when complete: retries, stalled bodies, the 4 minute deadline, 404s of optional and required files, an incomplete download leaves the previous version and its caches alone and resumes on the next try (per-deploy ETags as on GitHub Pages), files copied by content hash across versions (a copy whose content no longer matches is downloaded; an older partial download is reused, then dropped), CDN files kept across versions, fonts optional, progress messages and the `offline-ready.json` marker. The build stamp: a release without `npm run offline-list`, a missing list, a list from a deploy still spreading (one more try past the HTTP cache), downloaded bytes that differ from the list. Serving: listed pages and scripts from one version's shell, no drift of the active shell while a newer install is pending, other files through RUNTIME; HEAD probes and cache misses never wait forever | `integration/battle3dServiceWorker` (sw.js in a `node:vm`) |
+| The status line: percent on screen, screen readers hear changes of state only, an `online` event never registers a worker | `integration/battle3dInstall` |
+| The installed app in a real browser, offline: fresh install, an update with a library-pack cast and an imported VRM avatar (that downloads only the list), an update on a flaky connection; 3D and 2D start, a move by clicks and the AI's answer, the menu line. The update from v6.3 (commit `234a2b7` from git, then this checkout): the first 2D and 3D loads after it run v6.3's scripts under the new pages without errors or the slow-boot notice, install this version, which waits, and a close and reopen switches to it | `slow/offlineBrowser` |
+| A new version waits: offered once by the page, Reload posts SKIP_WAITING; the status line's "An update is ready" | `integration/battle3dInstall`, `integration/battle3dServiceWorker` |
+
+Offline in a browser test means the network is gone for the service worker too: `helpers/offlineNet.js` closes
+the site's port (or keeps it open without answering) and sends the CDNs through a local proxy with the same switches
+(Chrome runs with `--proxy-server`). DevTools' network emulation on the page alone leaves the worker online, which is
+why `slow/battle3dPwaBrowser`'s offline step does not prove offline play. Each offline start also clears the HTTP
+cache and turns off the tab's memory cache, so only what the worker stored can answer.
+
+`slow/offlineBrowser` needs the internet once per test (three.js, three-vrm, gsap and the fonts come from their CDNs).

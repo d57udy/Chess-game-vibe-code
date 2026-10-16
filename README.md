@@ -87,7 +87,9 @@ Controls:
 Moves and results are announced to screen readers.
 
 **Install as an app (Android).** The 3D game is a Progressive Web App and works offline after the first
-visit. In Chrome on Android, open the game menu (the three-line button at the top) and use the
+visit: the game downloads everything it needs (both games, all characters and library packs: about 6.5 MB to
+download, 9 MB stored) in the background, and the menu says "Ready to play offline." when it is done ("Preparing offline play: 60%" until then;
+the 2D page shows the same line under its buttons). In Chrome on Android, open the game menu (the three-line button at the top) and use the
 "Install app" section, or Chrome's own menu > "Add to Home screen" / "Install app". On iPhone and iPad, use
 Safari's Share button > "Add to Home Screen". The installed app opens full screen without the browser bar.
 
@@ -142,11 +144,11 @@ model, weapons, gear, size, cloth colour and tint for each piece, with a live 3D
 sources:
 
 - **Built-in:** the bundled KayKit heroes and skeletons (always available, offline too).
-- **More packs:** extra CC0 packs hosted with the game but downloaded only when a cast uses them (Quaternius RPG
-  characters, animated monsters, and farm animals including a horse for mounted knights). Presets such as
-  Monsters, Adventurers, Mounted knights and Barnyard use them; each shows its download size. Once used, a pack
-  stays cached for offline play. If a pack cannot be loaded (offline before it was ever downloaded), those pieces
-  fall back to the default characters with a short notice.
+- **More packs:** extra CC0 packs hosted with the game (Quaternius RPG characters, animated monsters, and farm
+  animals including a horse for mounted knights). Presets such as Monsters, Adventurers, Mounted knights and
+  Barnyard use them; each shows its download size. The packs are part of the offline download, so every cast also
+  works offline once the game is ready to play offline. If a pack cannot be loaded (offline before the download
+  finished), those pieces fall back to the default characters with a short notice.
 - **Import your own:** `.glb`, `.gltf` (single file) or `.vrm`, stored in the browser. Humanoids with a KayKit,
   Mixamo, Quaternius, VRM or similar rig are retargeted onto the game's animations; models that cannot be mapped
   are used as static figures with a warning. Imports are checked for size (very detailed models are refused, large
@@ -185,12 +187,22 @@ At the repo root: `manifest.webmanifest` (app name, icons, colours), `sw.js` (se
 Add `?debug=1` to the URL for `window.__b3d` test hooks (`step(n)`, `state()`). See "Releasing" below for
 how `?debug=1` and `?nosw=1` affect the service worker.
 
-**Releasing (offline cache).** `sw.js` keeps the app shell (both pages, scripts, styles, three.js and the
-default characters) in a versioned cache. On every deploy that changes files, bump `VERSION` at the top of
-`sw.js`. The new worker precaches again, takes over open tabs, deletes the old caches and shows a small
-"A new version is ready. Reload" toast; it never reloads by itself. HTML is fetched network first, but scripts,
-styles and assets come from the cache until `VERSION` changes. Both pages register the worker, so the 2D page
-works offline too. While debugging, `?nosw=1` unregisters the worker and bypasses it; `?debug=1` skips
+**Releasing (offline cache).** `sw.js` precaches everything both games can use offline (both pages, scripts,
+styles, every model and library pack, three.js, three-vrm, gsap and the title font); the CDN files live in a cache
+that is kept across versions. The same-origin files and a content hash for each are listed in `offline-files.json`,
+and `sw.js` carries a build stamp made from that list and its own code. After any change: bump `VERSION` at the top
+of `sw.js`, run `npm run offline-list` last (it rewrites the list and the stamp), run `npm test`, and commit
+`offline-files.json` and `sw.js` with the change. CI (`.github/workflows/offline-list.yml`) and `npm test` fail while
+the list or the stamp is stale. The new worker copies every file whose content hash is unchanged from the old cache
+and downloads only the files that changed. It takes over open tabs only when its download is complete (otherwise
+the previous version keeps working offline and the next visit resumes the download). A complete new version then
+waits, so a game in progress never switches: the page shows a small "A new version is ready. Reload" toast and the
+menu line says "An update is ready. Reload to use it."; Reload switches, and so does closing the app and opening it
+again. An app brought back from the recent apps list checks for a new version at most once an hour. It never reloads
+by itself, except after a boot that failed while a new version was waiting. Pages, scripts and assets of the game always come from the installed version's
+cache, so a tab runs one version until it reloads. Both pages
+register the worker, so the 2D page works offline too. While debugging, `?nosw=1` unregisters the worker and
+bypasses it; `?debug=1` skips
 registration but does not unregister an existing worker (DevTools > Application > Service workers can).
 
 **Credits.** Built-in characters, animations and weapons are from KayKit Character Pack: Adventurers 1.0 and

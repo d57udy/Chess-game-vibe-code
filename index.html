@@ -15,7 +15,9 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+    <!-- Title font: CORS so the service worker can keep it for offline play; media="print" until loaded so a network
+         that never answers cannot hold up the page (the titles use Georgia until then) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap" crossorigin media="print" onload="this.media='all'">
     <link rel="stylesheet" href="battle3d/hud.css">
     <link rel="stylesheet" href="battle3d/cast.css">
     <link rel="stylesheet" href="battle3d/install.css">
@@ -148,6 +150,7 @@
                     <li>Your game is kept on this device and comes back when you reopen the app. Save / Load keeps named saves and reads games from PGN text or files; Export moves copies, shares or downloads the move list.</li>
                 </ul>
             </details>
+            <p id="offline-status" class="offline-status muted small" hidden></p>
             <section class="menu-section" aria-labelledby="install-heading">
                 <h3 id="install-heading" class="section-title">Install app</h3>
                 <div id="install-mount" class="install-mount"></div>
@@ -250,6 +253,11 @@
                 <div id="loading-bar" class="progress-bar"></div>
             </div>
             <p id="loading-hint" class="muted small">Heroes (White) against skeletons (Black). Every capture is a fight.</p>
+            <div id="loading-slow" class="loading-slow" hidden>
+                <p id="loading-slow-text"></p>
+                <a class="btn primary" href="2d.html">Play the 2D game</a>
+                <button type="button" class="btn" onclick="window.__b3dReload()">Reload</button>
+            </div>
             <p class="muted small">Characters: KayKit by Kay Lousberg (CC0).</p>
         </div>
     </div>
@@ -279,12 +287,32 @@
             } catch (e) { ok = false; }
             if (!ok) window.__b3dFail();
         })();
+        // Whatever the boot waits for (a module, a model, a network that never answers), the loading screen offers
+        // the 2D game after a while; the boot goes on. main.js sets __b3dBooted when the board is up, __b3dBootError
+        // when it shows its own error. The loading screen's own state counts too: on the first load after an update
+        // the previous worker may still serve the previous main.js, which sets neither.
+        setTimeout(function () {
+            var loading = document.getElementById('loading');
+            if (window.__b3dBooted || window.__b3dFailed || window.__b3dBootError) return;
+            if (loading.hidden || loading.classList.contains('fade') || loading.classList.contains('error')) return;
+            document.getElementById('loading-slow-text').textContent = navigator.onLine === false
+                ? 'You are offline and the 3D game is taking longer than usual to start. You can keep waiting, reload or play the 2D game.'
+                : 'This is taking longer than usual. You can keep waiting, reload or play the 2D game.';
+            document.getElementById('loading-slow').hidden = false;
+        }, 20000);
+        // Reload. When a newer complete version waits, switch to it first: a plain reload would get this one again.
+        // install.js is loaded on its own, so this works even when the 3D modules did not.
+        window.__b3dReload = function () {
+            import('./battle3d/install.js').then(function (pwa) {
+                if (pwa.applyUpdate) pwa.applyUpdate(); else location.reload();
+            }, function () { location.reload(); });
+        };
     </script>
     <script src="gameLogic.js"></script>
     <script src="aiPlayer.js"></script>
     <script src="aiClient.js"></script>
     <script src="battle3d/rules.js"></script>
     <script type="module" src="battle3d/main.js"
-        onerror="window.__b3dFail('Could not load the 3D engine. Check your connection (three.js loads from a CDN) and that the page is served over http.')"></script>
+        onerror="window.__b3dFail(navigator.onLine === false ? 'You are offline and the 3D engine is not on this device yet. Open the game once while online, or play the 2D game.' : 'Could not load the 3D engine. Check your connection (three.js loads from a CDN) and that the page is served over http.')"></script>
 </body>
 </html>

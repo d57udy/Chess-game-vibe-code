@@ -12,6 +12,11 @@ const DEV_MANIFEST = new URL('./manifest.dev.json', import.meta.url).href;
 const DEBUG = typeof location !== 'undefined' && /[?&]debug=1/.test(location.search);
 const log = (...a) => { if (DEBUG) console.log('[units]', ...a); };
 
+// When no model, clip or prop file has made any progress for this long, the pending downloads fail like missing files
+// (placeholder or default model), so a network that never answers cannot hold the loading screen. Local blob: files
+// have no limit.
+const LOAD_STALL_MS = 30000;
+
 const FADE = 0.2;
 const TARGET_HEIGHT = 0.85;
 const MODEL_Y = 0.04;           // feet stand on the base disc
@@ -172,8 +177,30 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     const R = new Runner();
     const H = new Runner();   // hint gestures: separate so isBusy() stays false while a hint plays
     const G = new Runner();   // king gestures (talk, taunt...): same idea, independent of hints
-    const loader = new GLTFLoader();
+    // Any file the loader fetches (a model's bytes, a .gltf's buffers and textures) counts as progress for every load:
+    // a load fails only when nothing at all has moved for LOAD_STALL_MS. The item counts still reach the default
+    // manager, which drives main.js's progress bar.
+    let lastProgress = Date.now();
+    const moved = () => { lastProgress = Date.now(); };
+    const manager = new THREE.LoadingManager();
+    const shared = THREE.DefaultLoadingManager;
+    manager.itemStart = url => { moved(); shared.itemStart(url); };
+    manager.itemEnd = url => { moved(); shared.itemEnd(url); };
+    manager.itemError = url => { moved(); shared.itemError(url); };
+    manager.resolveURL = url => shared.resolveURL(url);
+    const loader = new GLTFLoader(manager);
     loader.setMeshoptDecoder(MeshoptDecoder);
+    const loadGltf = url => (/^(blob|data):/.test(url) ? loader.loadAsync(url) : new Promise((done, fail) => {
+        let timer = null;
+        const check = () => {
+            const idle = Date.now() - lastProgress;
+            if (idle >= LOAD_STALL_MS) fail(new Error(`nothing loaded for ${LOAD_STALL_MS / 1000} s: ${url}`));
+            else timer = setTimeout(check, LOAD_STALL_MS - idle);
+        };
+        moved();
+        timer = setTimeout(check, LOAD_STALL_MS);
+        loader.load(url, g => { clearTimeout(timer); done(g); }, moved, e => { clearTimeout(timer); fail(e); });
+    }));
 
     const { manifest, base } = await loadManifest(manifestUrl);
     const resolve = p => new URL(p, base).href;
@@ -190,7 +217,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
     const addClips = list => { for (const c of list || []) if (!clips.has(c.name)) clips.set(c.name, c); };
 
     const clipFiles = [manifest.clips?.file, manifest.clips?.skeletonFile].filter(Boolean);
-    const clipResults = await Promise.allSettled(clipFiles.map(f => loader.loadAsync(resolve(f))));
+    const clipResults = await Promise.allSettled(clipFiles.map(f => loadGltf(resolve(f))));
     clipResults.forEach((r, i) => r.status === 'fulfilled' ? addClips(r.value.animations) : log('clip file failed', clipFiles[i], r.reason));
 
     // Loads every model and prop referenced by a roles table that is not loaded yet.
@@ -206,13 +233,13 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
         await Promise.all([
             ...modelPaths.map(async p => {
                 try {
-                    const g = vrmPaths.has(p) || /\.vrm(\?|#|$)/i.test(p) ? await loadVrm(resolve(p)) : await loader.loadAsync(resolve(p));
+                    const g = vrmPaths.has(p) || /\.vrm(\?|#|$)/i.test(p) ? await loadVrm(resolve(p)) : await loadGltf(resolve(p));
                     protos.set(p, await protoFromGltf(g, p, nativePaths.has(p)));
                 } catch (e) { console.warn('[units] model failed, using placeholder:', p, e); }
             }),
             ...propPaths.map(async p => {
                 try {
-                    const g = await loader.loadAsync(resolve(p));
+                    const g = await loadGltf(resolve(p));
                     g.scene.traverse(o => { if (o.isMesh) o.castShadow = true; });
                     propProtos.set(p, g.scene);
                 } catch (e) { console.warn('[units] prop failed:', p, e); }
@@ -313,7 +340,7 @@ export async function createUnits(sceneAPI, manifestUrl = DEV_MANIFEST, { audio 
             if (!u) continue;
             try {
                 const abs = new URL(u, location.href).href;
-                const res = await fetch(abs);
+                const res = await fetch(abs, typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? { signal: AbortSignal.timeout(LOAD_STALL_MS) } : {});
                 if (res.ok) return { manifest: await res.json(), base: abs };
             } catch (e) { /* try next */ }
         }
